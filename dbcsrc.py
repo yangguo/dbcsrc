@@ -30,8 +30,12 @@ def get_csvdf(penfolder,beginwith):
         pendf = pd.read_csv(filepath)
         dflist.append(pendf)
         # filelist.append(filename)
-    alldf = pd.concat(dflist, axis=0)
-    return alldf
+    if len(dflist)>0:
+        df = pd.concat(dflist)
+        df.reset_index(drop=True, inplace=True)
+    else:
+        df=pd.DataFrame()
+    return df
 
 
 def get_csrcdetail():
