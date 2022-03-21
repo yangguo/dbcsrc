@@ -215,7 +215,10 @@ def get_now():
 # update sumeventdf
 def update_sumeventdf(currentsum):
     oldsum=get_csrcsum()
-    oldidls=oldsum['id'].tolist()
+    if oldsum.empty:
+        oldidls=[]
+    else:
+        oldidls=oldsum['id'].tolist()
     currentidls=currentsum['id'].tolist()
     # print('oldidls:',oldidls)
     print('currentidls:',currentidls)
