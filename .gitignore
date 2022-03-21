@@ -135,5 +135,5 @@ dmypy.json
 .VSCodeCounter
 .vscode
 
-# ignore files
-csrc
+# ignore csv files
+*.csv

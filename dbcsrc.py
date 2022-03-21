@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import json
 import time
 # import matplotlib
+import datetime
 
 import streamlit as st
 
@@ -18,29 +19,32 @@ pencsrc = 'csrc'
 
 BASE_URL='https://neris.csrc.gov.cn/falvfagui/multipleFindController/solrSearchWrit?pageNo='
 
+urldbase = 'https://neris.csrc.gov.cn/falvfagui/rdqsHeader/lawWritInfo?navbarId=1&lawWritId='
+
 # @st.cache
-def get_csvdf(penfolder):
-    files2 = glob.glob(penfolder+'**/sdresult*.csv', recursive=True)
+def get_csvdf(penfolder,beginwith):
+    files2 = glob.glob(penfolder+'**/'+beginwith+'*.csv', recursive=True)
     dflist = []
     # filelist = []
     for filepath in files2:
-        # basename = os.path.basename(filepath)
-        # filename = os.path.splitext(basename)[0]
-        # print(filename)
         pendf = pd.read_csv(filepath)
-        # newdf = pendf[['监管要求', '章节', '小节', '条款']]
         dflist.append(pendf)
         # filelist.append(filename)
     alldf = pd.concat(dflist, axis=0)
     return alldf
 
-# @st.cache
-def get_csrcdetail():
-    # print(industry_choice)
-    penfolder = pencsrc
-    pendf = get_csvdf(penfolder)
 
+def get_csrcdetail():
+    penfolder = pencsrc
+    pendf = get_csvdf(penfolder, 'sdresult')
     return pendf
+
+
+def get_csrcsum():
+    penfolder = pencsrc
+    pendf = get_csvdf(penfolder, 'sumevent')
+    return pendf
+
 
 # search by date range
 def searchcsrc_date(df, start_date, end_date):
@@ -66,7 +70,6 @@ def searchcsrc(df, search_text):
     col=['文件名称', '发文日期', '文书类型', '发文单位',  '案情经过']
 
     searchdf = df[(df['案情经过'].str.contains(search_text))][col]
-    
 
     count=len(searchdf)
     if count>100:
@@ -101,6 +104,7 @@ def get_lawdf(eventdf):
 
     # reset index
     lawdf.reset_index(drop=True, inplace=True)
+    savedf(lawdf, 'lawdf')
     return lawdf
 
 # convert eventdf to peopledf
@@ -120,12 +124,15 @@ def get_peopledf(eventdf):
 
     # reset index
     peopledf4.reset_index(drop=True, inplace=True)
+    savedf(peopledf4, 'peopledf')
     return peopledf4
+
 
 def savedf(df, basename):
     savename = basename + '.csv'
     savepath = os.path.join(pencsrc, savename)
     df.to_csv(savepath)
+
 
 # count the number of df by month
 def count_by_month(df):
@@ -136,6 +143,7 @@ def count_by_month(df):
     # reset index
     df_month.reset_index(inplace=True)
     return df_month
+
 
 def count_by_date(df):
     df['发文日期']=pd.to_datetime(df['发文日期']).dt.date
@@ -188,5 +196,138 @@ def get_sumeventdf(start, end):
         print('OK')
         time.sleep(5)
 
-    result3=pd.concat(resultls).reset_index(drop=True)
-    return result3
+    resultsum=pd.concat(resultls).reset_index(drop=True)
+    # savedf(resultsum,'sumeventdf')
+    return resultsum
+
+
+# get current date and time string
+def get_now():
+    now = datetime.datetime.now()
+    now_str = now.strftime('%Y%m%d%H%M%S')
+    return now_str
+
+
+# update sumeventdf
+def update_sumeventdf(currentsum):
+    oldsum=get_csrcsum()
+    oldidls=oldsum['id'].tolist()
+    currentidls=currentsum['id'].tolist()
+    # print('oldidls:',oldidls)
+    print('currentidls:',currentidls)
+    # get current idls not in oldidls
+    newidls=[x for x in currentidls if x not in oldidls]
+    print('newidls:',newidls)
+    # newidls=list(set(currentidls)-set(oldidls))
+    newdf=currentsum[currentsum['id'].isin(newidls)]
+    # if newdf is not empty, save it
+    if newdf.empty==False:
+        newdf.reset_index(drop=True, inplace=True)
+        nowstr=get_now()
+        savename='sumevent'+nowstr
+        savedf(newdf,savename)
+    return newdf
+
+
+def title2detail(sdtitlels, detail):
+    detail['文件名称'] = sdtitlels[0].text
+    detail['文号'] = sdtitlels[1].text.strip()
+    detail['发文日期'] = sdtitlels[2].text.strip()
+    detail['文书类型'] = sdtitlels[3].text.strip()
+    detail['发文单位'] = sdtitlels[4].text.strip()
+    detail['原文链接'] = sdtitlels[5].text.strip()
+
+
+def law2detail(sdlawls, detail):
+    lawdetaills = []
+    for i in range(3, len(sdlawls)):
+        try:
+            span = sdlawls[i]['rowspan']
+        except Exception as e:
+            #         print(e)
+            span = None
+        if span:
+            lawdetail = dict()
+            itemls = []
+            lawdetail['法律法规'] = sdlawls[i].text.strip()
+            itemls = [sdlawls[j].text.strip()
+                      for j in range(i+1, i+1+int(span))]
+            lawdetail['条文'] = itemls
+            lawdetaills.append(lawdetail)
+        else:
+            pass
+    detail['处理依据'] = lawdetaills
+
+
+def people2detail(sdpeoplels, detail):
+    peoplenum = (len(sdpeoplels)-6)//5
+
+    pdetail = dict()
+    pdetaills = []
+    for pno in range(peoplenum):
+        #     print(pno)
+        pdetail = dict()
+        pdetail['当事人类型'] = sdpeoplels[6+pno*5].text.strip()
+        pdetail['当事人名称'] = sdpeoplels[6+pno*5+1].text.strip()
+        pdetail['当事人身份'] = sdpeoplels[6+pno*5+2].text.strip()
+        pdetail['违规类型'] = sdpeoplels[6+pno*5+3].text.strip()
+        pdetail['处罚结果'] = sdpeoplels[6+pno*5+4].text.strip()
+        pdetaills.append(pdetail)
+    detail['当事人信息'] = pdetaills
+
+
+def fact2detail(sdfactls, detail):
+    detail['案情经过'] = sdfactls[0].text.replace('\u3000', '').replace('\n', '')
+
+# get event detail
+def get_eventdetail(eventsum):
+    # outputfile = pencsrc+'sdresult_0-'
+    idls = eventsum['id'].tolist()
+
+    sdresultls = []
+    count =0
+    for i in idls:
+        print('id: ',i)
+        print(count, 'begin')
+        url = urldbase+str(i)
+        dd = requests.get(url, verify=False)
+        sd = BeautifulSoup(dd.content, 'html.parser')
+
+        detail = dict()
+
+        sdtitlels = sd.find_all(class_='text-left')
+
+        sdlawls = sd.find_all('td', class_='text-center')
+
+        sdpeoplels = sd.find_all(
+            class_='table table-bordered table-condensed')[1].find_all('td')
+
+        sdfactls = sd.find_all(class_='pre_law')
+
+        title2detail(sdtitlels, detail)
+        law2detail(sdlawls, detail)
+        people2detail(sdpeoplels, detail)
+        fact2detail(sdfactls, detail)
+        sdresultls.append(detail)
+
+    # save temp result
+        mod = (count+1) % 5
+        batch = (count+1) // 5
+        if mod == 0 and count > 0:
+            sdresultdf = pd.DataFrame.from_dict(sdresultls)
+            savename='temp'+str(count+1)
+            savedf(sdresultdf,savename)
+            print('batch:{} is ok'.format(batch))
+
+        print(count, 'is ok')
+        count = count+1
+        time.sleep(5)
+
+    alldf=pd.DataFrame.from_dict(sdresultls)
+    # if alldf is not empty, save it
+    if alldf.empty==False:
+        nowstr=get_now()
+        savename='sdresult'+nowstr
+        savedf(alldf,savename)
+    return alldf
+    
