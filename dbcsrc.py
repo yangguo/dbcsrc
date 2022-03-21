@@ -4,12 +4,19 @@ import plotly.express as px
 import plotly.graph_objs as go
 from utils import get_summary
 from ast import literal_eval
+
+import requests
+from bs4 import BeautifulSoup
+import json
+import time
 # import matplotlib
 
 import streamlit as st
 
 pencsrc = 'csrc'
 # mapfolder = 'data/temp/citygeo.csv'
+
+BASE_URL='https://neris.csrc.gov.cn/falvfagui/multipleFindController/solrSearchWrit?pageNo='
 
 # @st.cache
 def get_csvdf(penfolder):
@@ -147,3 +154,39 @@ def display_dfmonth(df_month):
                     xaxis_title='月份',
                     yaxis_title='处罚数量')
     st.plotly_chart(fig)
+
+
+def json2df(site_json):
+    idls=[]
+    namels=[]
+    issueorgls=[]
+    filenols=[]
+    datels=[]
+    for i in range(20):
+        idls.append(site_json['pageUtil']['pageList'][i]['lawWritId'])
+        namels.append(site_json['pageUtil']['pageList'][i]['name'])
+        issueorgls.append(site_json['pageUtil']['pageList'][i]['issueOrgName'])
+        filenols.append(site_json['pageUtil']['pageList'][i]['fileno'])
+        datels.append(site_json['pageUtil']['pageList'][i]['dsptDate'])
+
+    eventdf=pd.DataFrame({'id':idls,'name':namels,'issueorg':issueorgls,'fileno':filenols,'date':datels})
+    eventdf['date']=eventdf['date'].astype(str).apply(lambda x: pd.to_datetime(x[:10],unit='s'))
+    
+    return eventdf
+
+# get sumeventdf in page number range
+def get_sumeventdf(start, end):
+    resultls=[]
+    for pageno in range(start,end+1):
+        print('page:',pageno)
+        url=BASE_URL+str(pageno)
+        pp=requests.get(url, verify=False)
+        ss = BeautifulSoup(pp.content, 'html.parser')
+        ss_json=json.loads(ss.text)
+        resultdf=json2df(ss_json)
+        resultls.append(resultdf)
+        print('OK')
+        time.sleep(5)
+
+    result3=pd.concat(resultls).reset_index(drop=True)
+    return result3

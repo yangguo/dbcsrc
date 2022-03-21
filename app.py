@@ -3,7 +3,7 @@ import plotly.express as px
 import plotly.graph_objs as go
 import pandas as pd
 
-from dbcsrc import get_csrcdetail,searchcsrc,get_lawdf,get_peopledf,savedf,count_by_month,display_dfmonth
+from dbcsrc import get_csrcdetail,searchcsrc,get_lawdf,get_peopledf,savedf,count_by_month,display_dfmonth,get_sumeventdf
 
 def main():
 
@@ -13,7 +13,21 @@ def main():
     if choice == '案例更新':
         st.subheader('案例更新')
         # st.write('案例更新')
-
+        # choose page start number and end number
+        start_num = st.sidebar.number_input('起始页', value=0, min_value=0, max_value=5)
+        end_num = st.sidebar.number_input('结束页', value=start_num, min_value=start_num, max_value=10)
+        # button to scrapy web
+        sumeventbutton = st.sidebar.button('更新案例')
+        if sumeventbutton:
+            # get sumeventdf
+            sumeventdf = get_sumeventdf(start_num, end_num)
+            # save sumeventdf
+            savedf(sumeventdf, 'sumeventdf')
+            # get length of sumeventdf
+            sumevent_len = len(sumeventdf)
+            # display sumeventdf
+            st.sidebar.success(f'更新完成，共{sumevent_len}条案例')
+        
         # convert eventdf to lawdf
         lawdfconvert =st.sidebar.button('处罚依据分析')
         if lawdfconvert:
