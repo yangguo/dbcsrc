@@ -15,7 +15,11 @@ def main():
         # st.write('案例更新')
         # choose page start number and end number
         start_num = st.sidebar.number_input('起始页', value=1, min_value=1, max_value=5)
+        # convert to int
+        start_num = int(start_num)
         end_num = st.sidebar.number_input('结束页', value=start_num, min_value=start_num, max_value=10)
+        # convert to int
+        end_num = int(end_num)
         # button to scrapy web
         sumeventbutton = st.sidebar.button('更新案例')
         if sumeventbutton:
