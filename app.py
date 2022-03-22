@@ -3,7 +3,8 @@ import plotly.express as px
 import plotly.graph_objs as go
 import pandas as pd
 
-from dbcsrc import get_csrcdetail,searchcsrc,get_lawdf,get_peopledf,count_by_month,display_dfmonth,get_sumeventdf,update_sumeventdf,get_eventdetail
+from dbcsrc import get_csrcdetail,searchcsrc,generate_lawdf,generate_peopledf,count_by_month,display_dfmonth,get_sumeventdf,update_sumeventdf,get_eventdetail
+from dbcsrc import get_lawdetail,get_peopledetail,searchlaw,searchpeople
 
 def main():
 
@@ -46,7 +47,7 @@ def main():
         lawdfconvert =st.sidebar.button('处罚依据分析')
         if lawdfconvert:
             eventdf=get_csrcdetail()
-            lawdf=get_lawdf(eventdf)
+            lawdf=generate_lawdf(eventdf)
             # savedf(lawdf,'lawdf')
             st.sidebar.success('处罚依据分析完成')
             st.write(lawdf[:50])
@@ -55,7 +56,7 @@ def main():
         peopledfconvert =st.sidebar.button('处罚人员分析')
         if peopledfconvert:
             eventdf=get_csrcdetail()
-            peopledf=get_peopledf(eventdf)
+            peopledf=generate_peopledf(eventdf)
             # savedf(peopledf,'peopledf')
             st.sidebar.success('处罚人员分析完成')
             st.write(peopledf[:50])
@@ -88,21 +89,114 @@ def main():
         # draw plotly figure
         display_dfmonth(df_month)
         
-
-
     elif choice == '案例搜索':
         st.subheader('案例搜索')
-        search_text = st.sidebar.text_input('搜索案例关键词')
-
-        df = get_csrcdetail()
-        st.write("处罚列表")
-
-        sampledf, total = searchcsrc(df, search_text)
-        # total = len(sampledf)
-        st.sidebar.write('总数:', total)
-        # pd.set_option('colwidth',40)
-
-        st.table(sampledf)
+        # choose search type
+        search_type = st.sidebar.selectbox('搜索类型', ['案情经过', '处罚依据', '处罚人员'])
+        if search_type == '案情经过':
+            # input filename keyword
+            filename_text = st.sidebar.text_input('搜索文件名关键词')
+            # get now date
+            now_date = pd.Timestamp.now()
+            # get five years before now date
+            five_years_before = now_date - pd.Timedelta(days=365*5)
+            # input date range
+            start_date = st.sidebar.date_input('开始日期', value=five_years_before)
+            end_date = st.sidebar.date_input('结束日期', value=now_date)
+            # input org keyword
+            org_text = st.sidebar.text_input('搜索机构关键词')
+            # input case keyword
+            case_text = st.sidebar.text_input('搜索案件关键词')
+            df = get_csrcdetail()
+            # get type list
+            type_list = df['文书类型'].unique()
+            # get type
+            type_text = st.sidebar.multiselect('文书类型', type_list)
+            # search button
+            searchbutton = st.sidebar.button('搜索')
+            if searchbutton:
+                # search by filename, date, org, case, type
+                search_df,total = searchcsrc(df, filename_text,start_date,end_date , org_text, case_text, type_text)
+                
+                # total = len(search_df)
+                st.sidebar.write('总数:', total)
+                
+                st.table(search_df)
+        elif search_type == '处罚依据':
+            # input filename keyword
+            filename_text = st.sidebar.text_input('搜索文件名关键词')
+            # get now date
+            now_date = pd.Timestamp.now()
+            # get five years before now date
+            five_years_before = now_date - pd.Timedelta(days=365*5)
+            # input date range
+            start_date = st.sidebar.date_input('开始日期', value=five_years_before)
+            end_date = st.sidebar.date_input('结束日期', value=now_date)
+            # input org keyword
+            org_text = st.sidebar.text_input('搜索机构关键词')
+            df = get_lawdetail()
+            # get law list
+            law_list = df['法律法规'].unique()
+            # get law
+            law_text = st.sidebar.multiselect('法律法规', law_list)
+            # input article keyword
+            article_text = st.sidebar.text_input('搜索条文号')
+            # get type list
+            type_list = df['文书类型'].unique()
+            # get type
+            type_text = st.sidebar.multiselect('文书类型', type_list)
+            # search button
+            searchbutton = st.sidebar.button('搜索')
+            if searchbutton:
+                # search by filename, start date,end date, org,law, article, type
+                search_df,total = searchlaw(df, filename_text,start_date,end_date , org_text,law_text,article_text,  type_text)
+                
+                # total = len(search_df)
+                st.sidebar.write('总数:', total)
+                st.table(search_df)
+        elif search_type == '处罚人员':
+            # input filename keyword
+            filename_text = st.sidebar.text_input('搜索文件名关键词')
+            # get now date
+            now_date = pd.Timestamp.now()
+            # get five years before now date
+            five_years_before = now_date - pd.Timedelta(days=365*5)
+            # input date range
+            start_date = st.sidebar.date_input('开始日期', value=five_years_before)
+            end_date = st.sidebar.date_input('结束日期', value=now_date)
+            # input org keyword
+            org_text = st.sidebar.text_input('搜索机构关键词')
+            
+            df=get_peopledetail()
+            # get people type list
+            people_type_list = df['当事人类型'].unique()
+            # get people type
+            people_type_text = st.sidebar.multiselect('当事人类型', people_type_list)
+            # get people name
+            people_name_text = st.sidebar.text_input('搜索当事人名称')
+            # get people position list
+            people_position_list = df['当事人身份'].unique()
+            # get people position
+            people_position_text = st.sidebar.multiselect('当事人身份', people_position_list)
+            # get penalty type list
+            penalty_type_list = df['违规类型'].unique()
+            # get penalty type
+            penalty_type_text = st.sidebar.multiselect('违规类型', penalty_type_list)
+            # get penalty result
+            penalty_result_text = st.sidebar.text_input('搜索处罚结果')
+            # get type list
+            type_list = df['文书类型'].unique()
+            # get type
+            type_text = st.sidebar.multiselect('处罚类型', type_list)
+            # search button
+            searchbutton = st.sidebar.button('搜索')
+            if searchbutton:
+                # search by filename, start date,end date, org,people type, people name, people position, penalty type, penalty result, type
+                search_df,total = searchpeople(df, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
+                
+                # total = len(search_df)
+                st.sidebar.write('总数:', total)
+                st.table(search_df)
 
 if __name__ == '__main__':
     main()
