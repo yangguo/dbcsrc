@@ -112,6 +112,8 @@ def main():
             type_list = df['文书类型'].unique()
             # get type
             type_text = st.sidebar.multiselect('文书类型', type_list)
+            if type_text == []:
+                type_text = type_list
             # search button
             searchbutton = st.sidebar.button('搜索')
             if searchbutton:
@@ -139,12 +141,16 @@ def main():
             law_list = df['法律法规'].unique()
             # get law
             law_text = st.sidebar.multiselect('法律法规', law_list)
+            if law_text == []:
+                law_text = law_list
             # input article keyword
             article_text = st.sidebar.text_input('搜索条文号')
             # get type list
             type_list = df['文书类型'].unique()
             # get type
             type_text = st.sidebar.multiselect('文书类型', type_list)
+            if type_text == []:
+                type_text = type_list
             # search button
             searchbutton = st.sidebar.button('搜索')
             if searchbutton:
@@ -172,22 +178,30 @@ def main():
             people_type_list = df['当事人类型'].unique()
             # get people type
             people_type_text = st.sidebar.multiselect('当事人类型', people_type_list)
+            if people_type_text == []:
+                people_type_text = people_type_list
             # get people name
             people_name_text = st.sidebar.text_input('搜索当事人名称')
             # get people position list
             people_position_list = df['当事人身份'].unique()
             # get people position
             people_position_text = st.sidebar.multiselect('当事人身份', people_position_list)
+            if people_position_text == []:
+                people_position_text = people_position_list
             # get penalty type list
             penalty_type_list = df['违规类型'].unique()
             # get penalty type
             penalty_type_text = st.sidebar.multiselect('违规类型', penalty_type_list)
+            if penalty_type_text == []:
+                penalty_type_text = penalty_type_list
             # get penalty result
             penalty_result_text = st.sidebar.text_input('搜索处罚结果')
             # get type list
             type_list = df['文书类型'].unique()
             # get type
             type_text = st.sidebar.multiselect('处罚类型', type_list)
+            if type_text == []:
+                type_text = type_list
             # search button
             searchbutton = st.sidebar.button('搜索')
             if searchbutton:

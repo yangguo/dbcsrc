@@ -272,10 +272,10 @@ def update_sumeventdf(currentsum):
         oldidls = oldsum['id'].tolist()
     currentidls = currentsum['id'].tolist()
     # print('oldidls:',oldidls)
-    print('currentidls:', currentidls)
+    # print('currentidls:', currentidls)
     # get current idls not in oldidls
     newidls = [x for x in currentidls if x not in oldidls]
-    print('newidls:', newidls)
+    # print('newidls:', newidls)
     # newidls=list(set(currentidls)-set(oldidls))
     newdf = currentsum[currentsum['id'].isin(newidls)]
     # if newdf is not empty, save it
