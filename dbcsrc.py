@@ -69,18 +69,10 @@ def searchcsrc(df, filename, start_date, end_date, org, case, type):
                   (df['发文单位'].str.contains(org)) &
                   (df['案情经过'].str.contains(case)) &
                   (df['文书类型'].isin(type))][col]
-    # get the number of search result
-    count = len(searchdf)
-    # get sub df if more than 100
-    if count > 20:
-        searchdf1 = searchdf[:20]
-    else:
-        searchdf1 = searchdf
     # get summary
     # searchdf1['案情经过'] = searchdf1['案情经过'].apply(get_summary)
     # searchdf1['案情经过'] = searchdf1['案情经过'].apply(lambda x: x[:100] + '...')
-
-    return searchdf1, count
+    return searchdf
 
 
 #search law by filename_text,start_date,end_date , org_text,law_text,article_text,  type_text
@@ -94,15 +86,8 @@ def searchlaw(df,filename_text,start_date,end_date , org_text,law_text,article_t
                   (df['法律法规'].isin(law_text)) &
                   (df['条文'].str.contains(article_text)) &
                   (df['文书类型'].isin(type_text))][col]
-    # get the number of search result
-    count = len(searchdf)
-    # get sub df if more than 100
-    if count > 20:
-        searchdf1 = searchdf[:20]
-    else:
-        searchdf1 = searchdf
 
-    return searchdf1,count
+    return searchdf
 
 #search people by filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
 def searchpeople(df, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text):
@@ -118,15 +103,8 @@ def searchpeople(df, filename_text,start_date,end_date , org_text,people_type_te
                   (df['违规类型'].isin(penalty_type_text)) &
                   (df['处罚结果'].str.contains(penalty_result_text)) &
                   (df['文书类型'].isin(type_text))][col]
-    # get the number of search result
-    count = len(searchdf)
-    # get sub df if more than 100
-    if count > 20:
-        searchdf1 = searchdf[:20]
-    else:
-        searchdf1 = searchdf
-
-    return searchdf1,count
+   
+    return searchdf
                                 
 
 # convert eventdf to lawdf
@@ -208,6 +186,13 @@ def count_by_date(df):
 def display_dfmonth(df_month):
     fig = go.Figure(data=[go.Bar(x=df_month['month'], y=df_month['count'])])
     fig.update_layout(title='处罚数量统计', xaxis_title='月份', yaxis_title='处罚数量')
+    st.plotly_chart(fig)
+
+
+# display bar chart in plotly
+def display_search_df(searchdf):
+    fig = go.Figure(data=[go.Bar(x=searchdf['文件名称'], y=searchdf['count'])])
+    fig.update_layout(title='搜索结果', xaxis_title='文件名称', yaxis_title='处罚数量')
     st.plotly_chart(fig)
 
 

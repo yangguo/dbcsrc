@@ -8,7 +8,9 @@ from dbcsrc import get_lawdetail,get_peopledetail,searchlaw,searchpeople
 
 def main():
 
-    menu = ['案例更新', '案例分析', '案例搜索']
+    menu = ['案例更新', 
+    # '案例分析', 
+    '案例搜索']
     choice = st.sidebar.selectbox("选择", menu)
 
     if choice == '案例更新':
@@ -118,12 +120,14 @@ def main():
             searchbutton = st.sidebar.button('搜索')
             if searchbutton:
                 # search by filename, date, org, case, type
-                search_df,total = searchcsrc(df, filename_text,start_date,end_date , org_text, case_text, type_text)
-                
-                # total = len(search_df)
+                search_df = searchcsrc(df, filename_text,start_date,end_date , org_text, case_text, type_text)
+                total = len(search_df)
                 st.sidebar.write('总数:', total)
-                
-                st.table(search_df)
+                # count by month
+                df_month = count_by_month(search_df)
+                # draw plotly figure
+                display_dfmonth(df_month)
+                st.write(search_df)
         elif search_type == '处罚依据':
             # input filename keyword
             filename_text = st.sidebar.text_input('搜索文件名关键词')
@@ -155,11 +159,14 @@ def main():
             searchbutton = st.sidebar.button('搜索')
             if searchbutton:
                 # search by filename, start date,end date, org,law, article, type
-                search_df,total = searchlaw(df, filename_text,start_date,end_date , org_text,law_text,article_text,  type_text)
-                
-                # total = len(search_df)
+                search_df = searchlaw(df, filename_text,start_date,end_date , org_text,law_text,article_text,  type_text)
+                total = len(search_df)
                 st.sidebar.write('总数:', total)
-                st.table(search_df)
+                # count by month
+                df_month = count_by_month(search_df)
+                # draw plotly figure
+                display_dfmonth(df_month)
+                st.write(search_df)
         elif search_type == '处罚人员':
             # input filename keyword
             filename_text = st.sidebar.text_input('搜索文件名关键词')
@@ -206,11 +213,14 @@ def main():
             searchbutton = st.sidebar.button('搜索')
             if searchbutton:
                 # search by filename, start date,end date, org,people type, people name, people position, penalty type, penalty result, type
-                search_df,total = searchpeople(df, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
-                
-                # total = len(search_df)
+                search_df = searchpeople(df, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
+                total = len(search_df)
                 st.sidebar.write('总数:', total)
-                st.table(search_df)
+                # count by month
+                df_month = count_by_month(search_df)
+                # draw plotly figure
+                display_dfmonth(df_month)
+                st.write(search_df)
 
 if __name__ == '__main__':
     main()
