@@ -5,12 +5,14 @@ import pandas as pd
 
 from dbcsrc import get_csrcdetail,searchcsrc,generate_lawdf,generate_peopledf,count_by_month,display_dfmonth,get_sumeventdf,update_sumeventdf,get_eventdetail
 from dbcsrc import get_lawdetail,get_peopledetail,searchlaw,searchpeople
+from dbcsrc import get_csrc2detail,searchcsrc2
 
 def main():
 
     menu = ['案例更新', 
     # '案例分析', 
-    '案例搜索']
+    '案例搜索1',
+    '案例搜索2',]
     choice = st.sidebar.selectbox("选择", menu)
 
     if choice == '案例更新':
@@ -91,20 +93,20 @@ def main():
         # draw plotly figure
         display_dfmonth(df_month)
         
-    elif choice == '案例搜索':
-        st.subheader('案例搜索')
+    elif choice == '案例搜索1':
+        st.subheader('案例搜索1')
         # choose search type
         search_type = st.sidebar.selectbox('搜索类型', ['案情经过', '处罚依据', '处罚人员'])
         if search_type == '案情经过':
             # input filename keyword
             filename_text = st.sidebar.text_input('搜索文件名关键词')
             # get now date
-            now_date = pd.Timestamp.now()
+            # now_date = pd.Timestamp.now()
             # get five years before now date
-            five_years_before = now_date - pd.Timedelta(days=365*5)
+            # five_years_before = now_date - pd.Timedelta(days=365*5)
             # input date range
-            start_date = st.sidebar.date_input('开始日期', value=five_years_before)
-            end_date = st.sidebar.date_input('结束日期', value=now_date)
+            start_date = st.sidebar.date_input('开始日期')# value=five_years_before)
+            end_date = st.sidebar.date_input('结束日期')# value=now_date)
             # input org keyword
             org_text = st.sidebar.text_input('搜索机构关键词')
             # input case keyword
@@ -132,12 +134,12 @@ def main():
             # input filename keyword
             filename_text = st.sidebar.text_input('搜索文件名关键词')
             # get now date
-            now_date = pd.Timestamp.now()
+            # now_date = pd.Timestamp.now()
             # get five years before now date
-            five_years_before = now_date - pd.Timedelta(days=365*5)
+            # five_years_before = now_date - pd.Timedelta(days=365*5)
             # input date range
-            start_date = st.sidebar.date_input('开始日期', value=five_years_before)
-            end_date = st.sidebar.date_input('结束日期', value=now_date)
+            start_date = st.sidebar.date_input('开始日期')# value=five_years_before)
+            end_date = st.sidebar.date_input('结束日期')# value=now_date)
             # input org keyword
             org_text = st.sidebar.text_input('搜索机构关键词')
             df = get_lawdetail()
@@ -171,12 +173,12 @@ def main():
             # input filename keyword
             filename_text = st.sidebar.text_input('搜索文件名关键词')
             # get now date
-            now_date = pd.Timestamp.now()
+            # now_date = pd.Timestamp.now()
             # get five years before now date
-            five_years_before = now_date - pd.Timedelta(days=365*5)
+            # five_years_before = now_date - pd.Timedelta(days=365*5)
             # input date range
-            start_date = st.sidebar.date_input('开始日期', value=five_years_before)
-            end_date = st.sidebar.date_input('结束日期', value=now_date)
+            start_date = st.sidebar.date_input('开始日期')# value=five_years_before)
+            end_date = st.sidebar.date_input('结束日期')# value=now_date)
             # input org keyword
             org_text = st.sidebar.text_input('搜索机构关键词')
             
@@ -214,6 +216,33 @@ def main():
             if searchbutton:
                 # search by filename, start date,end date, org,people type, people name, people position, penalty type, penalty result, type
                 search_df = searchpeople(df, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
+                total = len(search_df)
+                st.sidebar.write('总数:', total)
+                # count by month
+                df_month = count_by_month(search_df)
+                # draw plotly figure
+                display_dfmonth(df_month)
+                st.write(search_df)
+    elif choice == '案例搜索2':
+        st.subheader('案例搜索2')
+        # choose search type
+        search_type = st.sidebar.selectbox('搜索类型', ['案情经过'])
+        if search_type == '案情经过':
+            # input filename keyword
+            filename_text = st.sidebar.text_input('名称')
+            # input date range
+            start_date = st.sidebar.date_input('开始日期')# value=five_years_before)
+            end_date = st.sidebar.date_input('结束日期')# value=now_date)
+            # input wenhao keyword
+            wenhao_text = st.sidebar.text_input('文号')
+            # input case keyword
+            case_text = st.sidebar.text_input('搜索案件关键词')
+            df = get_csrc2detail()
+            # search button
+            searchbutton = st.sidebar.button('搜索')
+            if searchbutton:
+                # search by filename, date, wenhao, case
+                search_df = searchcsrc2(df, filename_text,start_date,end_date , wenhao_text, case_text)
                 total = len(search_df)
                 st.sidebar.write('总数:', total)
                 # count by month

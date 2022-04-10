@@ -15,6 +15,7 @@ import datetime
 import streamlit as st
 
 pencsrc = 'csrc'
+pencsrc2= 'csrc2'
 # mapfolder = 'data/temp/citygeo.csv'
 
 BASE_URL = 'https://neris.csrc.gov.cn/falvfagui/multipleFindController/solrSearchWrit?pageNo='
@@ -43,6 +44,9 @@ def get_csrcdetail():
     pendf = get_csvdf(pencsrc, 'sdresult')
     return pendf
 
+def get_csrc2detail():
+    pendf = get_csvdf(pencsrc2, 'csrcdtlall')
+    return pendf
 
 def get_csrcsum():
     pendf = get_csvdf(pencsrc, 'sumevent')
@@ -72,6 +76,17 @@ def searchcsrc(df, filename, start_date, end_date, org, case, type):
     # get summary
     # searchdf1['案情经过'] = searchdf1['案情经过'].apply(get_summary)
     # searchdf1['案情经过'] = searchdf1['案情经过'].apply(lambda x: x[:100] + '...')
+    return searchdf
+
+#search by filename, date, wenhao,case
+def searchcsrc2(df, filename, start_date, end_date, wenhao,case):
+    col = ['名称', '发文日期', '文号', '内容', '链接']
+    # convert date to datetime
+    df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    searchdf = df[(df['名称'].str.contains(filename))
+                  & (df['发文日期'] >= start_date) & (df['发文日期'] <= end_date) &
+                  (df['文号'].str.contains(wenhao)) &
+                  (df['内容'].str.contains(case)) ][col]
     return searchdf
 
 
