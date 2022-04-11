@@ -42,10 +42,14 @@ def get_csvdf(penfolder, beginwith):
 
 def get_csrcdetail():
     pendf = get_csvdf(pencsrc, 'sdresult')
+    # format date
+    pendf['发文日期'] = pd.to_datetime(pendf['发文日期']).dt.date
     return pendf
 
 def get_csrc2detail():
     pendf = get_csvdf(pencsrc2, 'csrcdtlall')
+    # format date
+    pendf['发文日期'] = pd.to_datetime(pendf['发文日期']).dt.date
     return pendf
 
 def get_csrcsum():
@@ -67,7 +71,7 @@ def get_peopledetail():
 def searchcsrc(df, filename, start_date, end_date, org, case, type):
     col = ['文件名称', '发文日期', '发文单位', '案情经过', '文书类型']
     # convert date to datetime
-    df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     searchdf = df[(df['文件名称'].str.contains(filename))
                   & (df['发文日期'] >= start_date) & (df['发文日期'] <= end_date) &
                   (df['发文单位'].str.contains(org)) &
@@ -76,17 +80,26 @@ def searchcsrc(df, filename, start_date, end_date, org, case, type):
     # get summary
     # searchdf1['案情经过'] = searchdf1['案情经过'].apply(get_summary)
     # searchdf1['案情经过'] = searchdf1['案情经过'].apply(lambda x: x[:100] + '...')
+    # sort by date desc
+    searchdf.sort_values(by=['发文日期'], ascending=False, inplace=True)
+    # reset index
+    searchdf.reset_index(drop=True,inplace=True)
+    
     return searchdf
 
 #search by filename, date, wenhao,case
 def searchcsrc2(df, filename, start_date, end_date, wenhao,case):
     col = ['名称', '发文日期', '文号', '内容', '链接']
     # convert date to datetime
-    df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     searchdf = df[(df['名称'].str.contains(filename))
                   & (df['发文日期'] >= start_date) & (df['发文日期'] <= end_date) &
                   (df['文号'].str.contains(wenhao)) &
                   (df['内容'].str.contains(case)) ][col]
+    # sort by date desc
+    searchdf.sort_values(by=['发文日期'], ascending=False, inplace=True)
+    # reset index
+    searchdf.reset_index(drop=True,inplace=True)
     return searchdf
 
 
@@ -177,13 +190,11 @@ def savedf(df, basename):
 
 # count the number of df by month
 def count_by_month(df):
-    df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
-    df['month'] = df['发文日期'].apply(lambda x: x.strftime('%Y-%m'))
-    df['count'] = 1
-    df_month = df.groupby(['month']).count()
-    # reset index
-    df_month.reset_index(inplace=True)
-    return df_month
+    df_month = df.copy()
+    # count by month
+    df_month['month'] = df_month['发文日期'].apply(lambda x: x.strftime('%Y-%m'))
+    df_month_count = df_month.groupby(['month']).size().reset_index(name='count')
+    return df_month_count
 
 
 def count_by_date(df):

@@ -95,18 +95,20 @@ def main():
         
     elif choice == '案例搜索1':
         st.subheader('案例搜索1')
+        # get csrc detail
+        df=get_csrcdetail()
+        # get max date
+        max_date = df["发文日期"].max()
+        # calculate the date five years before max_date
+        five_years_before_max_date = max_date - pd.Timedelta(days=365*5)
         # choose search type
         search_type = st.sidebar.selectbox('搜索类型', ['案情经过', '处罚依据', '处罚人员'])
         if search_type == '案情经过':
             # input filename keyword
             filename_text = st.sidebar.text_input('搜索文件名关键词')
-            # get now date
-            # now_date = pd.Timestamp.now()
-            # get five years before now date
-            # five_years_before = now_date - pd.Timedelta(days=365*5)
             # input date range
-            start_date = st.sidebar.date_input('开始日期')# value=five_years_before)
-            end_date = st.sidebar.date_input('结束日期')# value=now_date)
+            start_date = st.sidebar.date_input('开始日期', value=five_years_before_max_date)
+            end_date = st.sidebar.date_input('结束日期', value=max_date)
             # input org keyword
             org_text = st.sidebar.text_input('搜索机构关键词')
             # input case keyword
@@ -133,13 +135,9 @@ def main():
         elif search_type == '处罚依据':
             # input filename keyword
             filename_text = st.sidebar.text_input('搜索文件名关键词')
-            # get now date
-            # now_date = pd.Timestamp.now()
-            # get five years before now date
-            # five_years_before = now_date - pd.Timedelta(days=365*5)
             # input date range
-            start_date = st.sidebar.date_input('开始日期')# value=five_years_before)
-            end_date = st.sidebar.date_input('结束日期')# value=now_date)
+            start_date = st.sidebar.date_input('开始日期', value=five_years_before_max_date)
+            end_date = st.sidebar.date_input('结束日期', value=max_date)
             # input org keyword
             org_text = st.sidebar.text_input('搜索机构关键词')
             df = get_lawdetail()
@@ -172,13 +170,9 @@ def main():
         elif search_type == '处罚人员':
             # input filename keyword
             filename_text = st.sidebar.text_input('搜索文件名关键词')
-            # get now date
-            # now_date = pd.Timestamp.now()
-            # get five years before now date
-            # five_years_before = now_date - pd.Timedelta(days=365*5)
             # input date range
-            start_date = st.sidebar.date_input('开始日期')# value=five_years_before)
-            end_date = st.sidebar.date_input('结束日期')# value=now_date)
+            start_date = st.sidebar.date_input('开始日期', value=five_years_before_max_date)
+            end_date = st.sidebar.date_input('结束日期', value=max_date)
             # input org keyword
             org_text = st.sidebar.text_input('搜索机构关键词')
             
@@ -225,19 +219,24 @@ def main():
                 st.write(search_df)
     elif choice == '案例搜索2':
         st.subheader('案例搜索2')
+        # get csrc2 detail
+        df = get_csrc2detail()
+        # get max date
+        max_date = df['发文日期'].max()
+        # get five years before max date
+        five_years_before = max_date - pd.Timedelta(days=365*5)
         # choose search type
         search_type = st.sidebar.selectbox('搜索类型', ['案情经过'])
         if search_type == '案情经过':
             # input filename keyword
             filename_text = st.sidebar.text_input('名称')
             # input date range
-            start_date = st.sidebar.date_input('开始日期')# value=five_years_before)
-            end_date = st.sidebar.date_input('结束日期')# value=now_date)
+            start_date = st.sidebar.date_input('开始日期', value=five_years_before)
+            end_date = st.sidebar.date_input('结束日期', value=max_date)
             # input wenhao keyword
             wenhao_text = st.sidebar.text_input('文号')
             # input case keyword
             case_text = st.sidebar.text_input('搜索案件关键词')
-            df = get_csrc2detail()
             # search button
             searchbutton = st.sidebar.button('搜索')
             if searchbutton:
