@@ -102,27 +102,36 @@ def main():
         # calculate the date five years before max_date
         five_years_before_max_date = max_date - pd.Timedelta(days=365*5)
         # choose search type
-        search_type = st.sidebar.selectbox('搜索类型', ['案情经过', '处罚依据', '处罚人员'])
+        search_type = st.sidebar.radio('搜索类型', ['案情经过', '处罚依据', '处罚人员'])
         if search_type == '案情经过':
-            # input filename keyword
-            filename_text = st.sidebar.text_input('搜索文件名关键词')
-            # input date range
-            start_date = st.sidebar.date_input('开始日期', value=five_years_before_max_date)
-            end_date = st.sidebar.date_input('结束日期', value=max_date)
-            # input org keyword
-            org_text = st.sidebar.text_input('搜索机构关键词')
-            # input case keyword
-            case_text = st.sidebar.text_input('搜索案件关键词')
-            df = get_csrcdetail()
             # get type list
             type_list = df['文书类型'].unique()
-            # get type
-            type_text = st.sidebar.multiselect('文书类型', type_list)
-            if type_text == []:
-                type_text = type_list
-            # search button
-            searchbutton = st.sidebar.button('搜索')
+
+            with st.form('案情经过'):
+                col1, col2 = st.columns(2)
+                with col1:
+                    # input filename keyword
+                    filename_text = st.text_input('搜索文件名关键词')
+                    # input date range
+                    start_date = st.date_input('开始日期', value=five_years_before_max_date)
+                    end_date = st.date_input('结束日期', value=max_date)
+
+                with col2:
+                    # input org keyword
+                    org_text = st.text_input('搜索机构关键词')
+                    # input case keyword
+                    case_text = st.text_input('搜索案件关键词')
+                    # get type
+                    type_text = st.multiselect('文书类型', type_list)
+                # search button
+                searchbutton = st.form_submit_button('搜索')
+
             if searchbutton:
+                if filename_text == '' and org_text == '' and case_text == '' and type_text == []:
+                    st.error('请输入搜索条件')
+                    return
+                if type_text==[]:
+                    type_text=type_list
                 # search by filename, date, org, case, type
                 search_df = searchcsrc(df, filename_text,start_date,end_date , org_text, case_text, type_text)
                 total = len(search_df)
@@ -131,92 +140,119 @@ def main():
                 df_month = count_by_month(search_df)
                 # draw plotly figure
                 display_dfmonth(df_month)
-                st.write(search_df)
+                st.table(search_df)
+                # display download button
+                st.sidebar.download_button('下载搜索结果',data=search_df.to_csv(),file_name='搜索结果.csv')
+
         elif search_type == '处罚依据':
-            # input filename keyword
-            filename_text = st.sidebar.text_input('搜索文件名关键词')
-            # input date range
-            start_date = st.sidebar.date_input('开始日期', value=five_years_before_max_date)
-            end_date = st.sidebar.date_input('结束日期', value=max_date)
-            # input org keyword
-            org_text = st.sidebar.text_input('搜索机构关键词')
-            df = get_lawdetail()
+            lawdf = get_lawdetail()
             # get law list
-            law_list = df['法律法规'].unique()
-            # get law
-            law_text = st.sidebar.multiselect('法律法规', law_list)
-            if law_text == []:
-                law_text = law_list
-            # input article keyword
-            article_text = st.sidebar.text_input('搜索条文号')
+            law_list = lawdf['法律法规'].unique()
             # get type list
-            type_list = df['文书类型'].unique()
-            # get type
-            type_text = st.sidebar.multiselect('文书类型', type_list)
-            if type_text == []:
-                type_text = type_list
-            # search button
-            searchbutton = st.sidebar.button('搜索')
+            type_list = lawdf['文书类型'].unique()
+ 
+            with st.form('处罚依据'):
+                col1, col2 = st.columns(2)
+                with col1:
+                    # input filename keyword
+                    filename_text = st.text_input('搜索文件名关键词')
+                    # input date range
+                    start_date = st.date_input('开始日期', value=five_years_before_max_date)
+                    end_date = st.date_input('结束日期', value=max_date)
+                    # input org keyword
+                    org_text = st.text_input('搜索机构关键词')
+                with col2:
+                    # get law
+                    law_text = st.multiselect('法律法规', law_list)
+                    # input article keyword
+                    article_text = st.text_input('搜索条文号')
+                    # get type
+                    type_text = st.multiselect('文书类型', type_list)
+                # search button
+                searchbutton = st.form_submit_button('搜索')
+
             if searchbutton:
+                if filename_text == '' and org_text == '' and article_text == '' and law_text==[] and type_text == []:
+                    st.error('请输入搜索条件')
+                    return
+                if law_text == []:
+                    law_text = law_list
+                if type_text == []:
+                    type_text = type_list
                 # search by filename, start date,end date, org,law, article, type
-                search_df = searchlaw(df, filename_text,start_date,end_date , org_text,law_text,article_text,  type_text)
+                search_df = searchlaw(lawdf, filename_text,start_date,end_date , org_text,law_text,article_text,  type_text)
                 total = len(search_df)
                 st.sidebar.write('总数:', total)
                 # count by month
                 df_month = count_by_month(search_df)
                 # draw plotly figure
                 display_dfmonth(df_month)
-                st.write(search_df)
+                st.table(search_df)
+                # display download button
+                st.sidebar.download_button('下载搜索结果',data=search_df.to_csv(),file_name='搜索结果.csv')
+
         elif search_type == '处罚人员':
-            # input filename keyword
-            filename_text = st.sidebar.text_input('搜索文件名关键词')
-            # input date range
-            start_date = st.sidebar.date_input('开始日期', value=five_years_before_max_date)
-            end_date = st.sidebar.date_input('结束日期', value=max_date)
-            # input org keyword
-            org_text = st.sidebar.text_input('搜索机构关键词')
-            
-            df=get_peopledetail()
+            peopledf=get_peopledetail()
             # get people type list
-            people_type_list = df['当事人类型'].unique()
-            # get people type
-            people_type_text = st.sidebar.multiselect('当事人类型', people_type_list)
-            if people_type_text == []:
-                people_type_text = people_type_list
-            # get people name
-            people_name_text = st.sidebar.text_input('搜索当事人名称')
+            people_type_list = peopledf['当事人类型'].unique()
             # get people position list
-            people_position_list = df['当事人身份'].unique()
-            # get people position
-            people_position_text = st.sidebar.multiselect('当事人身份', people_position_list)
-            if people_position_text == []:
-                people_position_text = people_position_list
+            people_position_list = peopledf['当事人身份'].unique()
             # get penalty type list
-            penalty_type_list = df['违规类型'].unique()
-            # get penalty type
-            penalty_type_text = st.sidebar.multiselect('违规类型', penalty_type_list)
-            if penalty_type_text == []:
-                penalty_type_text = penalty_type_list
-            # get penalty result
-            penalty_result_text = st.sidebar.text_input('搜索处罚结果')
+            penalty_type_list = peopledf['违规类型'].unique()
             # get type list
-            type_list = df['文书类型'].unique()
-            # get type
-            type_text = st.sidebar.multiselect('处罚类型', type_list)
-            if type_text == []:
-                type_text = type_list
-            # search button
-            searchbutton = st.sidebar.button('搜索')
+            type_list = peopledf['文书类型'].unique()
+
+            with st.form('处罚人员'):
+                col1, col2 = st.columns(2)
+                with col1:
+                    # input filename keyword
+                    filename_text = st.text_input('搜索文件名关键词')
+                    # input date range
+                    start_date = st.date_input('开始日期', value=five_years_before_max_date)
+                    end_date = st.date_input('结束日期', value=max_date)
+                    # input org keyword
+                    org_text = st.text_input('搜索机构关键词')
+                    
+                    # get people type
+                    people_type_text = st.multiselect('当事人类型', people_type_list)
+                with col2:
+                    # get people name
+                    people_name_text = st.text_input('搜索当事人名称')
+                    # get people position
+                    people_position_text = st.multiselect('当事人身份', people_position_list)
+                    # get penalty type
+                    penalty_type_text = st.multiselect('违规类型', penalty_type_list)
+                    # get penalty result
+                    penalty_result_text = st.text_input('搜索处罚结果')
+                    # get type
+                    type_text = st.multiselect('处罚类型', type_list)
+                # search button
+                searchbutton = st.form_submit_button('搜索')
+
             if searchbutton:
+                if filename_text == '' and org_text == '' and people_name_text == '' and people_type_text==[] and people_position_text == [] and penalty_type_text == [] and penalty_result_text == '' and type_text == []:
+                    st.error('请输入搜索条件')
+                    return
+                if people_type_text == []:
+                    people_type_text = people_type_list
+                if people_position_text == []:
+                    people_position_text = people_position_list
+                if penalty_type_text == []:
+                    penalty_type_text = penalty_type_list
+                if type_text == []:
+                    type_text = type_list
+
                 # search by filename, start date,end date, org,people type, people name, people position, penalty type, penalty result, type
-                search_df = searchpeople(df, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
+                search_df = searchpeople(peopledf, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
                 total = len(search_df)
                 st.sidebar.write('总数:', total)
                 # count by month
                 df_month = count_by_month(search_df)
                 # draw plotly figure
                 display_dfmonth(df_month)
-                st.write(search_df)
+                st.table(search_df)
+                # display download button
+                st.sidebar.download_button('下载搜索结果',data=search_df.to_csv(),file_name='搜索结果.csv')
     elif choice == '案例搜索2':
         st.subheader('案例搜索2')
         # get csrc2 detail
@@ -226,20 +262,27 @@ def main():
         # get five years before max date
         five_years_before = max_date - pd.Timedelta(days=365*5)
         # choose search type
-        search_type = st.sidebar.selectbox('搜索类型', ['案情经过'])
+        search_type = st.sidebar.radio('搜索类型', ['案情经过'])
         if search_type == '案情经过':
-            # input filename keyword
-            filename_text = st.sidebar.text_input('名称')
-            # input date range
-            start_date = st.sidebar.date_input('开始日期', value=five_years_before)
-            end_date = st.sidebar.date_input('结束日期', value=max_date)
-            # input wenhao keyword
-            wenhao_text = st.sidebar.text_input('文号')
-            # input case keyword
-            case_text = st.sidebar.text_input('搜索案件关键词')
-            # search button
-            searchbutton = st.sidebar.button('搜索')
+            with st.form('案例搜索2'):
+                col1, col2 = st.columns(2)
+                with col1:
+                    # input filename keyword
+                    filename_text = st.text_input('名称')
+                    # input date range
+                    start_date = st.date_input('开始日期', value=five_years_before)
+                    end_date = st.date_input('结束日期', value=max_date)
+                with col2:
+                    # input wenhao keyword
+                    wenhao_text = st.text_input('文号')
+                    # input case keyword
+                    case_text = st.text_input('搜索案件关键词')
+                # search button
+                searchbutton = st.form_submit_button('搜索')
             if searchbutton:
+                if filename_text == '' and wenhao_text == '' and case_text == '':
+                    st.error('请输入搜索条件')
+                    return
                 # search by filename, date, wenhao, case
                 search_df = searchcsrc2(df, filename_text,start_date,end_date , wenhao_text, case_text)
                 total = len(search_df)
@@ -248,7 +291,9 @@ def main():
                 df_month = count_by_month(search_df)
                 # draw plotly figure
                 display_dfmonth(df_month)
-                st.write(search_df)
+                st.table(search_df)
+                # display download button
+                st.sidebar.download_button('下载搜索结果',data=search_df.to_csv(),file_name='搜索结果.csv')
 
 if __name__ == '__main__':
     main()

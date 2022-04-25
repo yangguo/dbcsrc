@@ -40,28 +40,37 @@ def get_csvdf(penfolder, beginwith):
     return df
 
 
+@st.cache(suppress_st_warning=True)
 def get_csrcdetail():
     pendf = get_csvdf(pencsrc, 'sdresult')
     # format date
     pendf['发文日期'] = pd.to_datetime(pendf['发文日期']).dt.date
     return pendf
 
+
+@st.cache(suppress_st_warning=True)
 def get_csrc2detail():
     pendf = get_csvdf(pencsrc2, 'csrcdtlall')
     # format date
     pendf['发文日期'] = pd.to_datetime(pendf['发文日期']).dt.date
     return pendf
 
+
+@st.cache(suppress_st_warning=True)
 def get_csrcsum():
     pendf = get_csvdf(pencsrc, 'sumevent')
     return pendf
 
+
 # get lawdetail
+@st.cache(suppress_st_warning=True)
 def get_lawdetail():
     lawdf = get_csvdf(pencsrc, 'lawdf')
     return lawdf
 
+
 # get peopledetail
+@st.cache(suppress_st_warning=True)
 def get_peopledetail():
     peopledf= get_csvdf(pencsrc, 'peopledf')
     return peopledf
