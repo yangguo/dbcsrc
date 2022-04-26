@@ -1,68 +1,83 @@
+from operator import index
+from soupsieve import escape
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objs as go
 import pandas as pd
 
-from dbcsrc import get_csrcdetail,searchcsrc,generate_lawdf,generate_peopledf,count_by_month,display_dfmonth,get_sumeventdf,update_sumeventdf,get_eventdetail
-from dbcsrc import get_lawdetail,get_peopledetail,searchlaw,searchpeople
-from dbcsrc import get_csrc2detail,searchcsrc2
+from dbcsrc import get_csrcdetail, searchcsrc, generate_lawdf, generate_peopledf, count_by_month, display_dfmonth, get_sumeventdf, update_sumeventdf, get_eventdetail
+from dbcsrc import get_lawdetail, get_peopledetail, searchlaw, searchpeople
+from dbcsrc import get_csrc2detail, searchcsrc2, get_csrcsum
+
 
 def main():
 
-    menu = ['案例更新', 
-    # '案例分析', 
-    '案例搜索1',
-    '案例搜索2',]
+    menu = [
+        '案例更新1',
+        # '案例分析',
+        '案例搜索1',
+        '案例搜索2',
+    ]
     choice = st.sidebar.selectbox("选择", menu)
 
-    if choice == '案例更新':
+    if choice == '案例更新1':
         st.subheader('案例更新')
-        # st.write('案例更新')
-        # choose page start number and end number
-        start_num = st.sidebar.number_input('起始页', value=1, min_value=1, max_value=5)
-        # convert to int
-        start_num = int(start_num)
-        end_num = st.sidebar.number_input('结束页', value=start_num, min_value=start_num, max_value=10)
-        # convert to int
-        end_num = int(end_num)
-        # button to scrapy web
-        sumeventbutton = st.sidebar.button('更新案例')
+        oldsum = get_csrcsum()
+        # get length of old eventdf
+        oldlen = len(oldsum)
+
+        # use metric
+        st.metric('原案例总数', oldlen)
+
+        with st.sidebar.form('更新案例'):
+            # choose page start number and end number
+            start_num = st.number_input('起始页',
+                                        value=1,
+                                        min_value=1,
+                                        max_value=5)
+            # convert to int
+            start_num = int(start_num)
+            end_num = st.number_input('结束页',
+                                    value=start_num,
+                                    min_value=start_num,
+                                    max_value=10)
+            # convert to int
+            end_num = int(end_num)
+            # button to scrapy web
+            sumeventbutton = st.form_submit_button('更新案例')
+
         if sumeventbutton:
             # get sumeventdf
             sumeventdf = get_sumeventdf(start_num, end_num)
-            # get length of sumeventdf
-            # length = len(sumeventdf)
-            # display length
-            # st.write(f'更新了{length}条案例')
             # update sumeventdf
-            newsum=update_sumeventdf(sumeventdf)            
+            newsum = update_sumeventdf(sumeventdf)
             # get length of newsum
             sumevent_len = len(newsum)
             # display sumeventdf
-            st.sidebar.success(f'更新完成，共{sumevent_len}条案例列表')
+            st.success(f'更新完成，共{sumevent_len}条案例列表')
             # get event detail
             eventdetail = get_eventdetail(newsum)
             # get length of eventdetail
             eventdetail_len = len(eventdetail)
             # display eventdetail
-            st.sidebar.success(f'更新完成，共{eventdetail_len}条案例详情')
-        
+            st.success(f'更新完成，共{eventdetail_len}条案例详情')
+
         # convert eventdf to lawdf
-        lawdfconvert =st.sidebar.button('处罚依据分析')
+        lawdfconvert = st.sidebar.button('处罚依据分析')
         if lawdfconvert:
-            eventdf=get_csrcdetail()
-            lawdf=generate_lawdf(eventdf)
+            eventdf = get_csrcdetail()
+            lawdf = generate_lawdf(eventdf)
             # savedf(lawdf,'lawdf')
-            st.sidebar.success('处罚依据分析完成')
+            st.success('处罚依据分析完成')
             st.write(lawdf[:50])
 
         # convert eventdf to peopledf
-        peopledfconvert =st.sidebar.button('处罚人员分析')
+        peopledfconvert = st.sidebar.button('处罚人员分析')
         if peopledfconvert:
-            eventdf=get_csrcdetail()
-            peopledf=generate_peopledf(eventdf)
+            eventdf = get_csrcdetail()
+            peopledf = generate_peopledf(eventdf)
             # savedf(peopledf,'peopledf')
-            st.sidebar.success('处罚人员分析完成')
+            st.success('处罚人员分析完成')
             st.write(peopledf[:50])
 
     elif choice == '案例分析':
@@ -71,15 +86,16 @@ def main():
         eventdf = get_csrcdetail()
         st.write(eventdf[:50])
 
-        df_month=count_by_month(eventdf)
+        df_month = count_by_month(eventdf)
 
         # get min and max date
         min_date = eventdf['发文日期'].min()
         max_date = eventdf["发文日期"].max()
         # calculate the date five years before max_date
-        five_years_before_max_date = max_date - pd.Timedelta(days=365*5)
+        five_years_before_max_date = max_date - pd.Timedelta(days=365 * 5)
         # filter by month range and display
-        start_date = st.sidebar.date_input('开始日期',value=five_years_before_max_date)
+        start_date = st.sidebar.date_input('开始日期',
+                                           value=five_years_before_max_date)
         end_date = st.sidebar.date_input('结束日期', value=max_date)
         # datetime to x.strftime('%Y-%m')
         start_month = start_date.strftime('%Y-%m')
@@ -88,19 +104,20 @@ def main():
             st.error('开始日期不能大于结束日期')
             return
         # filter by month range
-        df_month = df_month[(df_month['month'] >= start_month) & (df_month['month'] <= end_month)]
+        df_month = df_month[(df_month['month'] >= start_month)
+                            & (df_month['month'] <= end_month)]
         # st.write(df_month)
         # draw plotly figure
         display_dfmonth(df_month)
-        
+
     elif choice == '案例搜索1':
         st.subheader('案例搜索1')
         # get csrc detail
-        df=get_csrcdetail()
+        df = get_csrcdetail()
         # get max date
         max_date = df["发文日期"].max()
         # calculate the date five years before max_date
-        five_years_before_max_date = max_date - pd.Timedelta(days=365*5)
+        five_years_before_max_date = max_date - pd.Timedelta(days=365 * 5)
         # choose search type
         search_type = st.sidebar.radio('搜索类型', ['案情经过', '处罚依据', '处罚人员'])
         if search_type == '案情经过':
@@ -113,7 +130,8 @@ def main():
                     # input filename keyword
                     filename_text = st.text_input('搜索文件名关键词')
                     # input date range
-                    start_date = st.date_input('开始日期', value=five_years_before_max_date)
+                    start_date = st.date_input(
+                        '开始日期', value=five_years_before_max_date)
                     end_date = st.date_input('结束日期', value=max_date)
 
                 with col2:
@@ -130,10 +148,11 @@ def main():
                 if filename_text == '' and org_text == '' and case_text == '' and type_text == []:
                     st.error('请输入搜索条件')
                     return
-                if type_text==[]:
-                    type_text=type_list
+                if type_text == []:
+                    type_text = type_list
                 # search by filename, date, org, case, type
-                search_df = searchcsrc(df, filename_text,start_date,end_date , org_text, case_text, type_text)
+                search_df = searchcsrc(df, filename_text, start_date, end_date,
+                                       org_text, case_text, type_text)
                 total = len(search_df)
                 st.sidebar.write('总数:', total)
                 # count by month
@@ -142,7 +161,9 @@ def main():
                 display_dfmonth(df_month)
                 st.table(search_df)
                 # display download button
-                st.sidebar.download_button('下载搜索结果',data=search_df.to_csv(),file_name='搜索结果.csv')
+                st.sidebar.download_button('下载搜索结果',
+                                           data=search_df.to_csv(),
+                                           file_name='搜索结果.csv')
 
         elif search_type == '处罚依据':
             lawdf = get_lawdetail()
@@ -150,14 +171,15 @@ def main():
             law_list = lawdf['法律法规'].unique()
             # get type list
             type_list = lawdf['文书类型'].unique()
- 
+
             with st.form('处罚依据'):
                 col1, col2 = st.columns(2)
                 with col1:
                     # input filename keyword
                     filename_text = st.text_input('搜索文件名关键词')
                     # input date range
-                    start_date = st.date_input('开始日期', value=five_years_before_max_date)
+                    start_date = st.date_input(
+                        '开始日期', value=five_years_before_max_date)
                     end_date = st.date_input('结束日期', value=max_date)
                     # input org keyword
                     org_text = st.text_input('搜索机构关键词')
@@ -180,7 +202,9 @@ def main():
                 if type_text == []:
                     type_text = type_list
                 # search by filename, start date,end date, org,law, article, type
-                search_df = searchlaw(lawdf, filename_text,start_date,end_date , org_text,law_text,article_text,  type_text)
+                search_df = searchlaw(lawdf, filename_text, start_date,
+                                      end_date, org_text, law_text,
+                                      article_text, type_text)
                 total = len(search_df)
                 st.sidebar.write('总数:', total)
                 # count by month
@@ -189,10 +213,12 @@ def main():
                 display_dfmonth(df_month)
                 st.table(search_df)
                 # display download button
-                st.sidebar.download_button('下载搜索结果',data=search_df.to_csv(),file_name='搜索结果.csv')
+                st.sidebar.download_button('下载搜索结果',
+                                           data=search_df.to_csv(),
+                                           file_name='搜索结果.csv')
 
         elif search_type == '处罚人员':
-            peopledf=get_peopledetail()
+            peopledf = get_peopledetail()
             # get people type list
             people_type_list = peopledf['当事人类型'].unique()
             # get people position list
@@ -208,20 +234,24 @@ def main():
                     # input filename keyword
                     filename_text = st.text_input('搜索文件名关键词')
                     # input date range
-                    start_date = st.date_input('开始日期', value=five_years_before_max_date)
+                    start_date = st.date_input(
+                        '开始日期', value=five_years_before_max_date)
                     end_date = st.date_input('结束日期', value=max_date)
                     # input org keyword
                     org_text = st.text_input('搜索机构关键词')
-                    
+
                     # get people type
-                    people_type_text = st.multiselect('当事人类型', people_type_list)
+                    people_type_text = st.multiselect('当事人类型',
+                                                      people_type_list)
                 with col2:
                     # get people name
                     people_name_text = st.text_input('搜索当事人名称')
                     # get people position
-                    people_position_text = st.multiselect('当事人身份', people_position_list)
+                    people_position_text = st.multiselect(
+                        '当事人身份', people_position_list)
                     # get penalty type
-                    penalty_type_text = st.multiselect('违规类型', penalty_type_list)
+                    penalty_type_text = st.multiselect('违规类型',
+                                                       penalty_type_list)
                     # get penalty result
                     penalty_result_text = st.text_input('搜索处罚结果')
                     # get type
@@ -243,7 +273,12 @@ def main():
                     type_text = type_list
 
                 # search by filename, start date,end date, org,people type, people name, people position, penalty type, penalty result, type
-                search_df = searchpeople(peopledf, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
+                search_df = searchpeople(peopledf, filename_text, start_date,
+                                         end_date, org_text, people_type_text,
+                                         people_name_text,
+                                         people_position_text,
+                                         penalty_type_text,
+                                         penalty_result_text, type_text)
                 total = len(search_df)
                 st.sidebar.write('总数:', total)
                 # count by month
@@ -252,7 +287,9 @@ def main():
                 display_dfmonth(df_month)
                 st.table(search_df)
                 # display download button
-                st.sidebar.download_button('下载搜索结果',data=search_df.to_csv(),file_name='搜索结果.csv')
+                st.sidebar.download_button('下载搜索结果',
+                                           data=search_df.to_csv(),
+                                           file_name='搜索结果.csv')
     elif choice == '案例搜索2':
         st.subheader('案例搜索2')
         # get csrc2 detail
@@ -260,7 +297,7 @@ def main():
         # get max date
         max_date = df['发文日期'].max()
         # get five years before max date
-        five_years_before = max_date - pd.Timedelta(days=365*5)
+        five_years_before = max_date - pd.Timedelta(days=365 * 5)
         # choose search type
         search_type = st.sidebar.radio('搜索类型', ['案情经过'])
         if search_type == '案情经过':
@@ -284,7 +321,8 @@ def main():
                     st.error('请输入搜索条件')
                     return
                 # search by filename, date, wenhao, case
-                search_df = searchcsrc2(df, filename_text,start_date,end_date , wenhao_text, case_text)
+                search_df = searchcsrc2(df, filename_text, start_date,
+                                        end_date, wenhao_text, case_text)
                 total = len(search_df)
                 st.sidebar.write('总数:', total)
                 # count by month
@@ -293,7 +331,10 @@ def main():
                 display_dfmonth(df_month)
                 st.table(search_df)
                 # display download button
-                st.sidebar.download_button('下载搜索结果',data=search_df.to_csv(),file_name='搜索结果.csv')
+                st.sidebar.download_button('下载搜索结果',
+                                           data=search_df.to_csv(),
+                                           file_name='搜索结果.csv')
+
 
 if __name__ == '__main__':
     main()

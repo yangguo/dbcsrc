@@ -40,7 +40,7 @@ def get_csvdf(penfolder, beginwith):
     return df
 
 
-@st.cache(suppress_st_warning=True)
+# @st.cache(suppress_st_warning=True)
 def get_csrcdetail():
     pendf = get_csvdf(pencsrc, 'sdresult')
     # format date
@@ -48,7 +48,7 @@ def get_csrcdetail():
     return pendf
 
 
-@st.cache(suppress_st_warning=True)
+# @st.cache(suppress_st_warning=True)
 def get_csrc2detail():
     pendf = get_csvdf(pencsrc2, 'csrcdtlall')
     # format date
@@ -56,21 +56,21 @@ def get_csrc2detail():
     return pendf
 
 
-@st.cache(suppress_st_warning=True)
+# @st.cache(suppress_st_warning=True, allow_output_mutation=True)
 def get_csrcsum():
     pendf = get_csvdf(pencsrc, 'sumevent')
     return pendf
 
 
 # get lawdetail
-@st.cache(suppress_st_warning=True)
+# @st.cache(suppress_st_warning=True)
 def get_lawdetail():
     lawdf = get_csvdf(pencsrc, 'lawdf')
     return lawdf
 
 
 # get peopledetail
-@st.cache(suppress_st_warning=True)
+# @st.cache(suppress_st_warning=True)
 def get_peopledetail():
     peopledf= get_csvdf(pencsrc, 'peopledf')
     return peopledf
