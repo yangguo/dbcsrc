@@ -8,7 +8,7 @@ import pandas as pd
 from dbcsrc import get_csrcdetail, searchcsrc, generate_lawdf, generate_peopledf, count_by_month, display_dfmonth, get_sumeventdf, update_sumeventdf, get_eventdetail
 from dbcsrc import get_lawdetail, get_peopledetail, searchlaw, searchpeople
 from dbcsrc import get_csrc2detail, searchcsrc2, get_csrcsum
-
+from utils import df2aggrid
 
 def main():
 
@@ -38,9 +38,9 @@ def main():
             # convert to int
             start_num = int(start_num)
             end_num = st.number_input('结束页',
-                                    value=start_num,
-                                    min_value=start_num,
-                                    max_value=10)
+                                      value=start_num,
+                                      min_value=start_num,
+                                      max_value=10)
             # convert to int
             end_num = int(end_num)
             # button to scrapy web
@@ -159,7 +159,11 @@ def main():
                 df_month = count_by_month(search_df)
                 # draw plotly figure
                 display_dfmonth(df_month)
-                st.table(search_df)
+
+                data=df2aggrid(search_df)
+                # selected_rows = data["selected_rows"]
+                # st.table(selected_rows)
+ 
                 # display download button
                 st.sidebar.download_button('下载搜索结果',
                                            data=search_df.to_csv(),
@@ -211,7 +215,8 @@ def main():
                 df_month = count_by_month(search_df)
                 # draw plotly figure
                 display_dfmonth(df_month)
-                st.table(search_df)
+                # st.table(search_df)
+                data=df2aggrid(search_df)
                 # display download button
                 st.sidebar.download_button('下载搜索结果',
                                            data=search_df.to_csv(),
@@ -285,7 +290,8 @@ def main():
                 df_month = count_by_month(search_df)
                 # draw plotly figure
                 display_dfmonth(df_month)
-                st.table(search_df)
+                # st.table(search_df)
+                data=df2aggrid(search_df)
                 # display download button
                 st.sidebar.download_button('下载搜索结果',
                                            data=search_df.to_csv(),
@@ -304,12 +310,12 @@ def main():
             with st.form('案例搜索2'):
                 col1, col2 = st.columns(2)
                 with col1:
-                    # input filename keyword
-                    filename_text = st.text_input('名称')
                     # input date range
                     start_date = st.date_input('开始日期', value=five_years_before)
                     end_date = st.date_input('结束日期', value=max_date)
                 with col2:
+                    # input filename keyword
+                    filename_text = st.text_input('名称')
                     # input wenhao keyword
                     wenhao_text = st.text_input('文号')
                     # input case keyword
@@ -329,7 +335,8 @@ def main():
                 df_month = count_by_month(search_df)
                 # draw plotly figure
                 display_dfmonth(df_month)
-                st.table(search_df)
+                # st.table(search_df)
+                data=df2aggrid(search_df)
                 # display download button
                 st.sidebar.download_button('下载搜索结果',
                                            data=search_df.to_csv(),
