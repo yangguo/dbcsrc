@@ -1,5 +1,3 @@
-from operator import index
-from soupsieve import escape
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objs as go
@@ -7,8 +5,7 @@ import pandas as pd
 
 from dbcsrc import get_csrcdetail, searchcsrc, generate_lawdf, generate_peopledf, count_by_month, display_dfmonth, get_sumeventdf, update_sumeventdf, get_eventdetail
 from dbcsrc import get_lawdetail, get_peopledetail, searchlaw, searchpeople
-from dbcsrc import get_csrc2detail, searchcsrc2, get_csrcsum
-from utils import df2aggrid
+from dbcsrc import get_csrc2detail, searchcsrc2, get_csrcsum,display_eventdetail,display_eventdetail2
 
 def main():
 
@@ -112,6 +109,10 @@ def main():
 
     elif choice == '案例搜索1':
         st.subheader('案例搜索1')
+        # initialize search result in session state
+        if 'search_result' not in st.session_state:
+            st.session_state['search_result'] = None
+
         # get csrc detail
         df = get_csrcdetail()
         # get max date
@@ -153,22 +154,12 @@ def main():
                 # search by filename, date, org, case, type
                 search_df = searchcsrc(df, filename_text, start_date, end_date,
                                        org_text, case_text, type_text)
-                total = len(search_df)
-                st.sidebar.write('总数:', total)
-                # count by month
-                df_month = count_by_month(search_df)
-                # draw plotly figure
-                display_dfmonth(df_month)
-
-                data=df2aggrid(search_df)
-                # selected_rows = data["selected_rows"]
-                # st.table(selected_rows)
- 
-                # display download button
-                st.sidebar.download_button('下载搜索结果',
-                                           data=search_df.to_csv(),
-                                           file_name='搜索结果.csv')
-
+                # set search result in session state
+                st.session_state['search_result'] = search_df
+            else:
+                # get search result from session state
+                search_df = st.session_state['search_result']
+            
         elif search_type == '处罚依据':
             lawdf = get_lawdetail()
             # get law list
@@ -209,19 +200,12 @@ def main():
                 search_df = searchlaw(lawdf, filename_text, start_date,
                                       end_date, org_text, law_text,
                                       article_text, type_text)
-                total = len(search_df)
-                st.sidebar.write('总数:', total)
-                # count by month
-                df_month = count_by_month(search_df)
-                # draw plotly figure
-                display_dfmonth(df_month)
-                # st.table(search_df)
-                data=df2aggrid(search_df)
-                # display download button
-                st.sidebar.download_button('下载搜索结果',
-                                           data=search_df.to_csv(),
-                                           file_name='搜索结果.csv')
-
+                # set search result in session state
+                st.session_state['search_result'] = search_df
+            else:
+                # get search result from session state
+                search_df = st.session_state['search_result']
+            
         elif search_type == '处罚人员':
             peopledf = get_peopledetail()
             # get people type list
@@ -267,7 +251,7 @@ def main():
             if searchbutton:
                 if filename_text == '' and org_text == '' and people_name_text == '' and people_type_text==[] and people_position_text == [] and penalty_type_text == [] and penalty_result_text == '' and type_text == []:
                     st.error('请输入搜索条件')
-                    return
+                    st.stop()
                 if people_type_text == []:
                     people_type_text = people_type_list
                 if people_position_text == []:
@@ -284,20 +268,25 @@ def main():
                                          people_position_text,
                                          penalty_type_text,
                                          penalty_result_text, type_text)
-                total = len(search_df)
-                st.sidebar.write('总数:', total)
-                # count by month
-                df_month = count_by_month(search_df)
-                # draw plotly figure
-                display_dfmonth(df_month)
-                # st.table(search_df)
-                data=df2aggrid(search_df)
-                # display download button
-                st.sidebar.download_button('下载搜索结果',
-                                           data=search_df.to_csv(),
-                                           file_name='搜索结果.csv')
+                # set search result in session state
+                st.session_state['search_result'] = search_df
+            else:
+                # get search result from session state
+                search_df = st.session_state['search_result']
+            
+        if search_df is None:
+            st.error('请先搜索')
+            st.stop()
+
+        # display eventdetail
+        display_eventdetail(search_df)
+
     elif choice == '案例搜索2':
         st.subheader('案例搜索2')
+        # initialize search result in session state
+        if 'search_result2' not in st.session_state:
+            st.session_state['search_result2'] = None
+
         # get csrc2 detail
         df = get_csrc2detail()
         # get max date
@@ -325,22 +314,22 @@ def main():
             if searchbutton:
                 if filename_text == '' and wenhao_text == '' and case_text == '':
                     st.error('请输入搜索条件')
-                    return
+                    st.stop()
                 # search by filename, date, wenhao, case
                 search_df = searchcsrc2(df, filename_text, start_date,
                                         end_date, wenhao_text, case_text)
-                total = len(search_df)
-                st.sidebar.write('总数:', total)
-                # count by month
-                df_month = count_by_month(search_df)
-                # draw plotly figure
-                display_dfmonth(df_month)
-                # st.table(search_df)
-                data=df2aggrid(search_df)
-                # display download button
-                st.sidebar.download_button('下载搜索结果',
-                                           data=search_df.to_csv(),
-                                           file_name='搜索结果.csv')
+                # set search result in session state
+                st.session_state['search_result2'] = search_df
+            else:
+                # get search result from session state
+                search_df = st.session_state['search_result2']
+            
+            if search_df is None:
+                st.error('请先搜索')
+                st.stop()
+
+            # display eventdetail
+            display_eventdetail2(search_df)
 
 
 if __name__ == '__main__':

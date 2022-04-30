@@ -1,5 +1,5 @@
 plotly
 pandas
 beautifulsoup4
-textrank4zh
+# textrank4zh
 streamlit-aggrid

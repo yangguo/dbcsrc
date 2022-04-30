@@ -2,7 +2,7 @@ import pandas as pd
 import glob, os
 import plotly.express as px
 import plotly.graph_objs as go
-from utils import get_summary
+from utils import df2aggrid
 from ast import literal_eval
 
 import requests
@@ -66,6 +66,8 @@ def get_csrcsum():
 # @st.cache(suppress_st_warning=True)
 def get_lawdetail():
     lawdf = get_csvdf(pencsrc, 'lawdf')
+    # format date
+    lawdf['发文日期'] = pd.to_datetime(lawdf['发文日期']).dt.date
     return lawdf
 
 
@@ -73,12 +75,14 @@ def get_lawdetail():
 # @st.cache(suppress_st_warning=True)
 def get_peopledetail():
     peopledf= get_csvdf(pencsrc, 'peopledf')
+    # format date
+    peopledf['发文日期'] = pd.to_datetime(peopledf['发文日期']).dt.date
     return peopledf
 
 
 #search by filename, date, org, case, type
 def searchcsrc(df, filename, start_date, end_date, org, case, type):
-    col = ['文件名称', '发文日期', '发文单位', '案情经过', '文书类型']
+    col = ['id','文件名称', '发文日期', '发文单位', '案情经过', '文书类型']
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     searchdf = df[(df['文件名称'].str.contains(filename))
@@ -114,10 +118,11 @@ def searchcsrc2(df, filename, start_date, end_date, wenhao,case):
 
 #search law by filename_text,start_date,end_date , org_text,law_text,article_text,  type_text
 def searchlaw(df,filename_text,start_date,end_date , org_text,law_text,article_text,  type_text):
-    col = ['文件名称', '发文日期', '文书类型', '发文单位', '法律法规', '条文']
+    col = ['id','文件名称', '发文日期', '文书类型', '发文单位', '法律法规', '条文']
     # convert date to datetime
-    df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
-    searchdf = df[(df['文件名称'].str.contains(filename_text))
+    # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    searchdf = df[
+        (df['文件名称'].str.contains(filename_text))
                   & (df['发文日期'] >= start_date) & (df['发文日期'] <= end_date) &
                   (df['发文单位'].str.contains(org_text)) &
                   (df['法律法规'].isin(law_text)) &
@@ -128,10 +133,11 @@ def searchlaw(df,filename_text,start_date,end_date , org_text,law_text,article_t
 
 #search people by filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
 def searchpeople(df, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text):
-    col = ['文件名称', '发文日期', '文书类型', '发文单位', '当事人类型', '当事人名称', '当事人身份', '违规类型', '处罚结果']
+    col = ['id','文件名称', '发文日期', '文书类型', '发文单位', '当事人类型', '当事人名称', '当事人身份', '违规类型', '处罚结果']
     # convert date to datetime
-    df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
-    searchdf = df[(df['文件名称'].str.contains(filename_text))
+    # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    searchdf = df[
+        (df['文件名称'].str.contains(filename_text))
                   & (df['发文日期'] >= start_date) & (df['发文日期'] <= end_date) &
                   (df['发文单位'].str.contains(org_text)) &
                   (df['当事人类型'].isin(people_type_text)) &
@@ -146,7 +152,7 @@ def searchpeople(df, filename_text,start_date,end_date , org_text,people_type_te
 
 # convert eventdf to lawdf
 def generate_lawdf(eventdf):
-    law1 = eventdf[['文件名称', '文号', '发文日期', '文书类型', '发文单位', '原文链接', '处理依据']]
+    law1 = eventdf[['id','文件名称', '文号', '发文日期', '文书类型', '发文单位', '原文链接', '处理依据']]
 
     law1['处理依据'] = law1['处理依据'].apply(literal_eval)
 
@@ -160,7 +166,7 @@ def generate_lawdf(eventdf):
 
     law6 = law5.drop(['处理依据'], axis=1)
 
-    lawdf = law6[['文件名称', '文号', '发文日期', '文书类型', '发文单位', '原文链接', '法律法规', '条文']]
+    lawdf = law6[['id','文件名称', '文号', '发文日期', '文书类型', '发文单位', '原文链接', '法律法规', '条文']]
 
     # reset index
     lawdf.reset_index(drop=True, inplace=True)
@@ -170,7 +176,7 @@ def generate_lawdf(eventdf):
 
 # convert eventdf to peopledf
 def generate_peopledf(eventdf):
-    peopledf = eventdf[['文件名称', '文号', '发文日期', '文书类型', '发文单位', '原文链接', '当事人信息']]
+    peopledf = eventdf[['id','文件名称', '文号', '发文日期', '文书类型', '发文单位', '原文链接', '当事人信息']]
 
     peopledf['当事人信息'] = peopledf['当事人信息'].apply(literal_eval)
 
@@ -180,7 +186,7 @@ def generate_peopledf(eventdf):
 
     peopledf3 = pd.concat([peopledf2, peoplesp1], axis=1)
 
-    peopledf4 = peopledf3[[
+    peopledf4 = peopledf3[['id',
         '文件名称', '文号', '发文日期', '文书类型', '发文单位', '原文链接', '当事人类型', '当事人名称',
         '当事人身份', '违规类型', '处罚结果'
     ]]
@@ -375,7 +381,7 @@ def get_eventdetail(eventsum):
         sd = BeautifulSoup(dd.content, 'html.parser')
 
         detail = dict()
-
+        detail['id'] = i
         sdtitlels = sd.find_all(class_='text-left')
 
         sdlawls = sd.find_all('td', class_='text-center')
@@ -411,3 +417,85 @@ def get_eventdetail(eventsum):
         savename = 'sdresult' + nowstr
         savedf(alldf, savename)
     return alldf
+
+
+# display event detail
+def display_eventdetail(search_df):
+    total = len(search_df)           
+    st.sidebar.metric('总数:', total)
+    # count by month
+    df_month = count_by_month(search_df)
+    # draw plotly figure
+    display_dfmonth(df_month)
+    # st.table(search_df)
+    data=df2aggrid(search_df)
+    # display data
+    selected_rows = data["selected_rows"]
+    if selected_rows==[]:
+        st.error('请先选择查看案例')
+        st.stop()
+    # convert selected_rows to dataframe
+    selected_rows_df = pd.DataFrame(selected_rows)
+
+    # get selected_rows_df's id
+    selected_rows_id = selected_rows_df['id'].tolist()
+    # get lawdf
+    lawdf = get_lawdetail()
+    # search lawdetail by selected_rows_id
+    selected_rows_lawdetail = lawdf[lawdf['id'].isin(selected_rows_id)]
+    # display lawdetail
+    st.write('处罚依据')
+    st.table(selected_rows_lawdetail[['法律法规', '条文']])
+    # get people detail
+    peopledf = get_peopledetail()
+    # search people detail by selected_rows_id
+    selected_rows_peopledetail = peopledf[peopledf['id'].isin(selected_rows_id)]
+    # display people detail
+    st.write('当事人信息')
+    st.table(selected_rows_peopledetail[['当事人类型', '当事人名称', '当事人身份', '违规类型', '处罚结果']])
+    # get event detail
+    eventdf = get_csrcdetail()
+    # search event detail by selected_rows_id
+    selected_rows_eventdetail = eventdf[eventdf['id'].isin(selected_rows_id)]
+    # display event detail
+    st.write('案情经过')
+    st.table(selected_rows_eventdetail[['文件名称', '发文日期', '发文单位', '文书类型']])
+    # transpose and display event detail
+    st.table(selected_rows_eventdetail[['案情经过']])
+    # display download button
+    st.sidebar.download_button('下载搜索结果',
+                                data=search_df.to_csv().encode('utf-8'),
+                                file_name='搜索结果.csv')
+
+
+# display event detail
+def display_eventdetail2(search_df):
+    total = len(search_df)           
+    st.sidebar.metric('总数:', total)
+    # count by month
+    df_month = count_by_month(search_df)
+    # draw plotly figure
+    display_dfmonth(df_month)
+    # st.table(search_df)
+    data=df2aggrid(search_df)
+    # display data
+    selected_rows = data["selected_rows"]
+    if selected_rows==[]:
+        st.error('请先选择查看案例')
+        st.stop()
+    # convert selected_rows to dataframe
+    selected_rows_df = pd.DataFrame(selected_rows)
+
+    # display event detail
+    st.write('案情经过')
+    # transpose
+    selected_rows_df = selected_rows_df.T
+    # set column name
+    selected_rows_df.columns = ['案情经过']
+    # display
+    st.table(selected_rows_df)
+
+    # display download button
+    st.sidebar.download_button('下载搜索结果',
+                                data=search_df.to_csv().encode('utf-8'),
+                                file_name='搜索结果.csv')
