@@ -110,8 +110,8 @@ def main():
     elif choice == '案例搜索1':
         st.subheader('案例搜索1')
         # initialize search result in session state
-        if 'search_result' not in st.session_state:
-            st.session_state['search_result'] = None
+        if 'search_result_csrc' not in st.session_state:
+            st.session_state['search_result_csrc'] = None
 
         # get csrc detail
         df = get_csrcdetail()
@@ -155,10 +155,10 @@ def main():
                 search_df = searchcsrc(df, filename_text, start_date, end_date,
                                        org_text, case_text, type_text)
                 # set search result in session state
-                st.session_state['search_result'] = search_df
+                st.session_state['search_result_csrc'] = search_df
             else:
                 # get search result from session state
-                search_df = st.session_state['search_result']
+                search_df = st.session_state['search_result_csrc']
             
         elif search_type == '处罚依据':
             lawdf = get_lawdetail()
@@ -201,10 +201,10 @@ def main():
                                       end_date, org_text, law_text,
                                       article_text, type_text)
                 # set search result in session state
-                st.session_state['search_result'] = search_df
+                st.session_state['search_result_csrc'] = search_df
             else:
                 # get search result from session state
-                search_df = st.session_state['search_result']
+                search_df = st.session_state['search_result_csrc']
             
         elif search_type == '处罚人员':
             peopledf = get_peopledetail()
@@ -269,10 +269,10 @@ def main():
                                          penalty_type_text,
                                          penalty_result_text, type_text)
                 # set search result in session state
-                st.session_state['search_result'] = search_df
+                st.session_state['search_result_csrc'] = search_df
             else:
                 # get search result from session state
-                search_df = st.session_state['search_result']
+                search_df = st.session_state['search_result_csrc']
             
         if search_df is None:
             st.error('请先搜索')
@@ -284,8 +284,8 @@ def main():
     elif choice == '案例搜索2':
         st.subheader('案例搜索2')
         # initialize search result in session state
-        if 'search_result2' not in st.session_state:
-            st.session_state['search_result2'] = None
+        if 'search_result_csrc2' not in st.session_state:
+            st.session_state['search_result_csrc2'] = None
 
         # get csrc2 detail
         df = get_csrc2detail()
@@ -301,14 +301,14 @@ def main():
                 with col1:
                     # input date range
                     start_date = st.date_input('开始日期', value=five_years_before)
-                    end_date = st.date_input('结束日期', value=max_date)
-                with col2:
                     # input filename keyword
                     filename_text = st.text_input('名称')
-                    # input wenhao keyword
-                    wenhao_text = st.text_input('文号')
                     # input case keyword
                     case_text = st.text_input('搜索案件关键词')
+                with col2:
+                    end_date = st.date_input('结束日期', value=max_date)
+                    # input wenhao keyword
+                    wenhao_text = st.text_input('文号')
                 # search button
                 searchbutton = st.form_submit_button('搜索')
             if searchbutton:
@@ -319,17 +319,17 @@ def main():
                 search_df = searchcsrc2(df, filename_text, start_date,
                                         end_date, wenhao_text, case_text)
                 # set search result in session state
-                st.session_state['search_result2'] = search_df
+                st.session_state['search_result_csrc2'] = search_df
             else:
                 # get search result from session state
-                search_df = st.session_state['search_result2']
+                search_df = st.session_state['search_result_csrc2']
             
-            if search_df is None:
-                st.error('请先搜索')
-                st.stop()
+        if search_df is None:
+            st.error('请先搜索')
+            st.stop()
 
-            # display eventdetail
-            display_eventdetail2(search_df)
+        # display eventdetail
+        display_eventdetail2(search_df)
 
 
 if __name__ == '__main__':

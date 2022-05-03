@@ -1,18 +1,35 @@
-# from textrank4zh import TextRank4Keyword, TextRank4Sentence
+import streamlit as st
+import pandas as pd
+import glob, os
 from st_aggrid import AgGrid
 from st_aggrid.grid_options_builder import GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
-# get summary of text
-# def get_summary(text):
-#     tr4s = TextRank4Sentence()
-#     tr4s.analyze(text=text, lower=True, source='all_filters')
+rulefolder='data/rules'
 
-#     sumls = []
-#     for item in tr4s.get_key_sentences(num=3):
-#         sumls.append(item.sentence)
-#     summary = ''.join(sumls)
-#     return summary
+@st.cache
+def get_csvdf(rulefolder):
+    files2 = glob.glob(rulefolder + '**/*.csv', recursive=True)
+    dflist = []
+    for filepath in files2:
+        basename = os.path.basename(filepath)
+        filename = os.path.splitext(basename)[0]
+        newdf = rule2df(filename, filepath)[['监管要求', '结构', '条款']]
+        dflist.append(newdf)
+    alldf = pd.concat(dflist, axis=0)
+    return alldf
+
+
+def rule2df(filename, filepath):
+    docdf = pd.read_csv(filepath)
+    docdf['监管要求'] = filename
+    return docdf
+
+
+def get_rulefolder(industry_choice):
+    # join folder with industry_choice
+    folder = os.path.join(rulefolder, industry_choice)
+    return folder
 
 
 def df2aggrid(df):

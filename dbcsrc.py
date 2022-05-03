@@ -3,6 +3,7 @@ import glob, os
 import plotly.express as px
 import plotly.graph_objs as go
 from utils import df2aggrid
+from checkrule import searchByName
 from ast import literal_eval
 
 import requests
@@ -14,8 +15,8 @@ import datetime
 
 import streamlit as st
 
-pencsrc = 'csrc'
-pencsrc2= 'csrc2'
+pencsrc = 'data/penalty/csrc'
+pencsrc2= 'data/penalty/csrc2'
 # mapfolder = 'data/temp/citygeo.csv'
 
 BASE_URL = 'https://neris.csrc.gov.cn/falvfagui/multipleFindController/solrSearchWrit?pageNo='
@@ -445,7 +446,24 @@ def display_eventdetail(search_df):
     selected_rows_lawdetail = lawdf[lawdf['id'].isin(selected_rows_id)]
     # display lawdetail
     st.write('处罚依据')
-    st.table(selected_rows_lawdetail[['法律法规', '条文']])
+    # st.table(selected_rows_lawdetail[['法律法规', '条文']])
+    lawdata=selected_rows_lawdetail[['法律法规', '条文']]
+    lawdtl=df2aggrid(lawdata)
+    selected_law = lawdtl["selected_rows"]
+    if selected_law==[]:
+        st.error('请先选择查看监管条文')
+    else:
+        # get selected_law's rule name
+        selected_law_name = selected_law[0]['法律法规']
+        # get selected_law's rule article
+        selected_law_article = selected_law[0]['条文']
+        # get selected_law's rule df
+        name_text=selected_law_name
+        industry_choice='证券市场'
+        ruledf, choicels = searchByName(name_text, industry_choice)
+        # search lawdetail by article
+        articledf=ruledf[ruledf['结构'].str.contains(selected_law_article)]
+        st.table(articledf)
     # get people detail
     peopledf = get_peopledetail()
     # search people detail by selected_rows_id
