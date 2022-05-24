@@ -99,7 +99,7 @@ def main():
         end_month = end_date.strftime('%Y-%m')
         if start_month > end_month:
             st.error('开始日期不能大于结束日期')
-            return
+            st.stop()
         # filter by month range
         df_month = df_month[(df_month['month'] >= start_month)
                             & (df_month['month'] <= end_month)]
@@ -148,7 +148,7 @@ def main():
             if searchbutton:
                 if filename_text == '' and org_text == '' and case_text == '' and type_text == []:
                     st.error('请输入搜索条件')
-                    return
+                    st.stop()
                 if type_text == []:
                     type_text = type_list
                 # search by filename, date, org, case, type
@@ -191,7 +191,7 @@ def main():
             if searchbutton:
                 if filename_text == '' and org_text == '' and article_text == '' and law_text==[] and type_text == []:
                     st.error('请输入搜索条件')
-                    return
+                    st.stop()
                 if law_text == []:
                     law_text = law_list
                 if type_text == []:

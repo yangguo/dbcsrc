@@ -3,7 +3,7 @@ import glob, os
 import plotly.express as px
 import plotly.graph_objs as go
 from utils import df2aggrid
-from checkrule import searchByName
+from checkrule import searchByName,get_rulelist_byname,get_lawdtlbyid
 from ast import literal_eval
 
 import requests
@@ -83,7 +83,7 @@ def get_peopledetail():
 
 #search by filename, date, org, case, type
 def searchcsrc(df, filename, start_date, end_date, org, case, type):
-    col = ['id','文件名称', '发文日期', '发文单位', '案情经过', '文书类型']
+    col = ['文件名称', '发文日期', '发文单位', '案情经过', '文书类型','id']
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     searchdf = df[(df['文件名称'].str.contains(filename))
@@ -119,7 +119,7 @@ def searchcsrc2(df, filename, start_date, end_date, wenhao,case):
 
 #search law by filename_text,start_date,end_date , org_text,law_text,article_text,  type_text
 def searchlaw(df,filename_text,start_date,end_date , org_text,law_text,article_text,  type_text):
-    col = ['id','文件名称', '发文日期', '文书类型', '发文单位', '法律法规', '条文']
+    col = ['文件名称', '发文日期', '文书类型', '发文单位', '法律法规', '条文','id']
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     searchdf = df[
@@ -134,7 +134,7 @@ def searchlaw(df,filename_text,start_date,end_date , org_text,law_text,article_t
 
 #search people by filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text)
 def searchpeople(df, filename_text,start_date,end_date , org_text,people_type_text, people_name_text, people_position_text, penalty_type_text, penalty_result_text, type_text):
-    col = ['id','文件名称', '发文日期', '文书类型', '发文单位', '当事人类型', '当事人名称', '当事人身份', '违规类型', '处罚结果']
+    col = ['文件名称', '发文日期', '文书类型', '发文单位', '当事人类型', '当事人名称', '当事人身份', '违规类型', '处罚结果', 'id']
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     searchdf = df[
@@ -458,11 +458,24 @@ def display_eventdetail(search_df):
         # get selected_law's rule article
         selected_law_article = selected_law[0]['条文']
         # get selected_law's rule df
-        name_text=selected_law_name
-        industry_choice='证券市场'
-        ruledf, choicels = searchByName(name_text, industry_choice)
-        # search lawdetail by article
-        articledf=ruledf[ruledf['结构'].str.contains(selected_law_article)]
+        # name_text=selected_law_name
+        # industry_choice='证券市场'
+        # ruledf, choicels = searchByName(name_text, industry_choice)
+        # # search lawdetail by article
+        # articledf=ruledf[ruledf['结构'].str.contains(selected_law_article)]
+        # get law detail by name
+        ruledf=get_rulelist_byname(selected_law_name,'','','','')
+        # get law ids
+        ids=ruledf['lawid'].tolist()
+        # get law detail by id
+        metadf,dtldf=get_lawdtlbyid(ids)
+        # display law meta
+        st.write('监管法规')
+        st.table(metadf)
+        # get law detail by article
+        articledf=dtldf[dtldf['标题'].str.contains(selected_law_article)]
+        # display law detail
+        st.write('监管条文')
         st.table(articledf)
     # get people detail
     peopledf = get_peopledetail()

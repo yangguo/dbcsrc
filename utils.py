@@ -42,6 +42,9 @@ def df2aggrid(df):
                                 enableRowGroup=True,
                                 editable=True)
     gb.configure_selection(selection_mode="single", use_checkbox=True)
+    # configure column visibility
+    gb.configure_column(field="lawid", hide=True)
+    gb.configure_column(field="id", hide=True)
     gridOptions = gb.build()
     ag_grid = AgGrid(
         df,
@@ -55,3 +58,11 @@ def df2aggrid(df):
         #  update_mode=GridUpdateMode.NO_UPDATE,
         enable_enterprise_modules=True)
     return ag_grid
+
+
+# split string by space into words, add brackets before and after words, combine into text
+def split_words(text):
+    words = text.split()
+    words = ['(?=.*' + word + ')' for word in words]
+    new = ''.join(words)
+    return new
