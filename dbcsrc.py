@@ -1,4 +1,7 @@
+from cProfile import label
 from unicodedata import name
+from matplotlib.axis import XAxis
+from matplotlib.pyplot import legend
 import pandas as pd
 import glob, os
 import plotly.express as px
@@ -132,7 +135,10 @@ def searchlaw(df, filename_text, start_date, end_date, org_text, law_text,
                   (df['法律法规'].isin(law_text)) &
                   (df['条文'].str.contains(article_text)) &
                   (df['文书类型'].isin(type_text))][col]
-
+    # sort by date desc
+    searchdf.sort_values(by=['发文日期'], ascending=False, inplace=True)
+    # reset index
+    searchdf.reset_index(drop=True, inplace=True)
     return searchdf
 
 
@@ -155,7 +161,10 @@ def searchpeople(df, filename_text, start_date, end_date, org_text,
                   (df['违规类型'].isin(penalty_type_text)) &
                   (df['处罚结果'].str.contains(penalty_result_text)) &
                   (df['文书类型'].isin(type_text))][col]
-
+    # sort by date desc
+    searchdf.sort_values(by=['发文日期'], ascending=False, inplace=True)
+    # reset index
+    searchdf.reset_index(drop=True, inplace=True)
     return searchdf
 
 
@@ -254,57 +263,88 @@ def count_by_date(df):
 
 # display searchdf in plotly
 def display_dfmonth(search_df):
-    df_month = count_by_month(search_df)
     # get search_df id list
     search_df_id = search_df['id'].tolist()
     # get people detail
     peopledf = get_peopledetail()
     # search people detail by selected_rows_id
     selected_peopledetail = peopledf[peopledf['id'].isin(search_df_id)]
+    # get lawdf
+    lawdf = get_lawdetail()
+    # search lawdetail by selected_rows_id
+    selected_lawdetail = lawdf[lawdf['id'].isin(search_df_id)]
+    # get eventdf count by month
+    df_month = count_by_month(search_df)
+    # get eventdf sum amount by month
     df_sum = sum_amount_by_month(selected_peopledetail)
+    
     fig = go.Figure()
     trace1 = go.Bar(x=df_month['month'], y=df_month['count'], name='数量统计')
     trace2 = go.Scatter(x=df_sum['month'], y=df_sum['sum'], name='金额统计')
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     fig.add_trace(trace1)
     fig.add_trace(trace2, secondary_y=True)
-    fig.update_layout(title_text="案例数量统计和金额统计")
-    # fig = go.Figure(data=[go.Bar(x=df_month['month'], y=df_month['count'])])
-    # fig.update_layout(title='处罚数量统计', xaxis_title='月份', yaxis_title='处罚数量')
+    fig.update_layout(height=600,width=800,title_text="案例数量统计和金额统计")
     st.plotly_chart(fig)
 
     # people type count
     peopletype = selected_peopledetail.groupby(
         '当事人身份')['id'].nunique().reset_index(name='数量统计')
+    # sort by count
+    peopletype = peopletype.sort_values(by='数量统计', ascending=False)
     # penalty type count
     penaltytype = selected_peopledetail.groupby(
         '违规类型')['id'].nunique().reset_index(name='数量统计')
-
+    # sort by count
+    penaltytype = penaltytype.sort_values(by='数量统计', ascending=False)
+    # law type count
+    lawtype = selected_lawdetail.groupby(
+        '法律法规')['id'].nunique().reset_index(name='数量统计')
+    # sort by count
+    lawtype = lawtype.sort_values(by='数量统计', ascending=False)
+    # draw plotly bar chart
     fig = go.Figure()
-    # make subplots of two columns
-    fig = make_subplots(rows=1, cols=2)
+    # make subplots of for three graphs in one figure,y label, with specs for the bar,bar,pie
+    fig = make_subplots(rows=3, cols=1, specs=[[{"type": "bar"}], [{"type": "bar"}], [{"type": "bar"}]])
     # add trace of people type
     fig.add_trace(go.Bar(x=peopletype['当事人身份'],
                          y=peopletype['数量统计'],
-                         name='当事人身份'),
-                  row=1,
-                  col=1)
+                         name='当事人身份',legendgroup='peopletype'),
+                  row=1, col=1)
     # add trace of penalty type
     fig.add_trace(go.Bar(x=penaltytype['违规类型'],
                          y=penaltytype['数量统计'],
-                         name='违规类型'),
-                  row=1,
-                  col=2)
-    fig.update_layout(title_text="当事人身份统计和违规类型统计")
-    # update trace name
-
+                         name='违规类型',legendgroup='penaltytype'),
+                  row=2, col=1)
+    # add trace of law type using pie chart
+    # fig.add_trace(go.Pie(labels=lawtype['法律法规'],
+    #                         values=lawtype['数量统计'],
+    #                         textinfo='value+percent',
+                            
+    #                         name='法律法规',legendgroup='lawtype'),
+    #                 row=3, col=1)
+    # set layout of legend
+    # fig.update_layout(legend_orientation="h",
+    #                     legend=dict(x=0, y=1.2))
+    fig.add_trace(go.Bar(x=lawtype['法律法规'],
+                            y=lawtype['数量统计'],
+                            name='法律法规'),
+                    row=3, col=1)
+    # update layout of subplots
+    fig.update_layout(height=1200,width=800,title_text="当事人身份、违规类型、法律法规统计")
     st.plotly_chart(fig)
 
 
 # display bar chart in plotly
 def display_search_df(searchdf):
-    fig = go.Figure(data=[go.Bar(x=searchdf['文件名称'], y=searchdf['count'])])
-    fig.update_layout(title='搜索结果', xaxis_title='文件名称', yaxis_title='处罚数量')
+    df_month = searchdf.copy()
+    df_month['发文日期'] = pd.to_datetime(df_month['发文日期']).dt.date
+    # count by month
+    df_month['month'] = df_month['发文日期'].apply(lambda x: x.strftime('%Y-%m'))
+    df_month_count = df_month.groupby(['month']).size().reset_index(name='count')
+    # count by month
+    fig = go.Figure(data=[go.Bar(x=df_month_count['month'], y=df_month_count['count'])])
+    fig.update_layout(title='处罚数量统计', xaxis_title='月份', yaxis_title='处罚数量')
     st.plotly_chart(fig)
 
 
@@ -577,9 +617,10 @@ def display_eventdetail2(search_df):
     total = len(search_df)
     st.sidebar.metric('总数:', total)
     # count by month
-    df_month = count_by_month(search_df)
+    # df_month = count_by_month(search_df)
+    # st.write(search_df)
     # draw plotly figure
-    display_dfmonth(df_month)
+    display_search_df(search_df)
     # st.table(search_df)
     data = df2aggrid(search_df)
     # display data
