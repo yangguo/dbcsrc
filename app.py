@@ -7,13 +7,16 @@ from dbcsrc import get_csrcdetail, searchcsrc, generate_lawdf, generate_peopledf
 from dbcsrc import get_lawdetail, get_peopledetail, searchlaw, searchpeople
 from dbcsrc import get_csrc2detail, searchcsrc2, get_csrcsum,display_eventdetail,display_eventdetail2
 
+# use wide layout
+st.set_page_config(page_title='案例分析', layout='wide')
+
 def main():
 
     menu = [
-        '案例更新1',
         # '案例分析',
         '案例搜索1',
         '案例搜索2',
+         '案例更新1'
     ]
     choice = st.sidebar.selectbox("选择", menu)
 
@@ -129,17 +132,17 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     # input filename keyword
-                    filename_text = st.text_input('搜索文件名关键词')
+                    filename_text = st.text_input('文件名')
                     # input date range
                     start_date = st.date_input(
                         '开始日期', value=five_years_before_max_date)
-                    end_date = st.date_input('结束日期', value=max_date)
+                    # input case keyword
+                    case_text = st.text_input('案情经过')
 
                 with col2:
                     # input org keyword
-                    org_text = st.text_input('搜索机构关键词')
-                    # input case keyword
-                    case_text = st.text_input('搜索案件关键词')
+                    org_text = st.text_input('发文单位')
+                    end_date = st.date_input('结束日期', value=max_date)
                     # get type
                     type_text = st.multiselect('文书类型', type_list)
                 # search button
@@ -171,20 +174,20 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     # input filename keyword
-                    filename_text = st.text_input('搜索文件名关键词')
+                    filename_text = st.text_input('文件名')
                     # input date range
                     start_date = st.date_input(
                         '开始日期', value=five_years_before_max_date)
-                    end_date = st.date_input('结束日期', value=max_date)
-                    # input org keyword
-                    org_text = st.text_input('搜索机构关键词')
-                with col2:
                     # get law
                     law_text = st.multiselect('法律法规', law_list)
-                    # input article keyword
-                    article_text = st.text_input('搜索条文号')
                     # get type
                     type_text = st.multiselect('文书类型', type_list)
+                with col2:
+                    # input org keyword
+                    org_text = st.text_input('发文单位')
+                    end_date = st.date_input('结束日期', value=max_date)
+                    # input article keyword
+                    article_text = st.text_input('条文号')
                 # search button
                 searchbutton = st.form_submit_button('搜索')
 
@@ -221,28 +224,28 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     # input filename keyword
-                    filename_text = st.text_input('搜索文件名关键词')
+                    filename_text = st.text_input('文件名')
                     # input date range
                     start_date = st.date_input(
                         '开始日期', value=five_years_before_max_date)
-                    end_date = st.date_input('结束日期', value=max_date)
-                    # input org keyword
-                    org_text = st.text_input('搜索机构关键词')
-
+                    # get people name
+                    people_name_text = st.text_input('当事人名称')
+ 
                     # get people type
                     people_type_text = st.multiselect('当事人类型',
                                                       people_type_list)
+                    # get penalty result
+                    penalty_result_text = st.text_input('处罚结果')
                 with col2:
-                    # get people name
-                    people_name_text = st.text_input('搜索当事人名称')
-                    # get people position
+                    # input org keyword
+                    org_text = st.text_input('发文单位')
+                    end_date = st.date_input('结束日期', value=max_date)
+                   # get people position
                     people_position_text = st.multiselect(
                         '当事人身份', people_position_list)
                     # get penalty type
                     penalty_type_text = st.multiselect('违规类型',
                                                        penalty_type_list)
-                    # get penalty result
-                    penalty_result_text = st.text_input('搜索处罚结果')
                     # get type
                     type_text = st.multiselect('处罚类型', type_list)
                 # search button
