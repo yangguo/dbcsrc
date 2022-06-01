@@ -4,8 +4,14 @@ import glob, os
 from st_aggrid import AgGrid
 from st_aggrid.grid_options_builder import GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
+from pyecharts.charts import Bar, Grid, Line, Liquid, Page, Pie
+from pyecharts.components import Table
+from pyecharts.options import ComponentTitleOpts
+from pyecharts import options as opts
+from streamlit_echarts import st_pyecharts
 
-rulefolder='data/rules'
+rulefolder = 'data/rules'
+
 
 @st.cache
 def get_csvdf(rulefolder):
@@ -66,3 +72,14 @@ def split_words(text):
     words = ['(?=.*' + word + ')' for word in words]
     new = ''.join(words)
     return new
+
+
+# display dataframe in echarts table
+def df2echartstable(df, title):
+    table = Table()
+    headers = df.columns.tolist()
+    rows = df.values.tolist()
+    table.add(headers, rows)
+    table.set_global_opts(title_opts=opts.ComponentTitleOpts(title=title, subtitle=''))
+    st_pyecharts(table)
+  

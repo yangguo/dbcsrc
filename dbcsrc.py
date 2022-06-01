@@ -1,15 +1,14 @@
-from cProfile import label
-from unicodedata import name
-from matplotlib.axis import XAxis
-from matplotlib.pyplot import legend
 import pandas as pd
 import glob, os
 import plotly.express as px
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
-from utils import df2aggrid
+from utils import df2aggrid,df2echartstable
 from checkrule import searchByName, get_rulelist_byname, get_lawdtlbyid
 from ast import literal_eval
+from pyecharts import options as opts
+from pyecharts.charts import Bar, Grid, Line
+from streamlit_echarts import st_pyecharts
 
 import requests
 from bs4 import BeautifulSoup
@@ -277,71 +276,132 @@ def display_dfmonth(search_df):
     df_month = count_by_month(search_df)
     # get eventdf sum amount by month
     df_sum = sum_amount_by_month(selected_peopledetail)
-    
+
     # display checkbox to show/hide graph1
-    showgraph1=st.sidebar.checkbox('案例数量和金额统计',key='showgraph1')
-        
+    showgraph1 = st.sidebar.checkbox('案例数量和金额统计', key='showgraph1')
+
     if showgraph1:
-        fig = go.Figure()
-        trace1 = go.Bar(x=df_month['month'], y=df_month['count'], name='数量统计')
-        trace2 = go.Scatter(x=df_sum['month'], y=df_sum['sum'], name='金额统计')
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-        fig.add_trace(trace1)
-        fig.add_trace(trace2, secondary_y=True)
-        fig.update_layout(height=600,width=800,title_text="案例数量和金额统计")
-        st.plotly_chart(fig)
+        # fig = go.Figure()
+        # trace1 = go.Bar(x=df_month['month'], y=df_month['count'], name='数量统计')
+        # trace2 = go.Scatter(x=df_sum['month'], y=df_sum['sum'], name='金额统计')
+        # fig = make_subplots(specs=[[{"secondary_y": True}]])
+        # fig.add_trace(trace1)
+        # fig.add_trace(trace2, secondary_y=True)
+        # fig.update_layout(height=600,width=800,title_text="案例数量和金额统计")
+        # st.plotly_chart(fig)
+        x_data = df_month['month'].tolist()
+        y_data = df_month['count'].tolist()
+        sum_data = df_sum['sum'].tolist()
+
+        bar = (Bar().add_xaxis(xaxis_data=x_data).add_yaxis(
+            series_name="数量", y_axis=y_data, yaxis_index=0).set_global_opts(
+                title_opts=opts.TitleOpts(title="案例数量统计")))
+        line = (Line().add_xaxis(x_data).add_yaxis(
+            "金额",
+            sum_data,
+            yaxis_index=1,
+            label_opts=opts.LabelOpts(is_show=False)).set_global_opts(
+                title_opts=opts.TitleOpts(title="案例金额统计", pos_top="48%"),
+                legend_opts=opts.LegendOpts(pos_top="48%"),
+            ))
+        grid = Grid()
+        grid.add(bar, grid_opts=opts.GridOpts(pos_bottom="60%"))
+        grid.add(line, grid_opts=opts.GridOpts(pos_top="60%"))
+        st_pyecharts(grid, height=600, width=800)
 
     # people type count
     peopletype = selected_peopledetail.groupby(
         '当事人身份')['id'].nunique().reset_index(name='数量统计')
     # sort by count
-    peopletype = peopletype.sort_values(by='数量统计', ascending=False)
+    peopletype = peopletype.sort_values(by='数量统计')
     # penalty type count
     penaltytype = selected_peopledetail.groupby(
         '违规类型')['id'].nunique().reset_index(name='数量统计')
     # sort by count
-    penaltytype = penaltytype.sort_values(by='数量统计', ascending=False)
+    penaltytype = penaltytype.sort_values(by='数量统计')
     # law type count
-    lawtype = selected_lawdetail.groupby(
-        '法律法规')['id'].nunique().reset_index(name='数量统计')
+    lawtype = selected_lawdetail.groupby('法律法规')['id'].nunique().reset_index(
+        name='数量统计')
     # sort by count
-    lawtype = lawtype.sort_values(by='数量统计', ascending=False)
-    
+    lawtype = lawtype.sort_values(by='数量统计')
+
     # display checkbox to show/hide graph1
-    showgraph2=st.sidebar.checkbox('当事人身份、违规类型、法律法规统计',key='showgraph2')
-        
+    showgraph2 = st.sidebar.checkbox('当事人身份统计', key='showgraph2')
+
     if showgraph2:
         # draw plotly bar chart
-        fig = go.Figure()
-        # make subplots of for three graphs in one figure,y label, with specs for the bar,bar,pie
-        fig = make_subplots(rows=3, cols=1, specs=[[{"type": "bar"}], [{"type": "bar"}], [{"type": "bar"}]])
-        # add trace of people type
-        fig.add_trace(go.Bar(x=peopletype['当事人身份'],
-                            y=peopletype['数量统计'],
-                            name='当事人身份',legendgroup='peopletype'),
-                    row=1, col=1)
-        # add trace of penalty type
-        fig.add_trace(go.Bar(x=penaltytype['违规类型'],
-                            y=penaltytype['数量统计'],
-                            name='违规类型',legendgroup='penaltytype'),
-                    row=2, col=1)
+        # fig = go.Figure()
+        # # make subplots of for three graphs in one figure,y label, with specs for the bar,bar,pie
+        # fig = make_subplots(rows=3,
+        #                     cols=1,
+        #                     specs=[[{
+        #                         "type": "bar"
+        #                     }], [{
+        #                         "type": "bar"
+        #                     }], [{
+        #                         "type": "bar"
+        #                     }]])
+        # # add trace of people type
+        # fig.add_trace(go.Bar(x=peopletype['当事人身份'],
+        #                      y=peopletype['数量统计'],
+        #                      name='当事人身份',
+        #                      legendgroup='peopletype'),
+        #               row=1,
+        #               col=1)
+        # # add trace of penalty type
+        # fig.add_trace(go.Bar(x=penaltytype['违规类型'],
+        #                      y=penaltytype['数量统计'],
+        #                      name='违规类型',
+        #                      legendgroup='penaltytype'),
+        #               row=2,
+        #               col=1)
         # add trace of law type using pie chart
         # fig.add_trace(go.Pie(labels=lawtype['法律法规'],
         #                         values=lawtype['数量统计'],
         #                         textinfo='value+percent',
-                                
+
         #                         name='法律法规',legendgroup='lawtype'),
         #                 row=3, col=1)
         # set layout of legend
         # fig.update_layout(legend_orientation="h",
         #                     legend=dict(x=0, y=1.2))
-        fig.add_trace(go.Bar(x=lawtype['法律法规'],
-                                y=lawtype['数量统计'],
-                                name='法律法规'),
-                        row=3, col=1)
-        # update layout of subplots
-        fig.update_layout(height=1200,width=800,title_text="当事人身份、违规类型、法律法规统计")
-        st.plotly_chart(fig)
+        # fig.add_trace(go.Bar(x=lawtype['法律法规'], y=lawtype['数量统计'],
+        #                      name='法律法规'),
+        #               row=3,
+        #               col=1)
+        # # update layout of subplots
+        # fig.update_layout(height=1200,
+        #                   width=800,
+        #                   title_text="当事人身份、违规类型、法律法规统计")
+        # st.plotly_chart(fig)
+
+        x_data1 = peopletype['当事人身份'].tolist()
+        y_data1 = peopletype['数量统计'].tolist()
+        bar1 = (Bar().add_xaxis(xaxis_data=x_data1).add_yaxis(
+            series_name="数量", y_axis=y_data1).reversal_axis().set_global_opts(
+                title_opts=opts.TitleOpts(title="当事人身份统计")))
+        # display bar chart
+        st_pyecharts(bar1,width=800,height=400)
+    
+    showgraph3 = st.sidebar.checkbox('违规类型统计', key='showgraph3')
+    if showgraph3:
+        x_data2 = penaltytype['违规类型'].tolist()
+        y_data2 = penaltytype['数量统计'].tolist()
+        bar2 = (Bar().add_xaxis(xaxis_data=x_data2).add_yaxis(
+            series_name="数量", y_axis=y_data2).reversal_axis().set_global_opts(
+                title_opts=opts.TitleOpts(title="违规类型统计")))
+        # display bar chart
+        st_pyecharts(bar2,width=800,height=400)
+    
+    showgraph4 = st.sidebar.checkbox('法律法规统计', key='showgraph4')
+    if showgraph4:
+        x_data3 = lawtype['法律法规'].tolist()
+        y_data3 = lawtype['数量统计'].tolist()
+        bar3 = (Bar().add_xaxis(xaxis_data=x_data3).add_yaxis(
+            series_name="数量", y_axis=y_data3).reversal_axis().set_global_opts(
+                title_opts=opts.TitleOpts(title="法律法规统计")))
+        # display bar chart
+        st_pyecharts(bar3,width=800,height=400)
 
 
 # display bar chart in plotly
@@ -350,11 +410,21 @@ def display_search_df(searchdf):
     df_month['发文日期'] = pd.to_datetime(df_month['发文日期']).dt.date
     # count by month
     df_month['month'] = df_month['发文日期'].apply(lambda x: x.strftime('%Y-%m'))
-    df_month_count = df_month.groupby(['month']).size().reset_index(name='count')
+    df_month_count = df_month.groupby(['month'
+                                       ]).size().reset_index(name='count')
     # count by month
-    fig = go.Figure(data=[go.Bar(x=df_month_count['month'], y=df_month_count['count'])])
-    fig.update_layout(title='处罚数量统计', xaxis_title='月份', yaxis_title='处罚数量')
-    st.plotly_chart(fig)
+    # fig = go.Figure(
+    #     data=[go.Bar(x=df_month_count['month'], y=df_month_count['count'])])
+    # fig.update_layout(title='处罚数量统计', xaxis_title='月份', yaxis_title='处罚数量')
+    # st.plotly_chart(fig)
+
+    x_data = df_month_count['month'].tolist()
+    y_data = df_month_count['count'].tolist()
+    # draw echarts bar chart
+    bar = (Bar().add_xaxis(xaxis_data=x_data).add_yaxis(
+        series_name="数量", y_axis=y_data, yaxis_index=0).set_global_opts(
+            title_opts=opts.TitleOpts(title="案例数量统计")))
+    st_pyecharts(bar)
 
 
 def json2df(site_json):
@@ -608,6 +678,9 @@ def display_eventdetail(search_df):
     st.table(
         selected_rows_peopledetail[['当事人类型', '当事人名称', '当事人身份', '违规类型',
                                     '处罚结果']])
+    # people_data = selected_rows_peopledetail[['当事人类型', '当事人名称', '当事人身份', '违规类型',
+    #                                             '处罚结果']]
+    # df2echartstable(people_data,'当事人信息')
     # get event detail
     eventdf = get_csrcdetail()
     # search event detail by selected_rows_id
@@ -631,8 +704,7 @@ def display_eventdetail2(search_df):
     # df_month = count_by_month(search_df)
     # st.write(search_df)
     # get filename from path
-    
-    
+
     # draw plotly figure
     display_search_df(search_df)
     # st.table(search_df)
