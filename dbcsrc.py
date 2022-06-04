@@ -20,7 +20,6 @@ import datetime
 import streamlit as st
 
 pencsrc = 'data/penalty/csrc'
-pencsrc2 = 'data/penalty/csrc2'
 # mapfolder = 'data/temp/citygeo.csv'
 
 BASE_URL = 'https://neris.csrc.gov.cn/falvfagui/multipleFindController/solrSearchWrit?pageNo='
@@ -53,17 +52,12 @@ def get_csrcdetail():
     return pendf
 
 
-# @st.cache(suppress_st_warning=True)
-def get_csrc2detail():
-    pendf = get_csvdf(pencsrc2, 'csrcdtlall')
-    # format date
-    pendf['发文日期'] = pd.to_datetime(pendf['发文日期']).dt.date
-    return pendf
-
-
 # @st.cache(suppress_st_warning=True, allow_output_mutation=True)
 def get_csrcsum():
     pendf = get_csvdf(pencsrc, 'sumevent')
+    # format date
+    pendf['date1'] = pd.to_datetime(pendf['date'],errors='coerce').dt.date
+    pendf.loc[pendf['date1'].isnull(),'date1']=pd.to_datetime(pendf[pendf['date1'].isnull()]['date'],unit='ms',errors='coerce').dt.date
     return pendf
 
 
@@ -103,22 +97,6 @@ def searchcsrc(df, filename, start_date, end_date, org, case, type):
     # reset index
     searchdf.reset_index(drop=True, inplace=True)
 
-    return searchdf
-
-
-#search by filename, date, wenhao,case
-def searchcsrc2(df, filename, start_date, end_date, wenhao, case):
-    col = ['名称', '发文日期', '文号', '内容', '链接']
-    # convert date to datetime
-    # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
-    searchdf = df[(df['名称'].str.contains(filename))
-                  & (df['发文日期'] >= start_date) & (df['发文日期'] <= end_date) &
-                  (df['文号'].str.contains(wenhao)) &
-                  (df['内容'].str.contains(case))][col]
-    # sort by date desc
-    searchdf.sort_values(by=['发文日期'], ascending=False, inplace=True)
-    # reset index
-    searchdf.reset_index(drop=True, inplace=True)
     return searchdf
 
 
@@ -718,38 +696,3 @@ def display_eventdetail(search_df):
                                data=search_df.to_csv().encode('utf-8'),
                                file_name='搜索结果.csv')
 
-
-# display event detail
-def display_eventdetail2(search_df):
-    total = len(search_df)
-    st.sidebar.metric('总数:', total)
-    # count by month
-    # df_month = count_by_month(search_df)
-    # st.write(search_df)
-    # get filename from path
-
-    # draw plotly figure
-    display_search_df(search_df)
-    # st.table(search_df)
-    data = df2aggrid(search_df)
-    # display data
-    selected_rows = data["selected_rows"]
-    if selected_rows == []:
-        st.error('请先选择查看案例')
-        st.stop()
-    # convert selected_rows to dataframe
-    selected_rows_df = pd.DataFrame(selected_rows)
-
-    # display event detail
-    st.write('案情经过')
-    # transpose
-    selected_rows_df = selected_rows_df.T
-    # set column name
-    selected_rows_df.columns = ['案情经过']
-    # display
-    st.table(selected_rows_df)
-
-    # display download button
-    st.sidebar.download_button('下载搜索结果',
-                               data=search_df.to_csv().encode('utf-8'),
-                               file_name='搜索结果.csv')

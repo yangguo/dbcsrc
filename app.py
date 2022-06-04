@@ -5,10 +5,12 @@ import pandas as pd
 
 from dbcsrc import get_csrcdetail, searchcsrc, generate_lawdf, generate_peopledf, count_by_month, display_dfmonth, get_sumeventdf, update_sumeventdf, get_eventdetail
 from dbcsrc import get_lawdetail, get_peopledetail, searchlaw, searchpeople
-from dbcsrc import get_csrc2detail, searchcsrc2, get_csrcsum,display_eventdetail,display_eventdetail2
+from dbcsrc import get_csrcsum, display_eventdetail
+from dbcsrc2 import get_csrc2detail, searchcsrc2, display_eventdetail2,display_summary2
 
 # use wide layout
 st.set_page_config(page_title='案例分析', layout='wide')
+
 
 def main():
 
@@ -16,18 +18,22 @@ def main():
         # '案例分析',
         '案例搜索1',
         '案例搜索2',
-         '案例更新1'
+        '案例更新1',
+        '案例更新2',
     ]
     choice = st.sidebar.selectbox("选择", menu)
 
     if choice == '案例更新1':
-        st.subheader('案例更新')
+        st.subheader('案例更新1')
         oldsum = get_csrcsum()
         # get length of old eventdf
         oldlen = len(oldsum)
-
+        # get min and max date of old eventdf
+        min_date = oldsum['date1'].min()
+        max_date = oldsum['date1'].max()
         # use metric
         st.metric('原案例总数', oldlen)
+        st.metric('原案例日期范围', f'{min_date} - {max_date}')
 
         with st.sidebar.form('更新案例'):
             # choose page start number and end number
@@ -80,36 +86,11 @@ def main():
             st.success('处罚人员分析完成')
             st.write(peopledf[:50])
 
-    elif choice == '案例分析':
-        st.subheader('案例分析')
-        st.write('案例分析')
-        eventdf = get_csrcdetail()
-        st.write(eventdf[:50])
-
-        df_month = count_by_month(eventdf)
-
-        # get min and max date
-        min_date = eventdf['发文日期'].min()
-        max_date = eventdf["发文日期"].max()
-        # calculate the date five years before max_date
-        five_years_before_max_date = max_date - pd.Timedelta(days=365 * 5)
-        # filter by month range and display
-        start_date = st.sidebar.date_input('开始日期',
-                                           value=five_years_before_max_date)
-        end_date = st.sidebar.date_input('结束日期', value=max_date)
-        # datetime to x.strftime('%Y-%m')
-        start_month = start_date.strftime('%Y-%m')
-        end_month = end_date.strftime('%Y-%m')
-        if start_month > end_month:
-            st.error('开始日期不能大于结束日期')
-            st.stop()
-        # filter by month range
-        df_month = df_month[(df_month['month'] >= start_month)
-                            & (df_month['month'] <= end_month)]
-        # st.write(df_month)
-        # draw plotly figure
-        display_dfmonth(df_month)
-
+    elif choice == '案例更新2':
+        st.subheader('案例更新2')
+        # display summary2
+        display_summary2()
+ 
     elif choice == '案例搜索1':
         st.subheader('案例搜索1')
         # initialize search result in session state
@@ -162,7 +143,7 @@ def main():
             else:
                 # get search result from session state
                 search_df = st.session_state['search_result_csrc']
-            
+
         elif search_type == '处罚依据':
             lawdf = get_lawdetail()
             # get law list
@@ -208,7 +189,7 @@ def main():
             else:
                 # get search result from session state
                 search_df = st.session_state['search_result_csrc']
-            
+
         elif search_type == '处罚人员':
             peopledf = get_peopledetail()
             # get people type list
@@ -230,7 +211,7 @@ def main():
                         '开始日期', value=five_years_before_max_date)
                     # get people name
                     people_name_text = st.text_input('当事人名称')
- 
+
                     # get people type
                     people_type_text = st.multiselect('当事人类型',
                                                       people_type_list)
@@ -240,7 +221,7 @@ def main():
                     # input org keyword
                     org_text = st.text_input('发文单位')
                     end_date = st.date_input('结束日期', value=max_date)
-                   # get people position
+                    # get people position
                     people_position_text = st.multiselect(
                         '当事人身份', people_position_list)
                     # get penalty type
@@ -276,7 +257,7 @@ def main():
             else:
                 # get search result from session state
                 search_df = st.session_state['search_result_csrc']
-            
+
         if search_df is None:
             st.error('请先搜索')
             st.stop()
@@ -326,7 +307,7 @@ def main():
             else:
                 # get search result from session state
                 search_df = st.session_state['search_result_csrc2']
-            
+
         if search_df is None:
             st.error('请先搜索')
             st.stop()
