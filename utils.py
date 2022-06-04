@@ -9,6 +9,7 @@ from pyecharts.components import Table
 from pyecharts.options import ComponentTitleOpts
 from pyecharts import options as opts
 from streamlit_echarts import st_pyecharts
+import streamlit.components.v1 as components
 
 rulefolder = 'data/rules'
 
@@ -81,5 +82,6 @@ def df2echartstable(df, title):
     rows = df.values.tolist()
     table.add(headers, rows)
     table.set_global_opts(title_opts=opts.ComponentTitleOpts(title=title, subtitle=''))
-    st_pyecharts(table)
+    # st_pyecharts(table)
+    components.html(table.render_embed(), width=800)
   

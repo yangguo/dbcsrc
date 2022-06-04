@@ -3,7 +3,7 @@ import glob, os
 import plotly.express as px
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
-from utils import df2aggrid,df2echartstable
+from utils import df2aggrid, df2echartstable
 from checkrule import searchByName, get_rulelist_byname, get_lawdtlbyid
 from ast import literal_eval
 from pyecharts import options as opts
@@ -313,17 +313,17 @@ def display_dfmonth(search_df):
     peopletype = selected_peopledetail.groupby(
         '当事人身份')['id'].nunique().reset_index(name='数量统计')
     # sort by count
-    peopletype = peopletype.sort_values(by='数量统计')
+    peopletype = peopletype.sort_values(by='数量统计', ascending=False)
     # penalty type count
     penaltytype = selected_peopledetail.groupby(
         '违规类型')['id'].nunique().reset_index(name='数量统计')
     # sort by count
-    penaltytype = penaltytype.sort_values(by='数量统计')
+    penaltytype = penaltytype.sort_values(by='数量统计', ascending=False)
     # law type count
     lawtype = selected_lawdetail.groupby('法律法规')['id'].nunique().reset_index(
         name='数量统计')
     # sort by count
-    lawtype = lawtype.sort_values(by='数量统计')
+    lawtype = lawtype.sort_values(by='数量统计', ascending=False)
 
     # display checkbox to show/hide graph1
     showgraph2 = st.sidebar.checkbox('当事人身份统计', key='showgraph2')
@@ -378,30 +378,46 @@ def display_dfmonth(search_df):
         x_data1 = peopletype['当事人身份'].tolist()
         y_data1 = peopletype['数量统计'].tolist()
         bar1 = (Bar().add_xaxis(xaxis_data=x_data1).add_yaxis(
-            series_name="数量", y_axis=y_data1).reversal_axis().set_global_opts(
+            series_name="数量", y_axis=y_data1).set_global_opts(
+                xaxis_opts=opts.AxisOpts(
+                    axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15)),
                 title_opts=opts.TitleOpts(title="当事人身份统计")))
         # display bar chart
-        st_pyecharts(bar1,width=800,height=400)
-    
+        st_pyecharts(bar1, width=800, height=400)
+
     showgraph3 = st.sidebar.checkbox('违规类型统计', key='showgraph3')
     if showgraph3:
         x_data2 = penaltytype['违规类型'].tolist()
         y_data2 = penaltytype['数量统计'].tolist()
-        bar2 = (Bar().add_xaxis(xaxis_data=x_data2).add_yaxis(
-            series_name="数量", y_axis=y_data2).reversal_axis().set_global_opts(
+        bar2 = (
+            Bar().add_xaxis(xaxis_data=x_data2).add_yaxis(
+                series_name="数量",
+                y_axis=y_data2,
+                # label_opts=opts.LabelOpts(is_show=True, position="inside")
+            ).set_global_opts(
+                xaxis_opts=opts.AxisOpts(
+                    axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15)),
+                # yaxis_opts=opts.AxisOpts(
+                #     axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15),
+                #     # axisline_opts=opts.AxisLineOpts(
+                #     #     linestyle_opts=opts.LineStyleOpts(color="#5793f3", )),
+                #     # axislabel_opts=opts.LabelOpts(formatter="{value} ml"),
+                # ),
                 title_opts=opts.TitleOpts(title="违规类型统计")))
         # display bar chart
-        st_pyecharts(bar2,width=800,height=400)
-    
+        st_pyecharts(bar2, width=800, height=400)
+
     showgraph4 = st.sidebar.checkbox('法律法规统计', key='showgraph4')
     if showgraph4:
         x_data3 = lawtype['法律法规'].tolist()
         y_data3 = lawtype['数量统计'].tolist()
         bar3 = (Bar().add_xaxis(xaxis_data=x_data3).add_yaxis(
-            series_name="数量", y_axis=y_data3).reversal_axis().set_global_opts(
+            series_name="数量", y_axis=y_data3).set_global_opts(
+                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(
+                    rotate=-15)),
                 title_opts=opts.TitleOpts(title="法律法规统计")))
         # display bar chart
-        st_pyecharts(bar3,width=800,height=400)
+        st_pyecharts(bar3, width=800, height=400)
 
 
 # display bar chart in plotly
@@ -674,22 +690,29 @@ def display_eventdetail(search_df):
     selected_rows_peopledetail = peopledf[peopledf['id'].isin(
         selected_rows_id)]
     # display people detail
-    st.write('当事人信息')
-    st.table(
-        selected_rows_peopledetail[['当事人类型', '当事人名称', '当事人身份', '违规类型',
-                                    '处罚结果']])
-    # people_data = selected_rows_peopledetail[['当事人类型', '当事人名称', '当事人身份', '违规类型',
-    #                                             '处罚结果']]
-    # df2echartstable(people_data,'当事人信息')
+    # st.write('当事人信息')
+    # st.dataframe(
+    #     selected_rows_peopledetail[['当事人类型', '当事人名称', '当事人身份', '违规类型',
+    #                                 '处罚结果']])
+    people_data = selected_rows_peopledetail[[
+        '当事人类型', '当事人名称', '当事人身份', '违规类型', '处罚结果'
+    ]]
+    df2echartstable(people_data, '当事人信息')
     # get event detail
     eventdf = get_csrcdetail()
     # search event detail by selected_rows_id
     selected_rows_eventdetail = eventdf[eventdf['id'].isin(selected_rows_id)]
     # display event detail
-    st.write('案情经过')
-    st.table(selected_rows_eventdetail[['文件名称', '发文日期', '发文单位', '文书类型']])
+    # st.write('案情经过')
+    # st.table(selected_rows_eventdetail[['文件名称', '发文日期', '发文单位', '文书类型']])
+    # get event detail
+    event_data = selected_rows_eventdetail[['文件名称', '发文日期', '发文单位', '文书类型']]
+    df2echartstable(event_data, '案情经过')
     # transpose and display event detail
     st.table(selected_rows_eventdetail[['案情经过']])
+    # get event detail
+    # eventdtl_data=selected_rows_eventdetail[['案情经过']]
+    # df2echartstable(eventdtl_data,'案情经过')
     # display download button
     st.sidebar.download_button('下载搜索结果',
                                data=search_df.to_csv().encode('utf-8'),
