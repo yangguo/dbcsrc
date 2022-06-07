@@ -376,6 +376,8 @@ def main():
                     wenhao_text = st.text_input("文号")
                     # input org keyword from org list
                     org_text = st.multiselect("发文单位", org_list)
+                    if org_text == []:
+                        org_text = org_list
                 # search button
                 searchbutton = st.form_submit_button("搜索")
             if searchbutton:
@@ -383,7 +385,7 @@ def main():
                     filename_text == ""
                     and wenhao_text == ""
                     and case_text == ""
-                    and org_text == []
+                    # and org_text == []
                 ):
                     st.error("请输入搜索条件")
                     st.stop()

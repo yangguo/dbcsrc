@@ -660,6 +660,10 @@ def display_eventdetail(search_df):
     st.markdown("### 搜索结果")
     # st.table(search_df)
     data = df2aggrid(search_df)
+    # display download button
+    st.sidebar.download_button(
+        "下载搜索结果", data=search_df.to_csv().encode("utf-8"), file_name="搜索结果.csv"
+    )
     # display data
     selected_rows = data["selected_rows"]
     if selected_rows == []:
@@ -735,7 +739,3 @@ def display_eventdetail(search_df):
     # get event detail
     # eventdtl_data=selected_rows_eventdetail[['案情经过']]
     # df2echartstable(eventdtl_data,'案情经过')
-    # display download button
-    st.sidebar.download_button(
-        "下载搜索结果", data=search_df.to_csv().encode("utf-8"), file_name="搜索结果.csv"
-    )

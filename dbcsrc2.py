@@ -115,8 +115,6 @@ def searchcsrc2(df, filename, start_date, end_date, wenhao, case, org):
 
 # display event detail
 def display_eventdetail2(search_df):
-    total = len(search_df)
-    st.sidebar.metric("总数:", total)
     # count by month
     # df_month = count_by_month(search_df)
     # st.write(search_df)
@@ -124,8 +122,16 @@ def display_eventdetail2(search_df):
 
     # draw plotly figure
     display_search_df(search_df)
+    # get search result from session
+    search_dfnew = st.session_state["search_result_csrc2"]
+    total = len(search_dfnew)
+    st.sidebar.metric("总数:", total)
     # st.table(search_df)
-    data = df2aggrid(search_df)
+    data = df2aggrid(search_dfnew)
+    # display download button
+    st.sidebar.download_button(
+        "下载搜索结果", data=search_dfnew.to_csv().encode("utf-8"), file_name="搜索结果.csv"
+    )
     # display data
     selected_rows = data["selected_rows"]
     if selected_rows == []:
@@ -142,11 +148,6 @@ def display_eventdetail2(search_df):
     selected_rows_df.columns = ["案情经过"]
     # display
     st.table(selected_rows_df)
-
-    # display download button
-    st.sidebar.download_button(
-        "下载搜索结果", data=search_df.to_csv().encode("utf-8"), file_name="搜索结果.csv"
-    )
 
 
 # get sumeventdf in page number range
@@ -339,4 +340,13 @@ def display_search_df(searchdf):
             .set_global_opts(title_opts=opts.TitleOpts(title="按发文机构统计"))
             .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
         )
-        st_pyecharts(pie, width=800, height=400)
+        events = {
+            "click": "function(params) { console.log(params.name); return params.name }",
+            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        }
+        orgname = st_pyecharts(pie, width=800, height=400, events=events)
+        if orgname is not None:
+            # filter searchdf by orgname
+            searchdfnew = searchdf[searchdf["机构"] == orgname]
+            # set session state
+            st.session_state["search_result_csrc2"] = searchdfnew
