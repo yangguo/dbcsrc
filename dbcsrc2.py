@@ -306,7 +306,25 @@ def display_search_df(searchdf):
             .add_yaxis(series_name="数量", y_axis=y_data, yaxis_index=0)
             .set_global_opts(title_opts=opts.TitleOpts(title="按发文时间统计"))
         )
-        st_pyecharts(bar)
+        # use events
+        events = {
+            "click": "function(params) { console.log(params.name); return params.name }",
+            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        }
+        # use events
+        yearmonth = st_pyecharts(bar, events=events)
+        # st.write(yearmonth)
+        if yearmonth is not None:
+            # get year and month value from format "%Y-%m"
+            # year = int(yearmonth.split("-")[0])
+            # month = int(yearmonth.split("-")[1])
+            # filter date by year and month
+            searchdfnew = df_month[df_month["month"] == yearmonth]
+            # drop column "month"
+            searchdfnew.drop(columns=["month"], inplace=True)
+
+            # set session state
+            st.session_state["search_result_csrc2"] = searchdfnew
 
     # display checkbox to show/hide graph2
     showgraph2 = st.sidebar.checkbox("按发文机构统计", key="showgraph2")
@@ -335,9 +353,15 @@ def display_search_df(searchdf):
                     )
                 ],
                 radius=["30%", "75%"],
-                # center=["55%", "50%"]
+                # center=["35%", "50%"]
             )
-            .set_global_opts(title_opts=opts.TitleOpts(title="按发文机构统计"))
+            # set legend position
+            .set_global_opts(
+                title_opts=opts.TitleOpts(title="按发文机构统计")
+                # set legend position to down
+                ,
+                legend_opts=opts.LegendOpts(pos_bottom="bottom"),
+            )
             .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
         )
         events = {
