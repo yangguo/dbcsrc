@@ -54,6 +54,8 @@ def get_csrcdetail():
     pendf = get_csvdf(pencsrc, "sdresult")
     # format date
     pendf["发文日期"] = pd.to_datetime(pendf["发文日期"]).dt.date
+    # fillna
+    pendf = pendf.fillna("")
     return pendf
 
 
