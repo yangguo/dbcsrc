@@ -335,7 +335,19 @@ def display_dfmonth(search_df):
         grid = Grid()
         grid.add(bar, grid_opts=opts.GridOpts(pos_bottom="60%"))
         grid.add(line, grid_opts=opts.GridOpts(pos_top="60%"))
-        st_pyecharts(grid, height=600, width=800)
+        events = {
+            "click": "function(params) { console.log(params.name); return params.name }",
+            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        }
+        yearmonth = st_pyecharts(grid, height=600, width=800, events=events)
+        st.write(yearmonth)
+        if yearmonth is not None:
+            search_df["month"] = search_df["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
+            searchdfnew = search_df[search_df["month"] == yearmonth]
+            # drop month column
+            searchdfnew.drop(columns=["month"], inplace=True)
+            # set session state
+            st.session_state["search_result_csrc"] = searchdfnew
 
     # people type count
     peopletype = (
@@ -419,8 +431,22 @@ def display_dfmonth(search_df):
                 title_opts=opts.TitleOpts(title="当事人身份统计"),
             )
         )
+        events = {
+            "click": "function(params) { console.log(params.name); return params.name }",
+            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        }
         # display bar chart
-        st_pyecharts(bar1, width=800, height=400)
+        peopletype_selected = st_pyecharts(bar1, width=800, height=400, events=events)
+        # get selected people type
+        if peopletype_selected is not None:
+            # get selected people type id
+            peopletype_id = selected_peopledetail[
+                selected_peopledetail["当事人身份"] == peopletype_selected
+            ]["id"].unique()
+            # get subsearchdf by id
+            subsearchdf = search_df.loc[search_df["id"].isin(peopletype_id)]
+            # set session state
+            st.session_state["search_result_csrc"] = subsearchdf
 
     showgraph3 = st.sidebar.checkbox("违规类型统计", key="showgraph3")
     if showgraph3:
@@ -447,8 +473,22 @@ def display_dfmonth(search_df):
                 title_opts=opts.TitleOpts(title="违规类型统计"),
             )
         )
+        events = {
+            "click": "function(params) { console.log(params.name); return params.name }",
+            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        }
         # display bar chart
-        st_pyecharts(bar2, width=800, height=400)
+        pentype_selected = st_pyecharts(bar2, width=800, height=400, events=events)
+        # display law type selected
+        if pentype_selected is not None:
+            # get unique id of selected law type
+            pentype_selected_id = selected_peopledetail.loc[
+                selected_peopledetail["违规类型"] == pentype_selected, "id"
+            ].unique()
+            # get subsearchdf by id
+            subsearchdf = search_df.loc[search_df["id"].isin(pentype_selected_id)]
+            # set session state
+            st.session_state["search_result_csrc"] = subsearchdf
 
     showgraph4 = st.sidebar.checkbox("法律法规统计", key="showgraph4")
     if showgraph4:
@@ -463,8 +503,22 @@ def display_dfmonth(search_df):
                 title_opts=opts.TitleOpts(title="法律法规统计"),
             )
         )
+        events = {
+            "click": "function(params) { console.log(params.name); return params.name }",
+            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        }
         # display bar chart
-        st_pyecharts(bar3, width=800, height=400)
+        lawtype_selected = st_pyecharts(bar3, width=800, height=400, events=events)
+        # display law type selected
+        if lawtype_selected is not None:
+            # get unique id of selected law type
+            lawtype_selected_id = selected_lawdetail.loc[
+                selected_lawdetail["法律法规"] == lawtype_selected, "id"
+            ].unique()
+            # get subsearchdf by id
+            subsearchdf = search_df.loc[search_df["id"].isin(lawtype_selected_id)]
+            # set session state
+            st.session_state["search_result_csrc"] = subsearchdf
 
 
 def json2df(site_json):
@@ -652,16 +706,18 @@ def get_eventdetail(eventsum):
 
 # display event detail
 def display_eventdetail(search_df):
-    total = len(search_df)
-    st.sidebar.metric("总数:", total)
     # count by month
     # df_month = count_by_month(search_df)
     # draw plotly figure
     display_dfmonth(search_df)
+    # get search result from session
+    search_dfnew = st.session_state["search_result_csrc"]
+    total = len(search_dfnew)
+    st.sidebar.metric("总数:", total)
     # display search result
     st.markdown("### 搜索结果")
     # st.table(search_df)
-    data = df2aggrid(search_df)
+    data = df2aggrid(search_dfnew)
     # display download button
     st.sidebar.download_button(
         "下载搜索结果", data=search_df.to_csv().encode("utf-8"), file_name="搜索结果.csv"

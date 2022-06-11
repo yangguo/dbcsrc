@@ -128,6 +128,8 @@ def display_eventdetail2(search_df):
     search_dfnew = st.session_state["search_result_csrc2"]
     total = len(search_dfnew)
     st.sidebar.metric("总数:", total)
+    # display search result
+    st.markdown("### 搜索结果")
     # st.table(search_df)
     data = df2aggrid(search_dfnew)
     # display download button
