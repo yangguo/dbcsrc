@@ -112,12 +112,10 @@ def main():
             # choose org name
             org_name = st.selectbox("选择机构", org_list)
             # choose page start number and end number
-            start_num = st.number_input("起始页", value=1, min_value=1, max_value=20)
+            start_num = st.number_input("起始页", value=1, min_value=1)
             # convert to int
             start_num = int(start_num)
-            end_num = st.number_input(
-                "结束页", value=start_num, min_value=start_num, max_value=20
-            )
+            end_num = st.number_input("结束页", value=start_num, min_value=start_num)
             # convert to int
             end_num = int(end_num)
             # button to scrapy web
@@ -135,6 +133,11 @@ def main():
             # display sumeventdf
             st.success(f"更新完成，共{sumevent_len2}条案例列表")
 
+        # button to refresh page
+        refreshbutton = st.sidebar.button("刷新页面")
+        if refreshbutton:
+            st.experimental_rerun()
+
     elif choice == "案例搜索1":
         st.subheader("案例搜索1")
         # initialize search result in session state
@@ -143,9 +146,16 @@ def main():
 
         # get csrc detail
         df = get_csrcdetail()
-        # get max date
+         # get length of old eventdf
+        oldlen1 = len(df)
+        # get min and max date of old eventdf
+        min_date = df["发文日期"].min()
         max_date = df["发文日期"].max()
-        # calculate the date five years before max_date
+        # use metric
+        st.sidebar.write("案例总数", oldlen1)
+        st.sidebar.write("最晚发文日期", max_date)
+        st.sidebar.write("最早发文日期",min_date)
+       # calculate the date five years before max_date
         five_years_before_max_date = max_date - pd.Timedelta(days=365 * 5)
         # choose search type
         search_type = st.sidebar.radio("搜索类型", ["案情经过", "处罚依据", "处罚人员"])
@@ -179,8 +189,8 @@ def main():
                     and case_text == ""
                     and type_text == []
                 ):
-                    st.error("请输入搜索条件")
-                    st.stop()
+                    st.warning("请输入搜索条件")
+                    # st.stop()
                 if type_text == []:
                     type_text = type_list
                 # search by filename, date, org, case, type
@@ -234,8 +244,8 @@ def main():
                     and law_text == []
                     and type_text == []
                 ):
-                    st.error("请输入搜索条件")
-                    st.stop()
+                    st.warning("请输入搜索条件")
+                    # st.stop()
                 if law_text == []:
                     law_text = law_list
                 if type_text == []:
@@ -306,8 +316,8 @@ def main():
                     and penalty_result_text == ""
                     and type_text == []
                 ):
-                    st.error("请输入搜索条件")
-                    st.stop()
+                    st.warning("请输入搜索条件")
+                    # st.stop()
                 if people_type_text == []:
                     people_type_text = people_type_list
                 if people_position_text == []:
@@ -354,10 +364,18 @@ def main():
         df = get_csrc2detail()
         # get org list
         org_list = df["机构"].unique()
-        # get max date
-        max_date = df["发文日期"].max()
+        # get length of old eventdf
+        oldlen2 = len(df)
+        # get min and max date of old eventdf
+        min_date2 = df["发文日期"].min()
+        max_date2 = df["发文日期"].max()
+        # use metric
+        st.sidebar.write("案例总数", oldlen2)
+        st.sidebar.write("最晚发文日期", max_date2)
+        st.sidebar.write("最早发文日期",min_date2)
+        
         # get five years before max date
-        five_years_before = max_date - pd.Timedelta(days=365 * 5)
+        five_years_before = max_date2 - pd.Timedelta(days=365 * 5)
         # choose search type
         search_type = st.sidebar.radio("搜索类型", ["案情经过"])
         if search_type == "案情经过":
@@ -371,7 +389,7 @@ def main():
                     # input case keyword
                     case_text = st.text_input("案件关键词")
                 with col2:
-                    end_date = st.date_input("结束日期", value=max_date)
+                    end_date = st.date_input("结束日期", value=max_date2)
                     # input wenhao keyword
                     wenhao_text = st.text_input("文号")
                     # input org keyword from org list
@@ -387,8 +405,8 @@ def main():
                     and case_text == ""
                     # and org_text == []
                 ):
-                    st.error("请输入搜索条件")
-                    st.stop()
+                    st.warning("请输入搜索条件")
+                    # st.stop()
                 # search by filename, date, wenhao, case, org
                 search_df = searchcsrc2(
                     df,

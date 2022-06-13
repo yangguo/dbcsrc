@@ -41,7 +41,7 @@ org2id = {
     "厦门": "b5eabe7e6d0847ebae3ea9b1abd2a230",
     "福建": "ca335b3bbc51408da8a64f89bce67c95",
     "西藏": "da2deae04a2a412e896d05d31b603804",
-    "青岛": "1747a405d9a6437e8688f25c48c6205a",
+    "青岛": "47f0814210b64db681be188da7f21b22",
     "贵州": "1d15ee7b6389461eb45b7de8fc742615",
     "河南": "fa3997ef7b7549049b59451451e03623",
     "广西": "cad5c39b4cae415fb576ceffc5d197ec",
@@ -180,10 +180,12 @@ def get_sumeventdf2(orgname, start, end):
                 headerls = item["domainMetaList"][0]["resultList"]
                 headerdf = pd.DataFrame(headerls)
                 wenhao = headerdf[headerdf["key"] == "wh"]["value"].item()
-                date = headerdf[headerdf["key"] == "fwrq"]["value"].item()
+                # date = headerdf[headerdf["key"] == "fwrq"]["value"].item()
                 sn = headerdf[headerdf["key"] == "syh"]["value"].item()
                 title = item["subTitle"]
                 url = item["url"]
+                # update date extracting
+                date = item["publishedTimeStr"]
                 try:
                     doc = (
                         item["contentHtml"]

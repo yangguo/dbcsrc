@@ -136,9 +136,9 @@ dmypy.json
 .vscode
 
 # ignore csv files
-*.csv
 *.npy
 .isort.cfg
 .markdownlint.yaml
 .flake8
 .trunk
+data/

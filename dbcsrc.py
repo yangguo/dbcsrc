@@ -340,7 +340,7 @@ def display_dfmonth(search_df):
             # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
         }
         yearmonth = st_pyecharts(grid, height=600, width=800, events=events)
-        st.write(yearmonth)
+        # st.write(yearmonth)
         if yearmonth is not None:
             search_df["month"] = search_df["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
             searchdfnew = search_df[search_df["month"] == yearmonth]
