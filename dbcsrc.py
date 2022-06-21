@@ -18,7 +18,7 @@ from pyecharts.charts import Bar, Grid, Line
 from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
-from utils import df2aggrid, df2echartstable
+from utils import df2aggrid, df2echartstable,split_words
 
 pencsrc = "data/penalty/csrc"
 # mapfolder = 'data/temp/citygeo.csv'
@@ -93,6 +93,14 @@ def searchcsrc(df, filename, start_date, end_date, org, case, type):
     col = ["文件名称", "发文日期", "发文单位", "案情经过", "文书类型", "id"]
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    # split words
+    if filename != "":
+        filename = split_words(filename)
+    if org != "":
+        org = split_words(org)
+    if case != "":
+        case = split_words(case)
+
     searchdf = df[
         (df["文件名称"].str.contains(filename))
         & (df["发文日期"] >= start_date)
@@ -119,6 +127,14 @@ def searchlaw(
     col = ["文件名称", "发文日期", "文书类型", "发文单位", "法律法规", "条文", "id"]
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    # split words
+    if filename_text != "":
+        filename_text = split_words(filename_text)
+    if org_text != "":
+        org_text = split_words(org_text)
+    if article_text != "":
+        article_text = split_words(article_text)
+
     searchdf = df[
         (df["文件名称"].str.contains(filename_text))
         & (df["发文日期"] >= start_date)
@@ -163,6 +179,16 @@ def searchpeople(
     ]
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    # split words
+    if filename_text != "":
+        filename_text = split_words(filename_text)
+    if org_text != "":
+        org_text = split_words(org_text)
+    if people_name_text != "":
+        people_name_text = split_words(people_name_text)
+    if penalty_result_text != "":
+        penalty_result_text = split_words(penalty_result_text)
+
     searchdf = df[
         (df["文件名称"].str.contains(filename_text))
         & (df["发文日期"] >= start_date)

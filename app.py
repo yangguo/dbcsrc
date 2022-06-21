@@ -56,12 +56,10 @@ def main():
 
         with st.sidebar.form("更新案例"):
             # choose page start number and end number
-            start_num = st.number_input("起始页", value=1, min_value=1, max_value=5)
+            start_num = st.number_input("起始页", value=1, min_value=1)
             # convert to int
             start_num = int(start_num)
-            end_num = st.number_input(
-                "结束页", value=start_num, min_value=start_num, max_value=10
-            )
+            end_num = st.number_input("结束页", value=1)
             # convert to int
             end_num = int(end_num)
             # button to scrapy web
@@ -115,7 +113,7 @@ def main():
             start_num = st.number_input("起始页", value=1, min_value=1)
             # convert to int
             start_num = int(start_num)
-            end_num = st.number_input("结束页", value=start_num, min_value=start_num)
+            end_num = st.number_input("结束页", value=1)
             # convert to int
             end_num = int(end_num)
             # button to scrapy web
@@ -146,7 +144,7 @@ def main():
 
         # get csrc detail
         df = get_csrcdetail()
-         # get length of old eventdf
+        # get length of old eventdf
         oldlen1 = len(df)
         # get min and max date of old eventdf
         min_date = df["发文日期"].min()
@@ -154,8 +152,8 @@ def main():
         # use metric
         st.sidebar.write("案例总数", oldlen1)
         st.sidebar.write("最晚发文日期", max_date)
-        st.sidebar.write("最早发文日期",min_date)
-       # calculate the date five years before max_date
+        st.sidebar.write("最早发文日期", min_date)
+        # calculate the date five years before max_date
         five_years_before_max_date = max_date - pd.Timedelta(days=365 * 5)
         # choose search type
         search_type = st.sidebar.radio("搜索类型", ["案情经过", "处罚依据", "处罚人员"])
@@ -351,8 +349,11 @@ def main():
             st.error("请先搜索")
             st.stop()
 
-        # display eventdetail
-        display_eventdetail(search_df)
+        if len(search_df) > 0:
+            # display eventdetail
+            display_eventdetail(search_df)
+        else: 
+            st.warning("没有搜索结果")
 
     elif choice == "案例搜索2":
         st.subheader("案例搜索2")
@@ -372,12 +373,12 @@ def main():
         # use metric
         st.sidebar.write("案例总数", oldlen2)
         st.sidebar.write("最晚发文日期", max_date2)
-        st.sidebar.write("最早发文日期",min_date2)
-        
+        st.sidebar.write("最早发文日期", min_date2)
+
         # get five years before max date
         five_years_before = max_date2 - pd.Timedelta(days=365 * 5)
         # choose search type
-        search_type = st.sidebar.radio("搜索类型", ["案情经过"])
+        search_type = st.sidebar.radio("搜索类型", ["案情经过",'案情分类'])
         if search_type == "案情经过":
             with st.form("案例搜索2"):
                 col1, col2 = st.columns(2)
@@ -427,8 +428,15 @@ def main():
             st.error("请先搜索")
             st.stop()
 
-        # display eventdetail
-        display_eventdetail2(search_df)
+        # st.write("案例总数", len(search_df))
+        if len(search_df) > 0:
+            # display eventdetail
+            display_eventdetail2(search_df)
+        else:
+            st.warning("没有搜索结果")
+
+
+
 
 
 if __name__ == "__main__":

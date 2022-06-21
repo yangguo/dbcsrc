@@ -12,7 +12,7 @@ from pyecharts.charts import Bar, Pie
 from streamlit_echarts import st_pyecharts
 
 from dbcsrc import get_csvdf, get_now
-from utils import df2aggrid
+from utils import df2aggrid,split_words
 
 pencsrc2 = "data/penalty/csrc2"
 
@@ -99,6 +99,14 @@ def searchcsrc2(df, filename, start_date, end_date, wenhao, case, org):
     col = ["名称", "发文日期", "文号", "内容", "链接", "机构"]
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
+    # split words
+    if filename!="":
+        filename=split_words(filename)
+    if wenhao!="":
+        wenhao=split_words(wenhao)
+    if case!="":
+        case=split_words(case)
+        
     searchdf = df[
         (df["名称"].str.contains(filename))
         & (df["发文日期"] >= start_date)
@@ -358,7 +366,7 @@ def display_search_df(searchdf):
                         df_org_count["机构"].tolist(), df_org_count["count"].tolist()
                     )
                 ],
-                radius=["30%", "75%"],
+                radius=["30%", "60%"],
                 # center=["35%", "50%"]
             )
             # set legend position
@@ -374,7 +382,7 @@ def display_search_df(searchdf):
             "click": "function(params) { console.log(params.name); return params.name }",
             # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
         }
-        orgname = st_pyecharts(pie, width=800, height=400, events=events)
+        orgname = st_pyecharts(pie, width=800, height=650, events=events)
         if orgname is not None:
             # filter searchdf by orgname
             searchdfnew = searchdf[searchdf["机构"] == orgname]
