@@ -12,7 +12,7 @@ from pyecharts.charts import Bar, Pie
 from streamlit_echarts import st_pyecharts
 
 from dbcsrc import get_csvdf, get_now
-from utils import df2aggrid,split_words
+from utils import df2aggrid, split_words
 
 pencsrc2 = "data/penalty/csrc2"
 
@@ -77,8 +77,11 @@ def display_summary2():
     min_date2 = oldsum2["发文日期"].min()
     max_date2 = oldsum2["发文日期"].max()
     # use metric
-    st.metric("原案例总数", oldlen2)
-    st.metric("原案例日期范围", f"{min_date2} - {max_date2}")
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.metric("案例总数", oldlen2)
+    with col2:
+        st.metric("案例日期范围", f"{min_date2} - {max_date2}")
 
     # sum max,min date and size by org
     sumdf2 = oldsum2.groupby("机构")["发文日期"].agg(["max", "min", "count"]).reset_index()
@@ -100,13 +103,13 @@ def searchcsrc2(df, filename, start_date, end_date, wenhao, case, org):
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     # split words
-    if filename!="":
-        filename=split_words(filename)
-    if wenhao!="":
-        wenhao=split_words(wenhao)
-    if case!="":
-        case=split_words(case)
-        
+    if filename != "":
+        filename = split_words(filename)
+    if wenhao != "":
+        wenhao = split_words(wenhao)
+    if case != "":
+        case = split_words(case)
+
     searchdf = df[
         (df["名称"].str.contains(filename))
         & (df["发文日期"] >= start_date)
@@ -135,15 +138,19 @@ def display_eventdetail2(search_df):
     # get search result from session
     search_dfnew = st.session_state["search_result_csrc2"]
     total = len(search_dfnew)
-    st.sidebar.metric("总数:", total)
+    # st.sidebar.metric("总数:", total)
     # display search result
-    st.markdown("### 搜索结果")
+    st.markdown("### 搜索结果" + "(" + str(total) + "条)")
+    # add download button to left
+    st.download_button(
+        "下载搜索结果", data=search_dfnew.to_csv().encode("utf-8"), file_name="搜索结果.csv"
+    )
     # st.table(search_df)
     data = df2aggrid(search_dfnew)
     # display download button
-    st.sidebar.download_button(
-        "下载搜索结果", data=search_dfnew.to_csv().encode("utf-8"), file_name="搜索结果.csv"
-    )
+    # st.sidebar.download_button(
+    #     "下载搜索结果", data=search_dfnew.to_csv().encode("utf-8"), file_name="搜索结果.csv"
+    # )
     # display data
     selected_rows = data["selected_rows"]
     if selected_rows == []:
@@ -308,8 +315,9 @@ def display_search_df(searchdf):
     # st.plotly_chart(fig)
 
     # display checkbox to show/hide graph1
-    showgraph1 = st.sidebar.checkbox("按发文时间统计", key="showgraph1")
-
+    # showgraph1 = st.sidebar.checkbox("按发文时间统计", key="showgraph1")
+    # fix value of showgraph1
+    showgraph1 = True
     if showgraph1:
         x_data = df_month_count["month"].tolist()
         y_data = df_month_count["count"].tolist()
@@ -341,8 +349,9 @@ def display_search_df(searchdf):
             st.session_state["search_result_csrc2"] = searchdfnew
 
     # display checkbox to show/hide graph2
-    showgraph2 = st.sidebar.checkbox("按发文机构统计", key="showgraph2")
-
+    # showgraph2 = st.sidebar.checkbox("按发文机构统计", key="showgraph2")
+    # fix value of showgraph2
+    showgraph2 = True
     if showgraph2:
         # count by orgname
         df_org_count = df_month.groupby(["机构"]).size().reset_index(name="count")

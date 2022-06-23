@@ -1,3 +1,5 @@
+from dis import dis
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
@@ -5,10 +7,10 @@ import streamlit as st
 
 from dbcsrc import (  # count_by_month,; display_dfmonth,
     display_eventdetail,
+    display_summary,
     generate_lawdf,
     generate_peopledf,
     get_csrcdetail,
-    get_csrcsum,
     get_eventdetail,
     get_lawdetail,
     get_peopledetail,
@@ -34,25 +36,22 @@ st.set_page_config(page_title="案例分析", layout="wide")
 def main():
 
     menu = [
-        # '案例分析',
+        "案例总数",
         "案例搜索1",
         "案例搜索2",
         "案例更新1",
         "案例更新2",
     ]
     choice = st.sidebar.selectbox("选择", menu)
+    if choice == "案例总数":
+        st.subheader("典型案例总数")
+        display_summary()
+        st.subheader("完整案例总数")
+        display_summary2()
 
     if choice == "案例更新1":
         st.subheader("案例更新1")
-        oldsum = get_csrcsum()
-        # get length of old eventdf
-        oldlen = len(oldsum)
-        # get min and max date of old eventdf
-        min_date = oldsum["date1"].min()
-        max_date = oldsum["date1"].max()
-        # use metric
-        st.metric("原案例总数", oldlen)
-        st.metric("原案例日期范围", f"{min_date} - {max_date}")
+        display_summary()
 
         with st.sidebar.form("更新案例"):
             # choose page start number and end number
@@ -150,13 +149,14 @@ def main():
         min_date = df["发文日期"].min()
         max_date = df["发文日期"].max()
         # use metric
-        st.sidebar.write("案例总数", oldlen1)
-        st.sidebar.write("最晚发文日期", max_date)
-        st.sidebar.write("最早发文日期", min_date)
-        # calculate the date five years before max_date
-        five_years_before_max_date = max_date - pd.Timedelta(days=365 * 5)
+        # st.sidebar.write("案例总数", oldlen1)
+        # st.sidebar.write("最晚发文日期", max_date)
+        # st.sidebar.write("最早发文日期", min_date)
+        # calculate the date one year before max_date
+        one_year_before_max_date = max_date - pd.Timedelta(days=365)
         # choose search type
-        search_type = st.sidebar.radio("搜索类型", ["案情经过", "处罚依据", "处罚人员"])
+        # search_type = st.sidebar.radio("搜索类型", ["案情经过", "处罚依据", "处罚人员"])
+        search_type = "处罚人员"
         if search_type == "案情经过":
             # get type list
             type_list = df["文书类型"].unique()
@@ -167,7 +167,7 @@ def main():
                     # input filename keyword
                     filename_text = st.text_input("文件名")
                     # input date range
-                    start_date = st.date_input("开始日期", value=five_years_before_max_date)
+                    start_date = st.date_input("开始日期", value=one_year_before_max_date)
                     # input case keyword
                     case_text = st.text_input("案情经过")
 
@@ -220,7 +220,7 @@ def main():
                     # input filename keyword
                     filename_text = st.text_input("文件名")
                     # input date range
-                    start_date = st.date_input("开始日期", value=five_years_before_max_date)
+                    start_date = st.date_input("开始日期", value=one_year_before_max_date)
                     # get law
                     law_text = st.multiselect("法律法规", law_list)
                     # get type
@@ -282,7 +282,7 @@ def main():
                     # input filename keyword
                     filename_text = st.text_input("文件名")
                     # input date range
-                    start_date = st.date_input("开始日期", value=five_years_before_max_date)
+                    start_date = st.date_input("开始日期", value=one_year_before_max_date)
                     # get people name
                     people_name_text = st.text_input("当事人名称")
 
@@ -352,7 +352,7 @@ def main():
         if len(search_df) > 0:
             # display eventdetail
             display_eventdetail(search_df)
-        else: 
+        else:
             st.warning("没有搜索结果")
 
     elif choice == "案例搜索2":
@@ -371,20 +371,21 @@ def main():
         min_date2 = df["发文日期"].min()
         max_date2 = df["发文日期"].max()
         # use metric
-        st.sidebar.write("案例总数", oldlen2)
-        st.sidebar.write("最晚发文日期", max_date2)
-        st.sidebar.write("最早发文日期", min_date2)
+        # st.sidebar.write("案例总数", oldlen2)
+        # st.sidebar.write("最晚发文日期", max_date2)
+        # st.sidebar.write("最早发文日期", min_date2)
 
-        # get five years before max date
-        five_years_before = max_date2 - pd.Timedelta(days=365 * 5)
+        # get one year before max date
+        one_year_before = max_date2 - pd.Timedelta(days=365)
         # choose search type
-        search_type = st.sidebar.radio("搜索类型", ["案情经过",'案情分类'])
+        # search_type = st.sidebar.radio("搜索类型", ["案情经过",'案情分类'])
+        search_type = "案情经过"
         if search_type == "案情经过":
             with st.form("案例搜索2"):
                 col1, col2 = st.columns(2)
                 with col1:
                     # input date range
-                    start_date = st.date_input("开始日期", value=five_years_before)
+                    start_date = st.date_input("开始日期", value=one_year_before)
                     # input filename keyword
                     filename_text = st.text_input("名称")
                     # input case keyword
@@ -434,9 +435,6 @@ def main():
             display_eventdetail2(search_df)
         else:
             st.warning("没有搜索结果")
-
-
-
 
 
 if __name__ == "__main__":

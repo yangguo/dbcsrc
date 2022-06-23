@@ -15,10 +15,11 @@ from bs4 import BeautifulSoup
 from plotly.subplots import make_subplots
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Grid, Line
+from pyparsing import col
 from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
-from utils import df2aggrid, df2echartstable,split_words
+from utils import df2aggrid, df2echartstable, split_words
 
 pencsrc = "data/penalty/csrc"
 # mapfolder = 'data/temp/citygeo.csv'
@@ -326,8 +327,8 @@ def display_dfmonth(search_df):
     df_sum = sum_amount_by_month(selected_peopledetail)
 
     # display checkbox to show/hide graph1
-    showgraph1 = st.sidebar.checkbox("案例数量和金额统计", key="showgraph1")
-
+    # showgraph1 = st.sidebar.checkbox("案例数量和金额统计", key="showgraph1")
+    showgraph1 = True
     if showgraph1:
         # fig = go.Figure()
         # trace1 = go.Bar(x=df_month['month'], y=df_month['count'], name='数量统计')
@@ -395,8 +396,8 @@ def display_dfmonth(search_df):
     lawtype = lawtype.sort_values(by="数量统计", ascending=False)
 
     # display checkbox to show/hide graph1
-    showgraph2 = st.sidebar.checkbox("当事人身份统计", key="showgraph2")
-
+    # showgraph2 = st.sidebar.checkbox("当事人身份统计", key="showgraph2")
+    showgraph2 = True
     if showgraph2:
         # draw plotly bar chart
         # fig = go.Figure()
@@ -474,7 +475,8 @@ def display_dfmonth(search_df):
             # set session state
             st.session_state["search_result_csrc"] = subsearchdf
 
-    showgraph3 = st.sidebar.checkbox("违规类型统计", key="showgraph3")
+    # showgraph3 = st.sidebar.checkbox("违规类型统计", key="showgraph3")
+    showgraph3 = True
     if showgraph3:
         x_data2 = penaltytype["违规类型"].tolist()
         y_data2 = penaltytype["数量统计"].tolist()
@@ -516,7 +518,8 @@ def display_dfmonth(search_df):
             # set session state
             st.session_state["search_result_csrc"] = subsearchdf
 
-    showgraph4 = st.sidebar.checkbox("法律法规统计", key="showgraph4")
+    # showgraph4 = st.sidebar.checkbox("法律法规统计", key="showgraph4")
+    showgraph4 = True
     if showgraph4:
         x_data3 = lawtype["法律法规"].tolist()
         y_data3 = lawtype["数量统计"].tolist()
@@ -739,15 +742,15 @@ def display_eventdetail(search_df):
     # get search result from session
     search_dfnew = st.session_state["search_result_csrc"]
     total = len(search_dfnew)
-    st.sidebar.metric("总数:", total)
+    # st.sidebar.metric("总数:", total)
     # display search result
-    st.markdown("### 搜索结果")
-    # st.table(search_df)
-    data = df2aggrid(search_dfnew)
+    st.markdown("### 搜索结果" + "(" + str(total) + "条)")
     # display download button
-    st.sidebar.download_button(
+    st.download_button(
         "下载搜索结果", data=search_df.to_csv().encode("utf-8"), file_name="搜索结果.csv"
     )
+    # st.table(search_df)
+    data = df2aggrid(search_dfnew)
     # display data
     selected_rows = data["selected_rows"]
     if selected_rows == []:
@@ -823,3 +826,19 @@ def display_eventdetail(search_df):
     # get event detail
     # eventdtl_data=selected_rows_eventdetail[['案情经过']]
     # df2echartstable(eventdtl_data,'案情经过')
+
+
+# summary of csrc
+def display_summary():
+    oldsum = get_csrcsum()
+    # get length of old eventdf
+    oldlen = len(oldsum)
+    # get min and max date of old eventdf
+    min_date = oldsum["date1"].min()
+    max_date = oldsum["date1"].max()
+    # use metric
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.metric("案例总数", oldlen)
+    with col2:
+        st.metric("案例日期范围", f"{min_date} - {max_date}")
