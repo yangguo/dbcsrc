@@ -735,22 +735,30 @@ def get_eventdetail(eventsum):
 
 # display event detail
 def display_eventdetail(search_df):
-    # count by month
-    # df_month = count_by_month(search_df)
+    # get event detail
+    eventdf = get_csrcdetail()
     # draw plotly figure
     display_dfmonth(search_df)
     # get search result from session
     search_dfnew = st.session_state["search_result_csrc"]
-    total = len(search_dfnew)
+    # get searchdf idls
+    idls = search_dfnew["id"].tolist()
+    # get downloaddf by idls
+    downloaddf = eventdf[eventdf["id"].isin(idls)]
+
+    total = len(downloaddf)
     # st.sidebar.metric("总数:", total)
     # display search result
     st.markdown("### 搜索结果" + "(" + str(total) + "条)")
     # display download button
     st.download_button(
-        "下载搜索结果", data=search_df.to_csv().encode("utf-8"), file_name="搜索结果.csv"
+        "下载搜索结果", data=downloaddf.to_csv().encode("utf-8"), file_name="搜索结果.csv"
     )
-    # st.table(search_df)
-    data = df2aggrid(search_dfnew)
+    # display columns
+    discols = ["发文日期", "文件名称", "发文单位", "id"]
+    # get display df
+    display_df = downloaddf[discols]
+    data = df2aggrid(display_df)
     # display data
     selected_rows = data["selected_rows"]
     if selected_rows == []:
@@ -811,8 +819,6 @@ def display_eventdetail(search_df):
         ["当事人类型", "当事人名称", "当事人身份", "违规类型", "处罚结果"]
     ]
     df2echartstable(people_data, "当事人信息")
-    # get event detail
-    eventdf = get_csrcdetail()
     # search event detail by selected_rows_id
     selected_rows_eventdetail = eventdf[eventdf["id"].isin(selected_rows_id)]
     # display event detail

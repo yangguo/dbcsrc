@@ -145,8 +145,12 @@ def display_eventdetail2(search_df):
     st.download_button(
         "下载搜索结果", data=search_dfnew.to_csv().encode("utf-8"), file_name="搜索结果.csv"
     )
+    # display columns
+    discols = ["发文日期", "名称", "机构", "链接"]
+    # get display df
+    display_df = search_dfnew[discols]
     # st.table(search_df)
-    data = df2aggrid(search_dfnew)
+    data = df2aggrid(display_df)
     # display download button
     # st.sidebar.download_button(
     #     "下载搜索结果", data=search_dfnew.to_csv().encode("utf-8"), file_name="搜索结果.csv"
@@ -156,17 +160,19 @@ def display_eventdetail2(search_df):
     if selected_rows == []:
         st.error("请先选择查看案例")
         st.stop()
-    # convert selected_rows to dataframe
-    selected_rows_df = pd.DataFrame(selected_rows)
-
+    # # convert selected_rows to dataframe
+    # selected_rows_df = pd.DataFrame(selected_rows)
+    # get url from selected_rows
+    url = selected_rows[0]["链接"]
+    selected_rows_df = search_dfnew[search_dfnew["链接"] == url]
     # display event detail
     st.write("案情经过")
-    # transpose
+    # transpose dataframe
     selected_rows_df = selected_rows_df.T
     # set column name
     selected_rows_df.columns = ["案情经过"]
     # display
-    st.table(selected_rows_df)
+    st.table(selected_rows_df.astype(str))
 
 
 # get sumeventdf in page number range
