@@ -1,8 +1,4 @@
-from dis import dis
-
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objs as go
 import streamlit as st
 
 from dbcsrc import (  # count_by_month,; display_dfmonth,
@@ -155,8 +151,8 @@ def main():
         # calculate the date one year before max_date
         one_year_before_max_date = max_date - pd.Timedelta(days=365)
         # choose search type
-        # search_type = st.sidebar.radio("搜索类型", ["案情经过", "处罚依据", "处罚人员"])
-        search_type = "处罚人员"
+        search_type = st.sidebar.radio("搜索类型", ["案情经过", "处罚依据", "处罚人员"])
+        # search_type = "处罚人员"
         if search_type == "案情经过":
             # get type list
             type_list = df["文书类型"].unique()
@@ -266,6 +262,10 @@ def main():
                 search_df = st.session_state["search_result_csrc"]
 
         elif search_type == "处罚人员":
+
+            # get csrc detail
+            csrcdf = get_csrcdetail()
+            # get people detail
             peopledf = get_peopledetail()
             # get people type list
             people_type_list = peopledf["当事人类型"].unique()
@@ -290,6 +290,8 @@ def main():
                     people_type_text = st.multiselect("当事人类型", people_type_list)
                     # get penalty result
                     penalty_result_text = st.text_input("处罚结果")
+                    # input case keyword
+                    case_text = st.text_input("案情经过")
                 with col2:
                     # input org keyword
                     org_text = st.text_input("发文单位")
@@ -299,7 +301,7 @@ def main():
                     # get penalty type
                     penalty_type_text = st.multiselect("违规类型", penalty_type_list)
                     # get type
-                    type_text = st.multiselect("处罚类型", type_list)
+                    type_text = st.multiselect("文书类型", type_list)
                 # search button
                 searchbutton = st.form_submit_button("搜索")
 
@@ -313,6 +315,7 @@ def main():
                     and penalty_type_text == []
                     and penalty_result_text == ""
                     and type_text == []
+                    and case_text == ""
                 ):
                     st.warning("请输入搜索条件")
                     # st.stop()
@@ -325,8 +328,19 @@ def main():
                 if type_text == []:
                     type_text = type_list
 
+                # search by filename, date, org, case, type
+                search_df1 = searchcsrc(
+                    csrcdf,
+                    filename_text,
+                    start_date,
+                    end_date,
+                    org_text,
+                    case_text,
+                    type_text,
+                )
+
                 # search by filename, start date,end date, org,people type, people name, people position, penalty type, penalty result, type
-                search_df = searchpeople(
+                search_df2 = searchpeople(
                     peopledf,
                     filename_text,
                     start_date,
@@ -339,6 +353,15 @@ def main():
                     penalty_result_text,
                     type_text,
                 )
+                # get idls of search_df1
+                idls1 = search_df1["id"].unique()
+                # get idls of search_df2
+                idls2 = search_df2["id"].unique()
+                # get intersection of idls1 and idls2
+                idls = list(set(idls1) & set(idls2))
+                # get search result from search_df1
+                search_df = search_df1[search_df1["id"].isin(idls)]
+
                 # set search result in session state
                 st.session_state["search_result_csrc"] = search_df
             else:

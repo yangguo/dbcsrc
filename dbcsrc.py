@@ -7,15 +7,11 @@ import time
 from ast import literal_eval
 
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objs as go
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
-from plotly.subplots import make_subplots
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Grid, Line
-from pyparsing import col
 from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
@@ -33,7 +29,7 @@ urldbase = (
 )
 
 
-# @st.cache
+@st.cache
 def get_csvdf(penfolder, beginwith):
     files2 = glob.glob(penfolder + "**/" + beginwith + "*.csv", recursive=True)
     dflist = []
@@ -50,7 +46,7 @@ def get_csvdf(penfolder, beginwith):
     return df
 
 
-# @st.cache(suppress_st_warning=True)
+@st.cache(allow_output_mutation=True)
 def get_csrcdetail():
     pendf = get_csvdf(pencsrc, "sdresult")
     # format date
@@ -60,7 +56,7 @@ def get_csrcdetail():
     return pendf
 
 
-# @st.cache(suppress_st_warning=True, allow_output_mutation=True)
+@st.cache(allow_output_mutation=True)
 def get_csrcsum():
     pendf = get_csvdf(pencsrc, "sumevent")
     # format date
@@ -72,20 +68,24 @@ def get_csrcsum():
 
 
 # get lawdetail
-# @st.cache(suppress_st_warning=True)
+@st.cache(allow_output_mutation=True)
 def get_lawdetail():
     lawdf = get_csvdf(pencsrc, "lawdf")
     # format date
     lawdf["发文日期"] = pd.to_datetime(lawdf["发文日期"]).dt.date
+    # fillna
+    lawdf = lawdf.fillna("")
     return lawdf
 
 
 # get peopledetail
-# @st.cache(suppress_st_warning=True)
+@st.cache(allow_output_mutation=True)
 def get_peopledetail():
     peopledf = get_csvdf(pencsrc, "peopledf")
     # format date
     peopledf["发文日期"] = pd.to_datetime(peopledf["发文日期"]).dt.date
+    # fillna
+    peopledf = peopledf.fillna("")
     return peopledf
 
 
@@ -296,17 +296,6 @@ def sum_amount_by_month(df):
     df["amt"] = df["amt"] * 10000
     df_month_sum = df.groupby(["month"])["amt"].sum().reset_index(name="sum")
     return df_month_sum
-
-
-def count_by_date(df):
-    df["发文日期"] = pd.to_datetime(df["发文日期"]).dt.date
-    df["发文日期"] = df["发文日期"].apply(lambda x: x.strftime("%Y-%m-%d"))
-    df1 = df.groupby("发文日期").count()
-    df1.reset_index(inplace=True)
-    df1.rename(columns={"文件名称": "count"}, inplace=True)
-    # draw plotly bar chart
-    fig = go.Figure(data=[go.Bar(x=df1["发文日期"], y=df1["count"])])
-    return fig
 
 
 # display searchdf in plotly
@@ -822,16 +811,23 @@ def display_eventdetail(search_df):
     # search event detail by selected_rows_id
     selected_rows_eventdetail = eventdf[eventdf["id"].isin(selected_rows_id)]
     # display event detail
-    # st.write('案情经过')
+    # st.dataframe(selected_rows_eventdetail)
     # st.table(selected_rows_eventdetail[['文件名称', '发文日期', '发文单位', '文书类型']])
     # get event detail
-    event_data = selected_rows_eventdetail[["文件名称", "发文日期", "发文单位", "文书类型"]]
-    df2echartstable(event_data, "案情经过")
+    event_data = selected_rows_eventdetail[
+        ["发文日期", "文件名称", "发文单位", "文书类型", "案情经过", "原文链接"]
+    ]
+    # display event detail
+    st.write("案情经过")
+    # transpose
+    event_data = event_data.T
+    # set column name
+    event_data.columns = ["案情内容"]
+    st.table(event_data.astype(str))
+    # df2echartstable(event_data, "案情经过")
+
     # transpose and display event detail
-    st.table(selected_rows_eventdetail[["案情经过"]])
-    # get event detail
-    # eventdtl_data=selected_rows_eventdetail[['案情经过']]
-    # df2echartstable(eventdtl_data,'案情经过')
+    # st.table(selected_rows_eventdetail[["案情经过"]])
 
 
 # summary of csrc

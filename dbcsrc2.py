@@ -57,7 +57,7 @@ org2id = {
 }
 
 
-# @st.cache(suppress_st_warning=True)
+@st.cache(allow_output_mutation=True)
 def get_csrc2detail():
     pendf = get_csvdf(pencsrc2, "csrcdtlall")
     # format date
