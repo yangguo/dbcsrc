@@ -143,7 +143,7 @@ def display_eventdetail2(search_df):
     st.markdown("### 搜索结果" + "(" + str(total) + "条)")
     # add download button to left
     st.download_button(
-        "下载搜索结果", data=search_dfnew.to_csv().encode("utf-8"), file_name="搜索结果.csv"
+        "下载搜索结果", data=search_dfnew.to_csv().encode("utf_8_sig"), file_name="搜索结果.csv"
     )
     # display columns
     discols = ["发文日期", "名称", "机构", "链接"]
@@ -359,6 +359,35 @@ def display_search_df(searchdf):
             # set session state
             st.session_state["search_result_csrc2"] = searchdfnew
 
+        #图一解析开始
+        maxmonth = df_month["month"].max()
+        minmonth = df_month["month"].min()
+        # get total number of count
+        num_total = len(df_month["month"])
+        # get total number of month count
+        month_total = len(set(df_month["month"].tolist()))
+        # get average number of count per month count
+        num_avg = num_total / month_total
+        # get month value of max count
+        top1month =max(set(df_month["month"].tolist()), key=df_month["month"].tolist().count)
+        top1number=df_month["month"].tolist().count(top1month)
+        # display total coun
+        st.markdown(
+            "#####  图一解析：从"
+            + minmonth
+            + "至"
+            + maxmonth
+            + "，共发生"
+            + str(num_total)
+            +  "起处罚事件，"
+            + "平均每月发生"
+            + str(round(num_avg))
+            + "起处罚事件。其中"
+            + top1month
+            + "最高发生"
+            + str(top1number)
+            + "起处罚事件。"
+        )
     # display checkbox to show/hide graph2
     # showgraph2 = st.sidebar.checkbox("按发文机构统计", key="showgraph2")
     # fix value of showgraph2
@@ -408,3 +437,26 @@ def display_search_df(searchdf):
             searchdfnew = searchdf[searchdf["机构"] == orgname]
             # set session state
             st.session_state["search_result_csrc2"] = searchdfnew
+
+       #图二解析开始
+        orgenize = pd.value_counts(df_month["机构"]).keys().tolist()
+        count = pd.value_counts(df_month["机构"]).tolist()
+        result=''
+        for i in range(3):
+            try:
+                result=result+orgenize[i]+ "所（"+ str(count[i]) + "起）,"
+            except:
+                break
+
+        st.markdown(
+            "#####  图二解析："
+            + minmonth
+            + "至"
+            + maxmonth
+            + "，共"
+            + str(len(orgenize))
+            +  "家地区监管机构提出处罚意见，"
+            +  "排名前三的机构为："
+            + result[:len(result)-1].replace('总部所','总部')
+          
+        )
