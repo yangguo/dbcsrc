@@ -340,9 +340,7 @@ def display_dfmonth(search_df):
         line = (
             Line()
             .add_xaxis(x_data)
-            .add_yaxis(
-                "金额", sum_data,  label_opts=opts.LabelOpts(is_show=False)
-            )
+            .add_yaxis("金额", sum_data, label_opts=opts.LabelOpts(is_show=False))
             .set_global_opts(
                 title_opts=opts.TitleOpts(title="案例金额统计"),
                 # legend_opts=opts.LegendOpts(pos_top="48%"),
@@ -409,14 +407,14 @@ def display_dfmonth(search_df):
             # set session state
             st.session_state["search_result_csrc"] = searchdfnew
 
-        #图二解析：
-        sum_data_number=0#把案件金额的数组进行求和
-        more_than_100=0#把案件金额大于100的数量进行统计
-        num_total=len(sum_data)#把案件金额的数组进行求和
+        # 图二解析：
+        sum_data_number = 0  # 把案件金额的数组进行求和
+        more_than_100 = 0  # 把案件金额大于100的数量进行统计
+        num_total = len(sum_data)  # 把案件金额的数组进行求和
         for i in sum_data:
-            sum_data_number=sum_data_number+i/10000
-            if i>100*10000:
-                more_than_100=more_than_100+1
+            sum_data_number = sum_data_number + i / 10000
+            if i > 100 * 10000:
+                more_than_100 = more_than_100 + 1
         # sum_data_number=round(sum_data_number,2)
         # get index of max sum
         topsum1 = df_sum["sum"].nlargest(1)
@@ -429,17 +427,19 @@ def display_dfmonth(search_df):
             + "至"
             + maxmonth
             + "期间共涉及处罚金额"
-            + str(round(sum_data_number,2))
+            + str(round(sum_data_number, 2))
             + "万元，处罚事件平均处罚金额为"
-            + str(round(sum_data_number/num_total,2))
+            + str(round(sum_data_number / num_total, 2))
             + "万元，其中处罚金额高于100万元处罚事件共"
             + str(more_than_100)
             + "起。"
             + topsum1month
             + "发生最高处罚金额"
-            + str(round(topsum1.values[0]/10000,2))
+            + str(round(topsum1.values[0] / 10000, 2))
             + "万元。"
         )
+    # replace blank value for column 当事人身份
+    selected_peopledetail["当事人身份"].replace("", "未知", inplace=True)
 
     # people type count
     peopletype = (
@@ -540,22 +540,25 @@ def display_dfmonth(search_df):
             # set session state
             st.session_state["search_result_csrc"] = subsearchdf
 
-        #图三解析开始：
-        dict={'当事人身份':x_data1,'数量统计':y_data1}
-        peopletype_count=pd.DataFrame(dict)#把人员类型的数量进行统计
+        # 图三解析开始：
+        dict = {"当事人身份": x_data1, "数量统计": y_data1}
+        peopletype_count = pd.DataFrame(dict)  # 把人员类型的数量进行统计
         # peopletype_count.columns = ['当事人身份','数量统计']
-        #pandas数据排序
-        peopletype_count=peopletype_count.sort_values("数量统计",ascending=False)
-        result=''
+        # pandas数据排序
+        peopletype_count = peopletype_count.sort_values("数量统计", ascending=False)
+        result = ""
         for i in range(5):
             try:
-                result=result+str(peopletype_count.iloc[i,0])+ "("+str(peopletype_count.iloc[i,1])+"起),"
+                result = (
+                    result
+                    + str(peopletype_count.iloc[i, 0])
+                    + "("
+                    + str(peopletype_count.iloc[i, 1])
+                    + "起),"
+                )
             except:
                 break
-        st.markdown(
-            "##### 图三解析：处罚事件中，各当事人身份中被处罚数量排名前五分别为:"
-            + result
-        )
+        st.markdown("##### 图三解析：处罚事件中，各当事人身份中被处罚数量排名前五分别为:" + result)
     # showgraph3 = st.sidebar.checkbox("违规类型统计", key="showgraph3")
     showgraph3 = True
     if showgraph3:
@@ -599,20 +602,23 @@ def display_dfmonth(search_df):
             # set session state
             st.session_state["search_result_csrc"] = subsearchdf
 
-        #图四解析开始
-        penaltytype_count=penaltytype[['违规类型','数量统计']]#把违规类型的数量进行统计
-        #pandas数据排序
-        penaltytype_count=penaltytype_count.sort_values("数量统计",ascending=False)
-        result=''
+        # 图四解析开始
+        penaltytype_count = penaltytype[["违规类型", "数量统计"]]  # 把违规类型的数量进行统计
+        # pandas数据排序
+        penaltytype_count = penaltytype_count.sort_values("数量统计", ascending=False)
+        result = ""
         for i in range(5):
             try:
-                result=result+str(penaltytype_count.iloc[i,0])+ "("+str(penaltytype_count.iloc[i,1])+"起),"
+                result = (
+                    result
+                    + str(penaltytype_count.iloc[i, 0])
+                    + "("
+                    + str(penaltytype_count.iloc[i, 1])
+                    + "起),"
+                )
             except:
                 break
-        st.markdown(
-            "##### 图四解析：处罚事件中，各违规类型中处罚数量排名前五分别为:"
-            + result[:len(result)-1]
-        )
+        st.markdown("##### 图四解析：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result[: len(result) - 1])
 
     # showgraph4 = st.sidebar.checkbox("法律法规统计", key="showgraph4")
     showgraph4 = True
@@ -645,38 +651,53 @@ def display_dfmonth(search_df):
             # set session state
             st.session_state["search_result_csrc"] = subsearchdf
 
-        #图五解析开始
-        lawtype_count=lawtype[['法律法规','数量统计']]#把法律法规的数量进行统计
-        #pandas数据排序
-        lawtype_count=lawtype_count.sort_values("数量统计",ascending=False)
-        result=''
+        # 图五解析开始
+        lawtype_count = lawtype[["法律法规", "数量统计"]]  # 把法律法规的数量进行统计
+        # pandas数据排序
+        lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
+        result = ""
         for i in range(5):
             try:
-                result=result+str(lawtype_count.iloc[i,0])+ "("+str(lawtype_count.iloc[i,1])+"起),"
+                result = (
+                    result
+                    + str(lawtype_count.iloc[i, 0])
+                    + "("
+                    + str(lawtype_count.iloc[i, 1])
+                    + "起),"
+                )
             except:
                 break
         st.markdown(
             "##### 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
-            + result[:len(result)-1]
+            + result[: len(result) - 1]
         )
-        #by具体条文
-        lawdf["数量统计"] = ""
-        new_lawtype=lawdf.groupby(['法律法规','条文'])['id'].nunique().reset_index(name="数量统计")
+        # by具体条文
+        # lawdf["数量统计"] = ""
+        new_lawtype = (
+            selected_lawdetail.groupby(["法律法规", "条文"])["id"]
+            .nunique()
+            .reset_index(name="数量统计")
+        )
         # new_lawtype=lawdf.groupby(['法律法规','条文'])#%%%
-        new_lawtype['法律法规明细']=new_lawtype['法律法规']+'('+new_lawtype['条文']+')'
-  
-        lawtype_count=new_lawtype[['法律法规明细','数量统计']]#把法律法规的数量进行统计
-        #pandas数据排序
-        lawtype_count=lawtype_count.sort_values("数量统计",ascending=False)
-        result=''
+        new_lawtype["法律法规明细"] = new_lawtype["法律法规"] + "(" + new_lawtype["条文"] + ")"
+
+        lawtype_count = new_lawtype[["法律法规明细", "数量统计"]]  # 把法律法规的数量进行统计
+        # pandas数据排序
+        lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
+        result = ""
         for i in range(5):
             try:
-                result=result+str(lawtype_count.iloc[i,0])+ "("+str(lawtype_count.iloc[i,1])+"起),"
+                result = (
+                    result
+                    + str(lawtype_count.iloc[i, 0])
+                    + "("
+                    + str(lawtype_count.iloc[i, 1])
+                    + "起),"
+                )
             except:
                 break
         st.markdown(
-            "##### 法律法规统计-具体条文维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
-            + result[:len(result)-1]
+            "##### 法律法规统计-具体条文维度：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result[: len(result) - 1]
         )
 
 
