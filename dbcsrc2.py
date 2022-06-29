@@ -149,6 +149,9 @@ def display_eventdetail2(search_df):
     discols = ["发文日期", "名称", "机构", "链接"]
     # get display df
     display_df = search_dfnew[discols]
+    # update columns name
+    display_df.columns = ["发文日期", "发文名称", "发文机构", "链接"]
+
     # st.table(search_df)
     data = df2aggrid(display_df)
     # display download button
@@ -167,10 +170,12 @@ def display_eventdetail2(search_df):
     selected_rows_df = search_dfnew[search_dfnew["链接"] == url]
     # display event detail
     st.write("案情经过")
+    # update columns name
+    selected_rows_df.columns = ["发文名称", "发文日期", "文号", "内容", "链接", "发文机构"]
     # transpose dataframe
     selected_rows_df = selected_rows_df.T
     # set column name
-    selected_rows_df.columns = ["案情经过"]
+    selected_rows_df.columns = ["案情内容"]
     # display
     st.table(selected_rows_df.astype(str))
 

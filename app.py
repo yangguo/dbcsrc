@@ -161,7 +161,7 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     # input filename keyword
-                    filename_text = st.text_input("文件名")
+                    filename_text = st.text_input("发文名称")
                     # input date range
                     start_date = st.date_input("开始日期", value=one_year_before_max_date)
                     # input case keyword
@@ -214,7 +214,7 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     # input filename keyword
-                    filename_text = st.text_input("文件名")
+                    filename_text = st.text_input("发文名称")
                     # input date range
                     start_date = st.date_input("开始日期", value=one_year_before_max_date)
                     # get law
@@ -280,7 +280,7 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     # input filename keyword
-                    filename_text = st.text_input("文件名")
+                    filename_text = st.text_input("发文名称")
                     # input date range
                     start_date = st.date_input("开始日期", value=one_year_before_max_date)
                     # get people name
@@ -294,7 +294,7 @@ def main():
                     case_text = st.text_input("案情经过")
                 with col2:
                     # input org keyword
-                    org_text = st.text_input("发文单位")
+                    org_text = st.text_input("发文机构")
                     end_date = st.date_input("结束日期", value=max_date)
                     # get people position
                     people_position_text = st.multiselect("当事人身份", people_position_list)
@@ -410,7 +410,7 @@ def main():
                     # input date range
                     start_date = st.date_input("开始日期", value=one_year_before)
                     # input filename keyword
-                    filename_text = st.text_input("名称")
+                    filename_text = st.text_input("发文名称")
                     # input case keyword
                     case_text = st.text_input("案件关键词")
                 with col2:
@@ -418,7 +418,7 @@ def main():
                     # input wenhao keyword
                     wenhao_text = st.text_input("文号")
                     # input org keyword from org list
-                    org_text = st.multiselect("发文单位", org_list)
+                    org_text = st.multiselect("发文机构", org_list)
                     if org_text == []:
                         org_text = org_list
                 # search button

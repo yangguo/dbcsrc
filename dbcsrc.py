@@ -538,6 +538,42 @@ def display_dfmonth(search_df):
             # set session state
             st.session_state["search_result_csrc"] = subsearchdf
 
+    # display summary
+    st.markdown("### 查询结果摘要")
+    # get max_period
+    maxmonth = df_month["month"].max()
+    minmonth = df_month["month"].min()
+    # get total number of count
+    num_total = df_month["count"].sum()
+    # get total number of month count
+    month_total = df_month["month"].count()
+    # get average number of count per month count
+    num_avg = num_total / month_total
+    # format num_avg to int
+    num_avg = int(num_avg)
+    # get index of max count
+    top1 = df_month["count"].nlargest(1)
+    top1_index = df_month["count"].idxmax()
+    # get month value of max count
+    top1month = df_month.loc[top1_index, "month"]
+    # display total coun
+    st.markdown(
+        "#### 从"
+        + minmonth
+        + "至"
+        + maxmonth
+        + "，共发生"
+        + str(num_total)
+        + "起处罚事件，"
+        + "平均每月发生"
+        + str(num_avg)
+        + "起处罚事件。其中"
+        + top1month
+        + "最高发生"
+        + str(top1.values[0])
+        + "起处罚事件。"
+    )
+
 
 def json2df(site_json):
     idls = []
