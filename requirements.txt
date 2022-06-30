@@ -3,3 +3,4 @@ pandas
 beautifulsoup4
 # textrank4zh
 streamlit-aggrid
+streamlit-echarts
