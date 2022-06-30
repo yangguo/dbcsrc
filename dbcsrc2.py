@@ -1,8 +1,11 @@
 import json
 import os
 import random
+import re
 import time
+from ast import literal_eval
 
+import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
@@ -11,6 +14,7 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Pie
 from streamlit_echarts import st_pyecharts
 
+from checkrule import get_lawdtlbyid, get_rulelist_byname
 from dbcsrc import get_csvdf, get_now
 from utils import df2aggrid, split_words
 
@@ -57,7 +61,7 @@ org2id = {
 }
 
 
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def get_csrc2detail():
     pendf = get_csvdf(pencsrc2, "csrcdtlall")
     # format date
@@ -65,6 +69,53 @@ def get_csrc2detail():
     # fillna
     pendf = pendf.fillna("")
     return pendf
+
+
+def get_lawdetail2():
+    lawdf = get_csvdf(pencsrc2, "csrc2lawdf")
+    # format date
+    # lawdf["发文日期"] = pd.to_datetime(lawdf["发文日期"]).dt.date
+    # format lawls
+    lawdf["处理依据"] = lawdf["处理依据"].apply(literal_eval)
+    # fillna
+    lawdf = lawdf.fillna("")
+    return lawdf
+
+
+def lawls2dict(ls):
+    try:
+        result = []
+        for item in ls:
+            lawdict = dict()
+            lawls = re.findall(r"《(.*?)》", item)
+            #         print(lawls)
+            artls = re.findall(r"(第[^《》（）]*?条)", item)
+            #         print(artls)
+            lawdict["法律法规"] = lawls[0]
+            lawdict["条文"] = artls
+            result.append(lawdict)
+        return result
+    except Exception as e:
+        print(e)
+        return np.nan
+
+
+# convert eventdf to lawdf
+def generate_lawdf2(d1):
+    d1["doc1"] = d1["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "")
+    compat = "(?!《).(《[^,，；。]*?》[^；。]*?第[^,，；。《]*条)"
+    compat2 = "(?!《).(《[^,，；。]*?》)"
+    d1["lawls"] = d1["doc1"].str.extractall(compat).groupby(level=0)[0].apply(list)
+
+    d1["lawls"].fillna(
+        d1["doc1"].str.extractall(compat2).groupby(level=0)[0].apply(list), inplace=True
+    )
+    d1["处理依据"] = d1["lawls"].apply(lawls2dict)
+    d2 = d1[d1["lawls"].notnull()][["链接", "处理依据"]]
+    # reset index
+    d2.reset_index(drop=True, inplace=True)
+    savedf2(d2, "csrc2lawdf")
+    return d2
 
 
 # summary of csrc2
@@ -167,6 +218,53 @@ def display_eventdetail2(search_df):
     # selected_rows_df = pd.DataFrame(selected_rows)
     # get url from selected_rows
     url = selected_rows[0]["链接"]
+    # get lawdetail
+    lawdf = get_lawdetail2()
+
+    # search lawdetail by selected_rows_id
+    selected_rows_lawdetail = lawdf[lawdf["链接"] == url]
+
+    if len(selected_rows_lawdetail) > 0:
+
+        # display lawdetail
+        st.write("处罚依据")
+        lawdata = pd.DataFrame(selected_rows_lawdetail["处理依据"].values[0])
+        lawdata = lawdata.explode("条文")
+        # display lawdata
+        # st.write(lawdata)
+
+        lawdtl = df2aggrid(lawdata)
+        selected_law = lawdtl["selected_rows"]
+        if selected_law == []:
+            st.error("请先选择查看监管条文")
+        else:
+            # get selected_law's rule name
+            selected_law_name = selected_law[0]["法律法规"]
+            # get selected_law's rule article
+            selected_law_article = selected_law[0]["条文"]
+            # get selected_law's rule df
+            # name_text=selected_law_name
+            # industry_choice='证券市场'
+            # ruledf, choicels = searchByName(name_text, industry_choice)
+            # # search lawdetail by article
+            # articledf=ruledf[ruledf['结构'].str.contains(selected_law_article)]
+            # get law detail by name
+            ruledf = get_rulelist_byname(selected_law_name, "", "", "", "")
+            # get law ids
+            ids = ruledf["lawid"].tolist()
+            # get law detail by id
+            metadf, dtldf = get_lawdtlbyid(ids)
+            # display law meta
+            st.write("监管法规")
+            st.table(metadf)
+            # get law detail by article
+            articledf = dtldf[dtldf["标题"].str.contains(selected_law_article)]
+            # display law detail
+            st.write("监管条文")
+            st.table(articledf)
+    else:
+        st.write("没有相关监管法规")
+
     selected_rows_df = search_dfnew[search_dfnew["链接"] == url]
     # display event detail
     st.write("案情经过")
@@ -359,7 +457,7 @@ def display_search_df(searchdf):
             # set session state
             st.session_state["search_result_csrc2"] = searchdfnew
 
-        #图一解析开始
+        # 图一解析开始
         maxmonth = df_month["month"].max()
         minmonth = df_month["month"].min()
         # get total number of count
@@ -369,8 +467,10 @@ def display_search_df(searchdf):
         # get average number of count per month count
         num_avg = num_total / month_total
         # get month value of max count
-        top1month =max(set(df_month["month"].tolist()), key=df_month["month"].tolist().count)
-        top1number=df_month["month"].tolist().count(top1month)
+        top1month = max(
+            set(df_month["month"].tolist()), key=df_month["month"].tolist().count
+        )
+        top1number = df_month["month"].tolist().count(top1month)
         # display total coun
         st.markdown(
             "#####  图一解析：从"
@@ -379,7 +479,7 @@ def display_search_df(searchdf):
             + maxmonth
             + "，共发生"
             + str(num_total)
-            +  "起处罚事件，"
+            + "起处罚事件，"
             + "平均每月发生"
             + str(round(num_avg))
             + "起处罚事件。其中"
@@ -438,14 +538,15 @@ def display_search_df(searchdf):
             # set session state
             st.session_state["search_result_csrc2"] = searchdfnew
 
-       #图二解析开始
+        # 图二解析开始
         orgenize = pd.value_counts(df_month["机构"]).keys().tolist()
         count = pd.value_counts(df_month["机构"]).tolist()
-        result=''
+        result = ""
         for i in range(3):
             try:
-                result=result+orgenize[i]+ "所（"+ str(count[i]) + "起）,"
-            except:
+                result = result + orgenize[i] + "所（" + str(count[i]) + "起）,"
+            except Exception as e:
+                print(e)
                 break
 
         st.markdown(
@@ -455,8 +556,7 @@ def display_search_df(searchdf):
             + maxmonth
             + "，共"
             + str(len(orgenize))
-            +  "家地区监管机构提出处罚意见，"
-            +  "排名前三的机构为："
-            + result[:len(result)-1].replace('总部所','总部')
-          
+            + "家地区监管机构提出处罚意见，"
+            + "排名前三的机构为："
+            + result[: len(result) - 1].replace("总部所", "总部")
         )

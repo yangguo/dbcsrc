@@ -29,7 +29,7 @@ urldbase = (
 )
 
 
-@st.cache
+# @st.cache(allow_output_mutation=True)
 def get_csvdf(penfolder, beginwith):
     files2 = glob.glob(penfolder + "**/" + beginwith + "*.csv", recursive=True)
     dflist = []
@@ -46,7 +46,7 @@ def get_csvdf(penfolder, beginwith):
     return df
 
 
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def get_csrcdetail():
     pendf = get_csvdf(pencsrc, "sdresult")
     # format date
@@ -56,7 +56,7 @@ def get_csrcdetail():
     return pendf
 
 
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def get_csrcsum():
     pendf = get_csvdf(pencsrc, "sumevent")
     # format date
@@ -68,7 +68,7 @@ def get_csrcsum():
 
 
 # get lawdetail
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def get_lawdetail():
     lawdf = get_csvdf(pencsrc, "lawdf")
     # format date
@@ -79,7 +79,7 @@ def get_lawdetail():
 
 
 # get peopledetail
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def get_peopledetail():
     peopledf = get_csvdf(pencsrc, "peopledf")
     # format date
@@ -295,7 +295,8 @@ def sum_amount_by_month(df):
     df["amt"] = df["amt"].astype(float)
     df["amt"] = df["amt"] * 10000
     df_month_sum = df.groupby(["month"])["amt"].sum().reset_index(name="sum")
-    return df_month_sum
+    df_sigle_penalty = df[["month", "amt"]]
+    return df_month_sum, df_sigle_penalty
 
 
 # display searchdf in plotly
@@ -313,7 +314,7 @@ def display_dfmonth(search_df):
     # get eventdf count by month
     df_month = count_by_month(search_df)
     # get eventdf sum amount by month
-    df_sum = sum_amount_by_month(selected_peopledetail)
+    df_sum, df_sigle_penalty = sum_amount_by_month(selected_peopledetail)
 
     # display checkbox to show/hide graph1
     # showgraph1 = st.sidebar.checkbox("案例数量和金额统计", key="showgraph1")
@@ -410,7 +411,16 @@ def display_dfmonth(search_df):
         # 图二解析：
         sum_data_number = 0  # 把案件金额的数组进行求和
         more_than_100 = 0  # 把案件金额大于100的数量进行统计
-        num_total = len(sum_data)  # 把案件金额的数组进行求和
+        case_total = 0  # 把案件的总数量进行统计
+
+        penaltycount = df_sigle_penalty["amt"].tolist()
+        for i in penaltycount:
+            sum_data_number = sum_data_number + i / 10000
+            if i > 100 * 10000:
+                more_than_100 = more_than_100 + 1
+            if i != 0:
+                case_total = case_total + 1
+
         for i in sum_data:
             sum_data_number = sum_data_number + i / 10000
             if i > 100 * 10000:
@@ -429,7 +439,7 @@ def display_dfmonth(search_df):
             + "期间共涉及处罚金额"
             + str(round(sum_data_number, 2))
             + "万元，处罚事件平均处罚金额为"
-            + str(round(sum_data_number / num_total, 2))
+            + str(round(sum_data_number / case_total, 2))
             + "万元，其中处罚金额高于100万元处罚事件共"
             + str(more_than_100)
             + "起。"

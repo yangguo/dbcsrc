@@ -19,6 +19,7 @@ from dbcsrc import (  # count_by_month,; display_dfmonth,
 from dbcsrc2 import (
     display_eventdetail2,
     display_summary2,
+    generate_lawdf2,
     get_csrc2detail,
     get_sumeventdf2,
     searchcsrc2,
@@ -103,7 +104,7 @@ def main():
 
         with st.sidebar.form("更新案例"):
             # choose org name
-            org_name = st.selectbox("选择机构", org_list)
+            org_name_ls = st.multiselect("选择机构", org_list)
             # choose page start number and end number
             start_num = st.number_input("起始页", value=1, min_value=1)
             # convert to int
@@ -115,16 +116,28 @@ def main():
             sumeventbutton = st.form_submit_button("更新案例")
 
         if sumeventbutton:
-            # get sumeventdf
-            sumeventdf2 = get_sumeventdf2(org_name, start_num, end_num)
-            # display sumeventdf
-            st.write(sumeventdf2[:50])
-            # update sumeventdf
-            newsum2 = update_sumeventdf2(sumeventdf2)
-            # get length of newsum
-            sumevent_len2 = len(newsum2)
-            # display sumeventdf
-            st.success(f"更新完成，共{sumevent_len2}条案例列表")
+            for org_name in org_name_ls:
+                # display org_name
+                st.markdown("### 更新" + org_name + "案例")
+                # get sumeventdf
+                sumeventdf2 = get_sumeventdf2(org_name, start_num, end_num)
+                # display sumeventdf
+                st.write(sumeventdf2[:50])
+                # update sumeventdf
+                newsum2 = update_sumeventdf2(sumeventdf2)
+                # get length of newsum
+                sumevent_len2 = len(newsum2)
+                # display sumeventdf
+                st.success(f"更新完成，共{sumevent_len2}条案例列表")
+
+        # convert eventdf to lawdf
+        lawdfconvert = st.sidebar.button("处罚依据分析")
+        if lawdfconvert:
+            eventdf = get_csrc2detail()
+            lawdf = generate_lawdf2(eventdf)
+            # savedf(lawdf,'lawdf')
+            st.success("处罚依据分析完成")
+            st.write(lawdf[:50])
 
         # button to refresh page
         refreshbutton = st.sidebar.button("刷新页面")
