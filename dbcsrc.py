@@ -930,43 +930,6 @@ def display_eventdetail(search_df):
 
     # get selected_rows_df's id
     selected_rows_id = selected_rows_df["id"].tolist()
-    # get lawdf
-    lawdf = get_lawdetail()
-    # search lawdetail by selected_rows_id
-    selected_rows_lawdetail = lawdf[lawdf["id"].isin(selected_rows_id)]
-    # display lawdetail
-    st.write("处罚依据")
-    # st.table(selected_rows_lawdetail[['法律法规', '条文']])
-    lawdata = selected_rows_lawdetail[["法律法规", "条文"]]
-    lawdtl = df2aggrid(lawdata)
-    selected_law = lawdtl["selected_rows"]
-    if selected_law == []:
-        st.error("请先选择查看监管条文")
-    else:
-        # get selected_law's rule name
-        selected_law_name = selected_law[0]["法律法规"]
-        # get selected_law's rule article
-        selected_law_article = selected_law[0]["条文"]
-        # get selected_law's rule df
-        # name_text=selected_law_name
-        # industry_choice='证券市场'
-        # ruledf, choicels = searchByName(name_text, industry_choice)
-        # # search lawdetail by article
-        # articledf=ruledf[ruledf['结构'].str.contains(selected_law_article)]
-        # get law detail by name
-        ruledf = get_rulelist_byname(selected_law_name, "", "", "", "")
-        # get law ids
-        ids = ruledf["lawid"].tolist()
-        # get law detail by id
-        metadf, dtldf = get_lawdtlbyid(ids)
-        # display law meta
-        st.write("监管法规")
-        st.table(metadf)
-        # get law detail by article
-        articledf = dtldf[dtldf["标题"].str.contains(selected_law_article)]
-        # display law detail
-        st.write("监管条文")
-        st.table(articledf)
     # get people detail
     peopledf = get_peopledetail()
     # search people detail by selected_rows_id
@@ -998,8 +961,37 @@ def display_eventdetail(search_df):
     st.table(event_data.astype(str))
     # df2echartstable(event_data, "案情经过")
 
-    # transpose and display event detail
-    # st.table(selected_rows_eventdetail[["案情经过"]])
+    # get lawdf
+    lawdf = get_lawdetail()
+    # search lawdetail by selected_rows_id
+    selected_rows_lawdetail = lawdf[lawdf["id"].isin(selected_rows_id)]
+    # display lawdetail
+    st.write("处罚依据")
+    # st.table(selected_rows_lawdetail[['法律法规', '条文']])
+    lawdata = selected_rows_lawdetail[["法律法规", "条文"]]
+    lawdtl = df2aggrid(lawdata)
+    selected_law = lawdtl["selected_rows"]
+    if selected_law == []:
+        st.error("请先选择查看监管条文")
+    else:
+        # get selected_law's rule name
+        selected_law_name = selected_law[0]["法律法规"]
+        # get selected_law's rule article
+        selected_law_article = selected_law[0]["条文"]
+        # get law detail by name
+        ruledf = get_rulelist_byname(selected_law_name, "", "", "", "")
+        # get law ids
+        ids = ruledf["lawid"].tolist()
+        # get law detail by id
+        metadf, dtldf = get_lawdtlbyid(ids)
+        # display law meta
+        st.write("监管法规")
+        st.table(metadf)
+        # get law detail by article
+        articledf = dtldf[dtldf["标题"].str.contains(selected_law_article)]
+        # display law detail
+        st.write("监管条文")
+        st.table(articledf)
 
 
 # summary of csrc

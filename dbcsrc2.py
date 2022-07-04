@@ -218,9 +218,21 @@ def display_eventdetail2(search_df):
     # selected_rows_df = pd.DataFrame(selected_rows)
     # get url from selected_rows
     url = selected_rows[0]["链接"]
+
+    selected_rows_df = search_dfnew[search_dfnew["链接"] == url]
+    # display event detail
+    st.write("案情经过")
+    # update columns name
+    selected_rows_df.columns = ["发文名称", "发文日期", "文号", "内容", "链接", "发文机构"]
+    # transpose dataframe
+    selected_rows_df = selected_rows_df.T
+    # set column name
+    selected_rows_df.columns = ["案情内容"]
+    # display
+    st.table(selected_rows_df.astype(str))
+
     # get lawdetail
     lawdf = get_lawdetail2()
-
     # search lawdetail by selected_rows_id
     selected_rows_lawdetail = lawdf[lawdf["链接"] == url]
 
@@ -242,12 +254,6 @@ def display_eventdetail2(search_df):
             selected_law_name = selected_law[0]["法律法规"]
             # get selected_law's rule article
             selected_law_article = selected_law[0]["条文"]
-            # get selected_law's rule df
-            # name_text=selected_law_name
-            # industry_choice='证券市场'
-            # ruledf, choicels = searchByName(name_text, industry_choice)
-            # # search lawdetail by article
-            # articledf=ruledf[ruledf['结构'].str.contains(selected_law_article)]
             # get law detail by name
             ruledf = get_rulelist_byname(selected_law_name, "", "", "", "")
             # get law ids
@@ -264,18 +270,6 @@ def display_eventdetail2(search_df):
             st.table(articledf)
     else:
         st.write("没有相关监管法规")
-
-    selected_rows_df = search_dfnew[search_dfnew["链接"] == url]
-    # display event detail
-    st.write("案情经过")
-    # update columns name
-    selected_rows_df.columns = ["发文名称", "发文日期", "文号", "内容", "链接", "发文机构"]
-    # transpose dataframe
-    selected_rows_df = selected_rows_df.T
-    # set column name
-    selected_rows_df.columns = ["案情内容"]
-    # display
-    st.table(selected_rows_df.astype(str))
 
 
 # get sumeventdf in page number range

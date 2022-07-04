@@ -176,7 +176,9 @@ def main():
                     # input filename keyword
                     filename_text = st.text_input("发文名称")
                     # input date range
-                    start_date = st.date_input("开始日期", value=one_year_before_max_date)
+                    start_date = st.date_input(
+                        "开始日期", value=one_year_before_max_date, min_value=min_date
+                    )
                     # input case keyword
                     case_text = st.text_input("案情经过")
 
@@ -229,7 +231,9 @@ def main():
                     # input filename keyword
                     filename_text = st.text_input("发文名称")
                     # input date range
-                    start_date = st.date_input("开始日期", value=one_year_before_max_date)
+                    start_date = st.date_input(
+                        "开始日期", value=one_year_before_max_date, min_value=min_date
+                    )
                     # get law
                     law_text = st.multiselect("法律法规", law_list)
                     # get type
@@ -295,7 +299,9 @@ def main():
                     # input filename keyword
                     filename_text = st.text_input("发文名称")
                     # input date range
-                    start_date = st.date_input("开始日期", value=one_year_before_max_date)
+                    start_date = st.date_input(
+                        "开始日期", value=one_year_before_max_date, min_value=min_date
+                    )
                     # get people name
                     people_name_text = st.text_input("当事人名称")
 
@@ -421,7 +427,9 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     # input date range
-                    start_date = st.date_input("开始日期", value=one_year_before)
+                    start_date = st.date_input(
+                        "开始日期", value=one_year_before, min_value=min_date2
+                    )
                     # input filename keyword
                     filename_text = st.text_input("发文名称")
                     # input case keyword
