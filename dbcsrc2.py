@@ -1,9 +1,9 @@
+import glob
 import json
 import os
 import random
 import re
 import time
-from ast import literal_eval
 
 import numpy as np
 import pandas as pd
@@ -16,9 +16,11 @@ from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
 from dbcsrc import get_csvdf, get_now
+from doc2text import convert_uploadfiles
 from utils import df2aggrid, split_words
 
 pencsrc2 = "data/penalty/csrc2"
+tempdir = "data/penalty/csrc2/temp"
 
 # orgid map to orgname
 org2id = {
@@ -76,10 +78,44 @@ def get_lawdetail2():
     # format date
     # lawdf["发文日期"] = pd.to_datetime(lawdf["发文日期"]).dt.date
     # format lawls
-    lawdf["处理依据"] = lawdf["处理依据"].apply(literal_eval)
+    # lawdf["处理依据"] = lawdf["处理依据"].apply(literal_eval)
     # fillna
     lawdf = lawdf.fillna("")
     return lawdf
+
+
+def get_csrclenanalysis():
+    pendf = get_csvdf(tempdir, "csrclenanalysis")
+    if not pendf.empty:
+        # fillna
+        pendf = pendf.fillna("")[["名称", "链接", "内容", "len", "filename"]]
+    return pendf
+
+
+def get_csrcdownload():
+    pendf = get_csvdf(tempdir, "csrcmiscontent")
+    if not pendf.empty:
+        # fillna
+        pendf = pendf.fillna("")[["url", "filename", "text"]]
+    return pendf
+
+
+def get_csrc2textupdate():
+    pendf = get_csvdf(tempdir, "csrc2textupdate")
+    if not pendf.empty:
+        # fillna
+        pendf = pendf.fillna("")[["url", "filename", "text"]]
+    return pendf
+
+
+def get_csrc2analysis():
+    pendf = get_csvdf(pencsrc2, "csrc2analysis")
+    if not pendf.empty:
+        # format date
+        pendf["发文日期"] = pd.to_datetime(pendf["发文日期"]).dt.date
+        # fillna
+        pendf = pendf.fillna("")
+    return pendf
 
 
 def lawls2dict(ls):
@@ -89,15 +125,33 @@ def lawls2dict(ls):
             lawdict = dict()
             lawls = re.findall(r"《(.*?)》", item)
             #         print(lawls)
-            artls = re.findall(r"(第[^《》（）]*?条)", item)
+            artls = re.findall(r"(第[^《》、和款（）]*?条)", item)
             #         print(artls)
             lawdict["法律法规"] = lawls[0]
             lawdict["条文"] = artls
             result.append(lawdict)
         return result
     except Exception as e:
-        print(e)
+        st.error(str(e))
         return np.nan
+
+
+def fix_abb(x, abbdict):
+    result = []
+    for regdict in x:
+        newdict = dict()
+        old = regdict["法律法规"]
+        #         print(abbdict)
+        if old in abbdict.keys():
+            new = abbdict[old]
+        else:
+            new = old
+        #         print(old)
+        #         print(new)
+        newdict["法律法规"] = new
+        newdict["条文"] = regdict["条文"]
+        result.append(newdict)
+    return result
 
 
 # convert eventdf to lawdf
@@ -105,17 +159,40 @@ def generate_lawdf2(d1):
     d1["doc1"] = d1["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "")
     compat = "(?!《).(《[^,，；。]*?》[^；。]*?第[^,，；。《]*条)"
     compat2 = "(?!《).(《[^,，；。]*?》)"
-    d1["lawls"] = d1["doc1"].str.extractall(compat).groupby(level=0)[0].apply(list)
+    compat3 = "《([^,，；。]*?)》[^；。]*?简称《([^,，；。]*?)》"
 
+    # generate abbrevation dict
+    g1 = d1["doc1"].str.extractall(compat3).reset_index(level=1)
+    g1.columns = ["match", "f1", "f2"]
+    abb = (
+        g1.groupby(g1.index)
+        .apply(lambda x: dict(zip(x["f2"], x["f1"])))
+        .reset_index(name="abbdict")
+    )
+    abb.index = abb["index"]
+
+    d1["lawls"] = d1["doc1"].str.extractall(compat).groupby(level=0)[0].apply(list)
     d1["lawls"].fillna(
         d1["doc1"].str.extractall(compat2).groupby(level=0)[0].apply(list), inplace=True
     )
-    d1["处理依据"] = d1["lawls"].apply(lawls2dict)
-    d2 = d1[d1["lawls"].notnull()][["链接", "处理依据"]]
+    d1["处理依据"] = d1["lawls"].fillna("").apply(lawls2dict)
+
+    d11 = pd.merge(d1, abb, left_index=True, right_index=True, how="left")
+    d22 = d11[d11["lawls"].notnull()][["链接", "处理依据", "abbdict"]]
+    d22.loc[d22["abbdict"].notnull(), "fix"] = d22[d22["abbdict"].notnull()].apply(
+        lambda row: fix_abb(row["处理依据"], row["abbdict"]), axis=1
+    )
+    d22.loc[d22["abbdict"].notnull(), "处理依据"] = d22.loc[d22["abbdict"].notnull(), "fix"]
+
+    d2 = d22[["链接", "处理依据"]]
+    d3 = d2.explode("处理依据")
+    d4 = d3["处理依据"].apply(pd.Series)
+    d5 = pd.concat([d3, d4], axis=1)
+    d6 = d5.explode("条文")
     # reset index
-    d2.reset_index(drop=True, inplace=True)
-    savedf2(d2, "csrc2lawdf")
-    return d2
+    d6.reset_index(drop=True, inplace=True)
+    savedf2(d6, "csrc2lawdf")
+    return d6
 
 
 # summary of csrc2
@@ -240,11 +317,8 @@ def display_eventdetail2(search_df):
 
         # display lawdetail
         st.write("处罚依据")
-        lawdata = pd.DataFrame(selected_rows_lawdetail["处理依据"].values[0])
-        lawdata = lawdata.explode("条文")
+        lawdata = selected_rows_lawdetail[["法律法规", "条文"]]
         # display lawdata
-        # st.write(lawdata)
-
         lawdtl = df2aggrid(lawdata)
         selected_law = lawdtl["selected_rows"]
         if selected_law == []:
@@ -533,15 +607,12 @@ def display_search_df(searchdf):
             st.session_state["search_result_csrc2"] = searchdfnew
 
         # 图二解析开始
-        orgenize = pd.value_counts(df_month["机构"]).keys().tolist()
-        count = pd.value_counts(df_month["机构"]).tolist()
+        orgls = pd.value_counts(df_month["机构"]).keys().tolist()
+        countls = pd.value_counts(df_month["机构"]).tolist()
         result = ""
-        for i in range(3):
-            try:
-                result = result + orgenize[i] + "所（" + str(count[i]) + "起）,"
-            except Exception as e:
-                print(e)
-                break
+
+        for org, count in zip(orgls[:3], countls[:3]):
+            result = result + org + "所（" + str(count) + "起）,"
 
         st.markdown(
             "#####  图二解析："
@@ -549,8 +620,170 @@ def display_search_df(searchdf):
             + "至"
             + maxmonth
             + "，共"
-            + str(len(orgenize))
+            + str(len(orgls))
             + "家地区监管机构提出处罚意见，"
             + "排名前三的机构为："
             + result[: len(result) - 1].replace("总部所", "总部")
         )
+
+
+# content length analysis by length
+def content_length_analysis(length):
+    # eventdf = get_csrc2detail()
+    eventdf = get_csrc2analysis()
+    eventdf["内容"] = eventdf["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "")
+    eventdf["len"] = eventdf["内容"].astype(str).apply(len)
+    misdf = eventdf[eventdf["len"] <= length]
+    # get df by column name
+    misdf1 = misdf[["名称", "链接", "内容", "len", "filename"]]
+    # sort by len
+    misdf1 = misdf1.sort_values(by="len", ascending=False)
+    # reset index
+    misdf1.reset_index(drop=True, inplace=True)
+    # savename
+    savename = "csrclenanalysis"
+    # save misdf
+    savetemp(misdf1, savename)
+    return misdf1
+
+
+# download attachment
+def download_attachment():
+    # get csrclenanalysis df
+    lendf = get_csrclenanalysis()
+    # get misls from url
+    misls = lendf["链接"].tolist()
+
+    resultls = []
+    errorls = []
+    count = 0
+    for i, url in enumerate(misls):
+        st.info("id: " + str(i))
+        st.info(str(count) + "begin")
+        st.info("url:" + url)
+        try:
+            dd = requests.get(url, verify=False)
+            sd = BeautifulSoup(dd.content, "html.parser")
+            dirpath = url.rsplit("/", 1)[0]
+            try:
+                filepath = sd.find_all("div", id="files")[0].a["href"]
+                datapath = dirpath + "/" + filepath
+                st.info(datapath)
+                response = requests.get(datapath, stream=True)
+                savename = get_now() + os.path.basename(datapath)
+                filename = os.path.join(tempdir, savename)
+                with open(filename, "wb") as f:
+                    for chunk in response.iter_content(1024 * 1024 * 2):
+                        f.write(chunk)
+                text = ""
+            except Exception as e:
+                st.error(str(e))
+                savename = ""
+                text = sd.find_all("div", class_="detail-news")[0].text
+            datals = {"url": url, "filename": savename, "text": text}
+            df = pd.DataFrame(datals, index=[0])
+            resultls.append(df)
+        except Exception as e:
+            st.error("error!: " + str(e))
+            st.error("check url:" + url)
+            errorls.append(url)
+
+        mod = (count + 1) % 10
+        if mod == 0 and count > 0:
+            tempdf = pd.concat(resultls)
+            savename = "temp-" + str(count + 1)
+            savetemp(tempdf, savename)
+
+        wait = random.randint(2, 20)
+        time.sleep(wait)
+        st.info("finish: " + str(count))
+        count += 1
+
+    misdf = pd.concat(resultls)
+    savecsv = "csrcmiscontent"
+    # reset index
+    misdf.reset_index(drop=True, inplace=True)
+    savetemp(misdf, savecsv)
+    return misdf
+
+
+def savetemp(df, basename):
+    savename = basename + ".csv"
+    savepath = os.path.join(tempdir, savename)
+    df.to_csv(savepath)
+
+
+def remove_tempfiles():
+    path = os.path.join(tempdir, "**/*.*")
+    files = glob.glob(path, recursive=True)
+    for f in files:
+        try:
+            os.remove(f)
+        except OSError as e:
+            st.error("Error: %s : %s" % (f, e.strerror))
+
+
+def update_csrc2text():
+    downdf = get_csrcdownload()
+    # get filename ls
+    txtls = downdf["filename"].tolist()
+    resls = convert_uploadfiles(txtls, tempdir)
+    downdf["text"] = resls
+    savename = "csrc2textupdate"
+    savetemp(downdf, savename)
+    return downdf
+
+
+def combine_csrc2text():
+    olddf = get_csrc2analysis()
+    newdf = get_csrc2textupdate()
+    # update text column match with url
+    updf = pd.merge(olddf, newdf, left_on="链接", right_on="url", how="left")
+    updf.loc[updf["text"].notnull(), "内容"] = updf["text"]
+    updf.loc[updf["text"].notnull(), "filename_x"] = updf["filename_y"]
+    updf1 = updf[
+        ["名称", "文号", "发文日期", "序列号", "链接", "内容", "机构", "org", "cat", "filename_x"]
+    ]
+    updf1.columns = [
+        "名称",
+        "文号",
+        "发文日期",
+        "序列号",
+        "链接",
+        "内容",
+        "机构",
+        "org",
+        "cat",
+        "filename",
+    ]
+    updf1["内容"] = updf1["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "")
+    # reset index
+    updf1.reset_index(drop=True, inplace=True)
+    savename = "csrc2analysis"
+    savedf2(updf1, savename)
+
+
+# update sumeventdf
+def update_csrc2analysis():
+    newdf = get_csrc2detail()
+    newurlls = newdf["链接"].tolist()
+    olddf = get_csrc2analysis()
+    # if olddf is not empty
+    if olddf.empty:
+        oldurlls = []
+    else:
+        oldurlls = olddf["链接"].tolist()
+    # get new urlls not in oldidls
+    newidls = [x for x in newurlls if x not in oldurlls]
+
+    upddf = newdf[newdf["链接"].isin(newidls)]
+    # if newdf is not empty, save it
+    if upddf.empty is False:
+        updlen = len(upddf)
+        st.info("更新了" + str(updlen) + "条数据")
+        # combine with olddf
+        upddf1 = pd.concat([upddf, olddf])
+        # reset index
+        upddf1.reset_index(drop=True, inplace=True)
+        savename = "csrc2analysis"
+        savedf2(upddf1, savename)

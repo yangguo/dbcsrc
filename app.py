@@ -16,29 +16,35 @@ from dbcsrc import (  # count_by_month,; display_dfmonth,
     searchpeople,
     update_sumeventdf,
 )
-from dbcsrc2 import (
+from dbcsrc2 import (  # get_csrc2detail,
+    combine_csrc2text,
+    content_length_analysis,
     display_eventdetail2,
     display_summary2,
+    download_attachment,
     generate_lawdf2,
-    get_csrc2detail,
+    get_csrc2analysis,
+    get_csrc2textupdate,
+    get_csrcdownload,
+    get_csrclenanalysis,
     get_sumeventdf2,
+    remove_tempfiles,
     searchcsrc2,
+    update_csrc2analysis,
+    update_csrc2text,
     update_sumeventdf2,
 )
+from doc2text import docxconvertion
 
 # use wide layout
 st.set_page_config(page_title="案例分析", layout="wide")
 
+tempdir = "data/penalty/csrc2/temp"
+
 
 def main():
 
-    menu = [
-        "案例总数",
-        "案例搜索1",
-        "案例搜索2",
-        "案例更新1",
-        "案例更新2",
-    ]
+    menu = ["案例总数", "案例搜索1", "案例搜索2", "案例更新1", "案例更新2", "附件处理2"]
     choice = st.sidebar.selectbox("选择", menu)
     if choice == "案例总数":
         st.subheader("典型案例总数")
@@ -130,19 +136,95 @@ def main():
                 # display sumeventdf
                 st.success(f"更新完成，共{sumevent_len2}条案例列表")
 
+        # button to refresh page
+        refreshbutton = st.sidebar.button("刷新页面")
+        if refreshbutton:
+            st.experimental_rerun()
+
+        # refresh data button
+        refreshbutton = st.sidebar.button("刷新数据")
+        if refreshbutton:
+            update_csrc2analysis()
+            st.success("数据更新完成")
+
         # convert eventdf to lawdf
         lawdfconvert = st.sidebar.button("处罚依据分析")
         if lawdfconvert:
-            eventdf = get_csrc2detail()
+            # eventdf = get_csrc2detail()
+            eventdf = get_csrc2analysis()
             lawdf = generate_lawdf2(eventdf)
             # savedf(lawdf,'lawdf')
             st.success("处罚依据分析完成")
             st.write(lawdf[:50])
 
-        # button to refresh page
-        refreshbutton = st.sidebar.button("刷新页面")
-        if refreshbutton:
-            st.experimental_rerun()
+    elif choice == "附件处理2":
+
+        # analysis content length
+        content_len = st.sidebar.number_input("输入内容长度", value=10)
+        content_len_btn = st.sidebar.button("附件分析")
+
+        if content_len_btn:
+            misdf = content_length_analysis(content_len)
+            mislen = len(misdf)
+            st.success("附件分析完成" + str(mislen) + "条案例")
+            # st.write(misdf)
+
+        lendf = get_csrclenanalysis()
+        # if lendf is empty:
+        if lendf.empty:
+            st.error("先进行附件分析")
+        else:
+            st.markdown("#### 附件分析结果")
+            st.write(lendf)
+
+        # download attachment button
+        download_att_btn = st.sidebar.button("下载附件")
+        if download_att_btn:
+            downdf = download_attachment()
+            downlen = len(downdf)
+            st.success("下载附件完成" + str(downlen) + "条案例")
+            # st.write(downdf)
+
+        # button for convert
+        convert_button = st.sidebar.button("word格式转换")
+        if convert_button:
+            docxconvertion(tempdir)
+            st.success("word格式转换完成")
+
+        downdf = get_csrcdownload()
+        # if lendf is empty:
+        if downdf.empty:
+            st.error("先下载附件")
+        else:
+            st.markdown("#### 附件下载结果")
+            st.write(downdf)
+
+        # button for convert
+        convert_button = st.sidebar.button("文本抽取")
+        if convert_button:
+            txtupdf = update_csrc2text()
+            txtuplen = len(txtupdf)
+            st.success("文本抽取完成" + str(txtuplen) + "条案例")
+            # st.write(dfnew)
+
+        txtupdf = get_csrc2textupdate()
+        if txtupdf.empty:
+            st.error("先进行文本抽取")
+        else:
+            st.markdown("#### 文本抽取结果")
+            st.write(txtupdf)
+
+        # button for update text
+        update_text_button = st.sidebar.button("更新文本")
+        if update_text_button:
+            combine_csrc2text()
+            st.success("更新文本完成")
+
+        # remove attachment button
+        remove_attachment_btn = st.sidebar.button("删除附件")
+        if remove_attachment_btn:
+            remove_tempfiles()
+            st.success("删除附件完成")
 
     elif choice == "案例搜索1":
         st.subheader("案例搜索1")
@@ -404,7 +486,8 @@ def main():
             st.session_state["search_result_csrc2"] = None
 
         # get csrc2 detail
-        df = get_csrc2detail()
+        # df = get_csrc2detail()
+        df = get_csrc2analysis()
         # get org list
         org_list = df["机构"].unique()
         # get length of old eventdf

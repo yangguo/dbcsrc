@@ -4,3 +4,8 @@ beautifulsoup4
 # textrank4zh
 streamlit-aggrid
 streamlit-echarts
+paddleocr
+paddlepaddle
+pdfplumber
+python-docx
+pdf2image
