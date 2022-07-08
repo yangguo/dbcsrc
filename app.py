@@ -111,6 +111,9 @@ def main():
         with st.sidebar.form("更新案例"):
             # choose org name
             org_name_ls = st.multiselect("选择机构", org_list)
+            # if org name is blank list, then choose all
+            if org_name_ls == []:
+                org_name_ls = org_list
             # choose page start number and end number
             start_num = st.number_input("起始页", value=1, min_value=1)
             # convert to int
@@ -177,10 +180,19 @@ def main():
             st.markdown("#### 附件分析结果")
             st.write(lendf)
 
-        # download attachment button
-        download_att_btn = st.sidebar.button("下载附件")
+        with st.sidebar.form("下载附件"):
+            # choose up number and down number
+            up_num = st.number_input("起始位置", value=0, min_value=0)
+            # convert to int
+            up_num = int(up_num)
+            down_num = st.number_input("结束位置", value=1)
+            # convert to int
+            down_num = int(down_num)
+            # download attachment button
+            download_att_btn = st.form_submit_button("下载附件")
+
         if download_att_btn:
-            downdf = download_attachment()
+            downdf = download_attachment(up_num, down_num)
             downlen = len(downdf)
             st.success("下载附件完成" + str(downlen) + "条案例")
             # st.write(downdf)

@@ -60,6 +60,7 @@ org2id = {
     "江西": "d7cae17b8d824e768ec1f7e86fd7f36a",
     "重庆": "c28e1398b3054af694b769291a1c8952",
     "上海": "0dd09598f7f2470fb269732ec5b8ddc8",
+    "青海": "1747a405d9a6437e8688f25c48c6205a",
 }
 
 
@@ -648,16 +649,18 @@ def content_length_analysis(length):
 
 
 # download attachment
-def download_attachment():
+def download_attachment(up_num, down_num):
     # get csrclenanalysis df
     lendf = get_csrclenanalysis()
     # get misls from url
     misls = lendf["链接"].tolist()
+    # submisls by up_num and down_num
+    submisls = misls[up_num : down_num + 1]
 
     resultls = []
     errorls = []
     count = 0
-    for i, url in enumerate(misls):
+    for i, url in enumerate(submisls):
         st.info("id: " + str(i))
         st.info(str(count) + "begin")
         st.info("url:" + url)
