@@ -164,7 +164,7 @@ def lawls2dict(ls):
             lawdict = dict()
             lawls = re.findall(r"《(.*?)》", item)
             #         print(lawls)
-            artls = re.findall(r"(第[^《》、和款（）]*?条)", item)
+            artls = re.findall(r"(第[^《》、和章节款（）]*?条)", item)
             #         print(artls)
             lawdict["法律法规"] = lawls[0]
             lawdict["条文"] = artls
@@ -198,7 +198,7 @@ def generate_lawdf2(d1):
     d1["doc1"] = d1["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "")
     compat = "(?!《).(《[^,，；。]*?》[^；。]*?第[^,，；。《]*条)"
     compat2 = "(?!《).(《[^,，；。]*?》)"
-    compat3 = "《([^,，；。]*?)》[^；。]*?简称《([^,，；。]*?)》"
+    compat3 = "《([^,，；。]*?)》[^；。]*?简称.*?《([^,，；。]*?)》"
 
     # generate abbrevation dict
     g1 = d1["doc1"].str.extractall(compat3).reset_index(level=1)
