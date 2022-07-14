@@ -11,16 +11,18 @@ import requests
 import streamlit as st
 from bs4 import BeautifulSoup
 from pyecharts import options as opts
-from pyecharts.charts import Bar, Pie
+from pyecharts.charts import Map, Pie
+from streamlit_echarts import Map as st_Map
 from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
-from dbcsrc import get_csvdf, get_now
+from dbcsrc import get_csvdf, get_now, print_bar
 from doc2text import convert_uploadfiles
 from utils import df2aggrid, split_words
 
 pencsrc2 = "data/penalty/csrc2"
 tempdir = "data/penalty/csrc2/temp"
+mappath = "data/map/chinageo.json"
 
 # orgid map to orgname
 org2id = {
@@ -63,6 +65,42 @@ org2id = {
     "青海": "1747a405d9a6437e8688f25c48c6205a",
 }
 
+cityls = [
+    "北京市",
+    "天津市",
+    "河北省",
+    "山西省",
+    "内蒙古自治区",
+    "辽宁省",
+    "吉林省",
+    "黑龙江省",
+    "上海市",
+    "江苏省",
+    "浙江省",
+    "安徽省",
+    "福建省",
+    "江西省",
+    "山东省",
+    "河南省",
+    "湖北省",
+    "湖南省",
+    "广东省",
+    "广西壮族自治区",
+    "海南省",
+    "重庆市",
+    "四川省",
+    "贵州省",
+    "云南省",
+    "西藏自治区",
+    "陕西省",
+    "甘肃省",
+    "青海省",
+    "宁夏回族自治区",
+    "新疆维吾尔自治区",
+    "台湾省",
+    "香港特别行政区",
+    "澳门特别行政区",
+]
 
 # @st.cache(allow_output_mutation=True)
 def get_csrc2detail():
@@ -500,19 +538,23 @@ def display_search_df(searchdf):
         x_data = df_month_count["month"].tolist()
         y_data = df_month_count["count"].tolist()
         # draw echarts bar chart
-        bar = (
-            Bar()
-            .add_xaxis(xaxis_data=x_data)
-            .add_yaxis(series_name="数量", y_axis=y_data, yaxis_index=0)
-            .set_global_opts(title_opts=opts.TitleOpts(title="按发文时间统计"))
-        )
+        # bar = (
+        #     Bar()
+        #     .add_xaxis(xaxis_data=x_data)
+        #     .add_yaxis(series_name="数量", y_axis=y_data, yaxis_index=0)
+        #     .set_global_opts(
+        #         title_opts=opts.TitleOpts(title="按发文时间统计"),
+        #         visualmap_opts=opts.VisualMapOpts(max_=max(y_data), min_=min(y_data)),
+        #     )
+        # )
         # use events
-        events = {
-            "click": "function(params) { console.log(params.name); return params.name }",
-            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
-        }
+        # events = {
+        #     "click": "function(params) { console.log(params.name); return params.name }",
+        #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        # }
         # use events
-        yearmonth = st_pyecharts(bar, events=events)
+        # yearmonth = st_pyecharts(bar, events=events)
+        yearmonth = print_bar(x_data, y_data, "处罚数量", "按发文时间统计")
         # st.write(yearmonth)
         if yearmonth is not None:
             # get year and month value from format "%Y-%m"
@@ -574,33 +616,37 @@ def display_search_df(searchdf):
         #             title="按发文机构统计")))
         # st_pyecharts(bar)
         # draw echarts pie chart
-        pie = (
-            Pie()
-            .add(
-                "",
-                [
-                    list(z)
-                    for z in zip(
-                        df_org_count["机构"].tolist(), df_org_count["count"].tolist()
-                    )
-                ],
-                radius=["30%", "60%"],
-                # center=["35%", "50%"]
-            )
-            # set legend position
-            .set_global_opts(
-                title_opts=opts.TitleOpts(title="按发文机构统计")
-                # set legend position to down
-                ,
-                legend_opts=opts.LegendOpts(pos_bottom="bottom"),
-            )
-            .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
+        # pie = (
+        #     Pie()
+        #     .add(
+        #         "",
+        #         [
+        #             list(z)
+        #             for z in zip(
+        #                 df_org_count["机构"].tolist(), df_org_count["count"].tolist()
+        #             )
+        #         ],
+        #         radius=["30%", "60%"],
+        #         # center=["35%", "50%"]
+        #     )
+        #     # set legend position
+        #     .set_global_opts(
+        #         title_opts=opts.TitleOpts(title="按发文机构统计")
+        #         # set legend position to down
+        #         ,
+        #         legend_opts=opts.LegendOpts(pos_bottom="bottom"),
+        #         visualmap_opts=opts.VisualMapOpts(max_=max(df_org_count["count"])),
+        #     )
+        #     .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
+        # )
+        # events = {
+        #     "click": "function(params) { console.log(params.name); return params.name }",
+        #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        # }
+        # orgname = st_pyecharts(pie, width=800, height=650, events=events)
+        orgname = print_pie(
+            df_org_count["机构"].tolist(), df_org_count["count"].tolist(), "按发文机构统计"
         )
-        events = {
-            "click": "function(params) { console.log(params.name); return params.name }",
-            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
-        }
-        orgname = st_pyecharts(pie, width=800, height=650, events=events)
         if orgname is not None:
             # filter searchdf by orgname
             searchdfnew = searchdf[searchdf["机构"] == orgname]
@@ -626,6 +672,85 @@ def display_search_df(searchdf):
             + "排名前三的机构为："
             + result[: len(result) - 1].replace("总部所", "总部")
         )
+
+    org_ls = df_org_count["机构"].tolist()
+    org_ls1 = fix_cityname(org_ls, cityls)
+
+    showgraph3 = True
+    if showgraph3:
+        print_map(org_ls1, df_org_count["count"].tolist(), "处罚地图", "处罚数量")
+        # st_pyecharts(map_data, map=map, width=800, height=650)
+
+
+def fix_cityname(orgls, cityls):
+    result_ls = []
+    for org in orgls:
+        if org == "总部":
+            result_ls.append("北京市")
+        elif org == "深圳":
+            result_ls.append("广东省")
+        elif org == "大连":
+            result_ls.append("辽宁省")
+        elif org == "宁波":
+            result_ls.append("浙江省")
+        elif org == "厦门":
+            result_ls.append("福建省")
+        elif org == "青岛":
+            result_ls.append("山东省")
+        else:
+            res = [s for s in cityls if org in s]
+            result_ls.append(res[0])
+    return result_ls
+
+
+# print pie charts
+def print_pie(namels, valuels, title):
+    pie = (
+        Pie()
+        .add(
+            "",
+            [list(z) for z in zip(namels, valuels)],
+            radius=["30%", "60%"],
+            # center=["35%", "50%"]
+        )
+        # set legend position
+        .set_global_opts(
+            title_opts=opts.TitleOpts(title=title)
+            # set legend position to down
+            ,
+            legend_opts=opts.LegendOpts(pos_bottom="bottom"),
+            visualmap_opts=opts.VisualMapOpts(max_=max(valuels)),
+        )
+        .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
+    )
+    events = {
+        "click": "function(params) { console.log(params.name); return params.name }",
+        # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+    }
+    clickevent = st_pyecharts(pie, events=events, height=650)  # width=800)
+    return clickevent
+
+
+# province_name为省份名称列表；province_values为各省份对应值；title_name为标题,dataname为值标签（如：处罚案例数量）
+def print_map(province_name, province_values, title_name, dataname):
+    with open(mappath, "r", encoding="utf-8-sig") as f:
+        map = st_Map(
+            "china",
+            json.loads(f.read()),
+        )
+
+    map_data = (
+        Map()
+        .add(dataname, [list(z) for z in zip(province_name, province_values)], "china")
+        .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
+        .set_global_opts(
+            title_opts=opts.TitleOpts(title=title_name),
+            visualmap_opts=opts.VisualMapOpts(
+                max_=max(province_values)  # , range_color=["#F3F781", "#D04A02"]
+            ),
+        )
+    )
+    st_pyecharts(map_data, map=map, height=650)  # ,width=800 )
 
 
 # content length analysis by length

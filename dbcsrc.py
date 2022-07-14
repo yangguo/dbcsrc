@@ -11,7 +11,7 @@ import requests
 import streamlit as st
 from bs4 import BeautifulSoup
 from pyecharts import options as opts
-from pyecharts.charts import Bar, Grid, Line
+from pyecharts.charts import Bar, Line
 from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
@@ -332,29 +332,30 @@ def display_dfmonth(search_df):
         y_data = df_month["count"].tolist()
         sum_data = df_sum["sum"].tolist()
 
-        bar = (
-            Bar()
-            .add_xaxis(xaxis_data=x_data)
-            .add_yaxis(series_name="数量", y_axis=y_data, yaxis_index=0)
-            .set_global_opts(title_opts=opts.TitleOpts(title="案例数量统计"))
-        )
-        line = (
-            Line()
-            .add_xaxis(x_data)
-            .add_yaxis("金额", sum_data, label_opts=opts.LabelOpts(is_show=False))
-            .set_global_opts(
-                title_opts=opts.TitleOpts(title="案例金额统计"),
-                # legend_opts=opts.LegendOpts(pos_top="48%"),
-            )
-        )
+        # bar = (
+        #     Bar()
+        #     .add_xaxis(xaxis_data=x_data)
+        #     .add_yaxis(series_name="数量", y_axis=y_data, yaxis_index=0)
+        #     .set_global_opts(title_opts=opts.TitleOpts(title="案例数量统计"))
+        # )
+        # line = (
+        #     Line()
+        #     .add_xaxis(x_data)
+        #     .add_yaxis("金额", sum_data, label_opts=opts.LabelOpts(is_show=False))
+        #     .set_global_opts(
+        #         title_opts=opts.TitleOpts(title="案例金额统计"),
+        #         # legend_opts=opts.LegendOpts(pos_top="48%"),
+        #     )
+        # )
         # grid = Grid()
         # grid.add(bar, grid_opts=opts.GridOpts(pos_bottom="60%"))
         # grid.add(line, grid_opts=opts.GridOpts(pos_top="60%"))
-        events = {
-            "click": "function(params) { console.log(params.name); return params.name }",
-            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
-        }
-        yearmonth = st_pyecharts(bar, height=400, width=800, events=events)
+        # events = {
+        #     "click": "function(params) { console.log(params.name); return params.name }",
+        #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        # }
+        # yearmonth = st_pyecharts(bar, height=400, width=800, events=events)
+        yearmonth = print_bar(x_data, y_data, "处罚数量", "案例数量统计")
         # st.write(yearmonth)
         if yearmonth is not None:
             search_df["month"] = search_df["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
@@ -398,7 +399,8 @@ def display_dfmonth(search_df):
             + "起处罚事件。"
         )
 
-        yearmonthline = st_pyecharts(line, height=400, width=800, events=events)
+        # yearmonthline = st_pyecharts(line, height=400, width=800, events=events)
+        yearmonthline = print_line(x_data, sum_data, "处罚金额", "案例金额统计")
         # st.write(yearmonth)
         if yearmonthline is not None:
             search_df["month"] = search_df["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
@@ -522,23 +524,24 @@ def display_dfmonth(search_df):
 
         x_data1 = peopletype["当事人身份"].tolist()
         y_data1 = peopletype["数量统计"].tolist()
-        bar1 = (
-            Bar()
-            .add_xaxis(xaxis_data=x_data1)
-            .add_yaxis(series_name="数量", y_axis=y_data1)
-            .set_global_opts(
-                xaxis_opts=opts.AxisOpts(
-                    axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15)
-                ),
-                title_opts=opts.TitleOpts(title="当事人身份统计"),
-            )
-        )
-        events = {
-            "click": "function(params) { console.log(params.name); return params.name }",
-            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
-        }
+        # bar1 = (
+        #     Bar()
+        #     .add_xaxis(xaxis_data=x_data1)
+        #     .add_yaxis(series_name="数量", y_axis=y_data1)
+        #     .set_global_opts(
+        #         xaxis_opts=opts.AxisOpts(
+        #             axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15)
+        #         ),
+        #         title_opts=opts.TitleOpts(title="当事人身份统计"),
+        #     )
+        # )
+        # events = {
+        #     "click": "function(params) { console.log(params.name); return params.name }",
+        #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        # }
         # display bar chart
-        peopletype_selected = st_pyecharts(bar1, width=800, height=400, events=events)
+        # peopletype_selected = st_pyecharts(bar1, width=800, height=400, events=events)
+        peopletype_selected = print_bar(x_data1, y_data1, "处罚数量", "当事人身份统计")
         # get selected people type
         if peopletype_selected is not None:
             # get selected people type id
@@ -574,33 +577,34 @@ def display_dfmonth(search_df):
     if showgraph3:
         x_data2 = penaltytype["违规类型"].tolist()
         y_data2 = penaltytype["数量统计"].tolist()
-        bar2 = (
-            Bar()
-            .add_xaxis(xaxis_data=x_data2)
-            .add_yaxis(
-                series_name="数量",
-                y_axis=y_data2,
-                # label_opts=opts.LabelOpts(is_show=True, position="inside")
-            )
-            .set_global_opts(
-                xaxis_opts=opts.AxisOpts(
-                    axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15)
-                ),
-                # yaxis_opts=opts.AxisOpts(
-                #     axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15),
-                #     # axisline_opts=opts.AxisLineOpts(
-                #     #     linestyle_opts=opts.LineStyleOpts(color="#5793f3", )),
-                #     # axislabel_opts=opts.LabelOpts(formatter="{value} ml"),
-                # ),
-                title_opts=opts.TitleOpts(title="违规类型统计"),
-            )
-        )
-        events = {
-            "click": "function(params) { console.log(params.name); return params.name }",
-            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
-        }
+        # bar2 = (
+        #     Bar()
+        #     .add_xaxis(xaxis_data=x_data2)
+        #     .add_yaxis(
+        #         series_name="数量",
+        #         y_axis=y_data2,
+        #         # label_opts=opts.LabelOpts(is_show=True, position="inside")
+        #     )
+        #     .set_global_opts(
+        #         xaxis_opts=opts.AxisOpts(
+        #             axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15)
+        #         ),
+        #         # yaxis_opts=opts.AxisOpts(
+        #         #     axislabel_opts=opts.LabelOpts(is_show=True, rotate=-15),
+        #         #     # axisline_opts=opts.AxisLineOpts(
+        #         #     #     linestyle_opts=opts.LineStyleOpts(color="#5793f3", )),
+        #         #     # axislabel_opts=opts.LabelOpts(formatter="{value} ml"),
+        #         # ),
+        #         title_opts=opts.TitleOpts(title="违规类型统计"),
+        #     )
+        # )
+        # events = {
+        #     "click": "function(params) { console.log(params.name); return params.name }",
+        #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        # }
         # display bar chart
-        pentype_selected = st_pyecharts(bar2, width=800, height=400, events=events)
+        # pentype_selected = st_pyecharts(bar2, width=800, height=400, events=events)
+        pentype_selected = print_bar(x_data2, y_data2, "处罚数量", "违规类型统计")
         # display law type selected
         if pentype_selected is not None:
             # get unique id of selected law type
@@ -635,21 +639,22 @@ def display_dfmonth(search_df):
     if showgraph4:
         x_data3 = lawtype["法律法规"].tolist()
         y_data3 = lawtype["数量统计"].tolist()
-        bar3 = (
-            Bar()
-            .add_xaxis(xaxis_data=x_data3)
-            .add_yaxis(series_name="数量", y_axis=y_data3)
-            .set_global_opts(
-                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=-15)),
-                title_opts=opts.TitleOpts(title="法律法规统计"),
-            )
-        )
-        events = {
-            "click": "function(params) { console.log(params.name); return params.name }",
-            # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
-        }
+        # bar3 = (
+        #     Bar()
+        #     .add_xaxis(xaxis_data=x_data3)
+        #     .add_yaxis(series_name="数量", y_axis=y_data3)
+        #     .set_global_opts(
+        #         xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=-15)),
+        #         title_opts=opts.TitleOpts(title="法律法规统计"),
+        #     )
+        # )
+        # events = {
+        #     "click": "function(params) { console.log(params.name); return params.name }",
+        #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+        # }
         # display bar chart
-        lawtype_selected = st_pyecharts(bar3, width=800, height=400, events=events)
+        # lawtype_selected = st_pyecharts(bar3, width=800, height=400, events=events)
+        lawtype_selected = print_bar(x_data3, y_data3, "处罚数量", "法律法规统计")
         # display law type selected
         if lawtype_selected is not None:
             # get unique id of selected law type
@@ -1008,3 +1013,48 @@ def display_summary():
         st.metric("案例总数", oldlen)
     with col2:
         st.metric("案例日期范围", f"{min_date} - {max_date}")
+
+
+# print bar graphs
+def print_bar(x_data, y_data, y_axis_name, title):
+    # draw echarts bar chart
+    bar = (
+        Bar()
+        .add_xaxis(xaxis_data=x_data)
+        .add_yaxis(series_name=y_axis_name, y_axis=y_data, yaxis_index=0)
+        .set_global_opts(
+            title_opts=opts.TitleOpts(title=title),
+            xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=-15)),
+            visualmap_opts=opts.VisualMapOpts(max_=max(y_data), min_=min(y_data)),
+        )
+    )
+    # use events
+    events = {
+        "click": "function(params) { console.log(params.name); return params.name }",
+        # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+    }
+    # use events
+    clickevent = st_pyecharts(bar, events=events, height=400)
+    return clickevent
+
+
+# print line charts
+def print_line(x_data, y_data, y_axis_name, title):
+    # draw echarts line chart
+    line = (
+        Line()
+        .add_xaxis(x_data)
+        .add_yaxis(y_axis_name, y_data, label_opts=opts.LabelOpts(is_show=False))
+        .set_global_opts(
+            title_opts=opts.TitleOpts(title=title),
+            # legend_opts=opts.LegendOpts(pos_top="48%"),
+        )
+    )
+    # use events
+    events = {
+        "click": "function(params) { console.log(params.name); return params.name }",
+        # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+    }
+    # use events
+    clickevent = st_pyecharts(line, events=events, height=400)
+    return clickevent
