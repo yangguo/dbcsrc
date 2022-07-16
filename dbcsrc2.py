@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
 from pyecharts import options as opts
 from pyecharts.charts import Map, Pie
@@ -16,7 +17,7 @@ from streamlit_echarts import Map as st_Map
 from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
-from dbcsrc import get_csvdf, get_now, print_bar
+from dbcsrc import get_csvdf, get_now, make_docx, print_bar
 from doc2text import convert_uploadfiles
 from utils import df2aggrid, split_words
 
@@ -554,7 +555,7 @@ def display_search_df(searchdf):
         # }
         # use events
         # yearmonth = st_pyecharts(bar, events=events)
-        yearmonth = print_bar(x_data, y_data, "处罚数量", "按发文时间统计")
+        bar, yearmonth = print_bar(x_data, y_data, "处罚数量", "按发文时间统计")
         # st.write(yearmonth)
         if yearmonth is not None:
             # get year and month value from format "%Y-%m"
@@ -582,9 +583,9 @@ def display_search_df(searchdf):
             set(df_month["month"].tolist()), key=df_month["month"].tolist().count
         )
         top1number = df_month["month"].tolist().count(top1month)
-        # display total coun
-        st.markdown(
-            "#####  图一解析：从"
+
+        image1_text = (
+            "图一解析：从"
             + minmonth
             + "至"
             + maxmonth
@@ -599,6 +600,9 @@ def display_search_df(searchdf):
             + str(top1number)
             + "起处罚事件。"
         )
+
+        # display total coun
+        st.markdown("##### " + image1_text)
     # display checkbox to show/hide graph2
     # showgraph2 = st.sidebar.checkbox("按发文机构统计", key="showgraph2")
     # fix value of showgraph2
@@ -644,7 +648,7 @@ def display_search_df(searchdf):
         #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
         # }
         # orgname = st_pyecharts(pie, width=800, height=650, events=events)
-        orgname = print_pie(
+        pie, orgname = print_pie(
             df_org_count["机构"].tolist(), df_org_count["count"].tolist(), "按发文机构统计"
         )
         if orgname is not None:
@@ -659,10 +663,10 @@ def display_search_df(searchdf):
         result = ""
 
         for org, count in zip(orgls[:3], countls[:3]):
-            result = result + org + "所（" + str(count) + "起）,"
+            result = result + org + "（" + str(count) + "起）,"
 
-        st.markdown(
-            "#####  图二解析："
+        image2_text = (
+            "图二解析："
             + minmonth
             + "至"
             + maxmonth
@@ -670,16 +674,84 @@ def display_search_df(searchdf):
             + str(len(orgls))
             + "家地区监管机构提出处罚意见，"
             + "排名前三的机构为："
-            + result[: len(result) - 1].replace("总部所", "总部")
+            + result[: len(result) - 1]
         )
+        st.markdown("#####  " + image2_text)
 
     org_ls = df_org_count["机构"].tolist()
+    count_ls = df_org_count["count"].tolist()
     org_ls1 = fix_cityname(org_ls, cityls)
-
+    new_orgls, new_countls = count_by_province(org_ls, count_ls)
     showgraph3 = True
     if showgraph3:
-        print_map(org_ls1, df_org_count["count"].tolist(), "处罚地图", "处罚数量")
+        map = print_map(new_orgls, new_countls, "处罚地图", "处罚数量")
         # st_pyecharts(map_data, map=map, width=800, height=650)
+        # display map
+        components.html(map.render_embed(), height=650)
+
+    # display summary
+    st.markdown("### 分析报告下载")
+
+    if st.button("生成分析报告"):
+        # 建title
+        title = st.session_state["keywords_csrc2"]
+        title_str = ""
+        # st.write(str(title[1]))
+        title_str = "(分析范围：期间:" + str(title[1]) + "至" + str(title[2]) + ","
+        if len(title[0]) != 0:
+            title_str = title_str + "发文名称为:" + title[0] + "，"
+        # if len(str(title[1]))!=0:
+        #     title_str=title_str+'开始日期为:'+str(title[1])+'，'
+        # if len(str(title[2]))!=0:
+        #     title_str=title_str+'结束日期为:'+str(title[2])+'，'
+        if len(title[3]) != 0:
+            title_str = title_str + "文号为:" + title[3] + "，"
+        if len(title[4]) != 0:
+            title_str = title_str + "案件关键词为:" + title[4] + "，"
+        if len(title[5]) == 37:
+            title_str = title_str + "包括总局在内的37家机构，"
+        else:
+            title_str = title_str + "发文机构为:" + "、".join(title[5]) + "，"
+        title_str = title_str[: len(title_str) - 1] + ")"
+        title_str = "处罚事件分析报告\n" + title_str
+        # 建图表
+        t1 = time.localtime()
+        t1 = time.strftime("%Y-%m-%d %H%M%S", t1)
+
+        image3_text = "图三解析：处罚地图"
+        image1 = bar.render(path=os.path.join(pencsrc2, t1 + "image1.html"))
+        image2 = pie.render(path=os.path.join(pencsrc2, t1 + "image2.html"))
+        image3 = map.render(path=os.path.join(pencsrc2, t1 + "image3.html"))
+        file_name = make_docx(
+            title_str, [image1_text, image2_text, image3_text], [image1, image2, image3]
+        )
+        st.download_button(
+            "下载分析报告", data=file_name.read(), file_name="分析报告.docx"
+        )  # ,on_click=lambda: os.remove(file_name)
+        # "下载搜索结果", data=search_dfnew.to_csv().encode("utf_8_sig"), file_name="搜索结果.csv"
+
+
+# combine count by province
+def count_by_province(orgls, countls):
+    result = dict()
+    for org in orgls:
+        if org == "总部":
+            result["北京"] = result.get("北京", 0) + countls[orgls.index(org)]
+        elif org == "深圳":
+            result["广东"] = result.get("广东", 0) + countls[orgls.index(org)]
+        elif org == "大连":
+            result["辽宁"] = result.get("辽宁", 0) + countls[orgls.index(org)]
+        elif org == "宁波":
+            result["浙江"] = result.get("浙江", 0) + countls[orgls.index(org)]
+        elif org == "厦门":
+            result["福建"] = result.get("福建", 0) + countls[orgls.index(org)]
+        elif org == "青岛":
+            result["山东"] = result.get("山东", 0) + countls[orgls.index(org)]
+        else:
+            result[org] = result.get(org, 0) + countls[orgls.index(org)]
+    new_orgls = result.keys()
+    new_countls = result.values()
+    return new_orgls, new_countls
 
 
 def fix_cityname(orgls, cityls):
@@ -728,7 +800,7 @@ def print_pie(namels, valuels, title):
         # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
     }
     clickevent = st_pyecharts(pie, events=events, height=650)  # width=800)
-    return clickevent
+    return pie, clickevent
 
 
 # province_name为省份名称列表；province_values为各省份对应值；title_name为标题,dataname为值标签（如：处罚案例数量）
@@ -741,8 +813,14 @@ def print_map(province_name, province_values, title_name, dataname):
 
     map_data = (
         Map()
-        .add(dataname, [list(z) for z in zip(province_name, province_values)], "china")
-        .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
+        .add(
+            dataname,
+            [list(z) for z in zip(province_name, province_values)],
+            "china",
+            is_roam=False,
+            is_map_symbol_show=False,
+        )
+        .set_series_opts(label_opts=opts.LabelOpts(is_show=True))
         .set_global_opts(
             title_opts=opts.TitleOpts(title=title_name),
             visualmap_opts=opts.VisualMapOpts(
@@ -750,7 +828,8 @@ def print_map(province_name, province_values, title_name, dataname):
             ),
         )
     )
-    st_pyecharts(map_data, map=map, height=650)  # ,width=800 )
+    # st_pyecharts(map_data, map=map, height=700)  # ,width=800 )
+    return map_data
 
 
 # content length analysis by length

@@ -243,6 +243,8 @@ def main():
         # initialize search result in session state
         if "search_result_csrc" not in st.session_state:
             st.session_state["search_result_csrc"] = None
+        if "keywords_csrc1" not in st.session_state:
+            st.session_state["keywords_csrc1"] = []
 
         # get csrc detail
         df = get_csrcdetail()
@@ -441,6 +443,16 @@ def main():
                 if type_text == []:
                     type_text = type_list
 
+                # set search parameters in session state
+                st.session_state["keywords_csrc1"] = [
+                    filename_text,
+                    start_date,
+                    end_date,
+                    org_text,
+                    case_text,
+                    type_text,
+                ]
+
                 # search by filename, date, org, case, type
                 search_df1 = searchcsrc(
                     csrcdf,
@@ -496,6 +508,8 @@ def main():
         # initialize search result in session state
         if "search_result_csrc2" not in st.session_state:
             st.session_state["search_result_csrc2"] = None
+        if "keywords_csrc2" not in st.session_state:  # 生成word的session初始化
+            st.session_state["keywords_csrc2"] = []
 
         # get csrc2 detail
         # df = get_csrc2detail()
@@ -548,6 +562,15 @@ def main():
                 ):
                     st.warning("请输入搜索条件")
                     # st.stop()
+                # search by filename, date, wenhao, case, org
+                st.session_state["keywords_csrc2"] = [
+                    filename_text,
+                    start_date,
+                    end_date,
+                    wenhao_text,
+                    case_text,
+                    org_text,
+                ]
                 # search by filename, date, wenhao, case, org
                 search_df = searchcsrc2(
                     df,

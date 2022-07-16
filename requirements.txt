@@ -9,3 +9,4 @@ paddlepaddle
 pdfplumber
 python-docx
 pdf2image
+snapshot_selenium

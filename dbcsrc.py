@@ -1,17 +1,26 @@
 # import matplotlib
 import datetime
 import glob
+import io
 import json
 import os
 import time
 from ast import literal_eval
 
+import docx
 import pandas as pd
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_PARAGRAPH_ALIGNMENT
+from docx.oxml.ns import qn
+from docx.shared import Cm, Inches, Pt
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Line
+from pyecharts.commons.utils import JsCode
+from pyecharts.render import make_snapshot
+from snapshot_selenium import snapshot as driver
 from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
@@ -28,6 +37,7 @@ urldbase = (
     "https://neris.csrc.gov.cn/falvfagui/rdqsHeader/lawWritInfo?navbarId=1&lawWritId="
 )
 
+jspath = "{}/".format(os.path.dirname(os.path.abspath("data/map/echarts.min.js")))
 
 # @st.cache(allow_output_mutation=True)
 def get_csvdf(penfolder, beginwith):
@@ -355,7 +365,7 @@ def display_dfmonth(search_df):
         #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
         # }
         # yearmonth = st_pyecharts(bar, height=400, width=800, events=events)
-        yearmonth = print_bar(x_data, y_data, "处罚数量", "案例数量统计")
+        bar, yearmonth = print_bar(x_data, y_data, "处罚数量", "案例数量统计")
         # st.write(yearmonth)
         if yearmonth is not None:
             search_df["month"] = search_df["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
@@ -381,9 +391,8 @@ def display_dfmonth(search_df):
         top1_index = df_month["count"].idxmax()
         # get month value of max count
         top1month = df_month.loc[top1_index, "month"]
-        # display total coun
-        st.markdown(
-            "#####  图一解析：从"
+        image1_text = (
+            "图一解析：从"
             + minmonth
             + "至"
             + maxmonth
@@ -396,11 +405,12 @@ def display_dfmonth(search_df):
             + top1month
             + "最高发生"
             + str(top1.values[0])
-            + "起处罚事件。"
+            + "起处罚事件"
         )
-
+        # display total coun
+        st.markdown("#####  " + image1_text)
         # yearmonthline = st_pyecharts(line, height=400, width=800, events=events)
-        yearmonthline = print_line(x_data, sum_data, "处罚金额", "案例金额统计")
+        line, yearmonthline = print_line(x_data, sum_data, "处罚金额", "案例金额统计")
         # st.write(yearmonth)
         if yearmonthline is not None:
             search_df["month"] = search_df["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
@@ -433,12 +443,14 @@ def display_dfmonth(search_df):
         topsum1_index = df_sum["sum"].idxmax()
         # get month value of max count
         topsum1month = df_month.loc[topsum1_index, "month"]
-        st.markdown(
-            "##### 图二解析：从"
+        image2_text = (
+            "图二解析：从"
             + minmonth
             + "至"
             + maxmonth
-            + "期间共涉及处罚金额"
+            + "，共发生罚款案件"
+            + str(case_total)
+            + "起;期间共涉及处罚金额"
             + str(round(sum_data_number, 2))
             + "万元，处罚事件平均处罚金额为"
             + str(round(sum_data_number / case_total, 2))
@@ -450,6 +462,7 @@ def display_dfmonth(search_df):
             + str(round(topsum1.values[0] / 10000, 2))
             + "万元。"
         )
+        st.markdown("##### " + image2_text)
     # replace blank value for column 当事人身份
     selected_peopledetail["当事人身份"].replace("", "未知", inplace=True)
 
@@ -541,7 +554,7 @@ def display_dfmonth(search_df):
         # }
         # display bar chart
         # peopletype_selected = st_pyecharts(bar1, width=800, height=400, events=events)
-        peopletype_selected = print_bar(x_data1, y_data1, "处罚数量", "当事人身份统计")
+        bar1, peopletype_selected = print_bar(x_data1, y_data1, "处罚数量", "当事人身份统计")
         # get selected people type
         if peopletype_selected is not None:
             # get selected people type id
@@ -559,11 +572,11 @@ def display_dfmonth(search_df):
         # peopletype_count.columns = ['当事人身份','数量统计']
         # pandas数据排序
         peopletype_count = peopletype_count.sort_values("数量统计", ascending=False)
-        result = ""
+        result3 = ""
         for i in range(5):
             try:
-                result = (
-                    result
+                result3 = (
+                    result3
                     + str(peopletype_count.iloc[i, 0])
                     + "("
                     + str(peopletype_count.iloc[i, 1])
@@ -571,7 +584,8 @@ def display_dfmonth(search_df):
                 )
             except:
                 break
-        st.markdown("##### 图三解析：处罚事件中，各当事人身份中被处罚数量排名前五分别为:" + result)
+        image3_text = "图三解析：处罚事件中，各当事人身份中被处罚数量排名前五分别为:" + result3
+        st.markdown("##### " + image3_text)
     # showgraph3 = st.sidebar.checkbox("违规类型统计", key="showgraph3")
     showgraph3 = True
     if showgraph3:
@@ -604,7 +618,7 @@ def display_dfmonth(search_df):
         # }
         # display bar chart
         # pentype_selected = st_pyecharts(bar2, width=800, height=400, events=events)
-        pentype_selected = print_bar(x_data2, y_data2, "处罚数量", "违规类型统计")
+        bar2, pentype_selected = print_bar(x_data2, y_data2, "处罚数量", "违规类型统计")
         # display law type selected
         if pentype_selected is not None:
             # get unique id of selected law type
@@ -620,11 +634,11 @@ def display_dfmonth(search_df):
         penaltytype_count = penaltytype[["违规类型", "数量统计"]]  # 把违规类型的数量进行统计
         # pandas数据排序
         penaltytype_count = penaltytype_count.sort_values("数量统计", ascending=False)
-        result = ""
+        result4 = ""
         for i in range(5):
             try:
-                result = (
-                    result
+                result4 = (
+                    result4
                     + str(penaltytype_count.iloc[i, 0])
                     + "("
                     + str(penaltytype_count.iloc[i, 1])
@@ -632,7 +646,8 @@ def display_dfmonth(search_df):
                 )
             except:
                 break
-        st.markdown("##### 图四解析：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result[: len(result) - 1])
+        image4_text = "图四解析：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result4[: len(result4) - 1]
+        st.markdown("##### " + image4_text)
 
     # showgraph4 = st.sidebar.checkbox("法律法规统计", key="showgraph4")
     showgraph4 = True
@@ -654,7 +669,7 @@ def display_dfmonth(search_df):
         # }
         # display bar chart
         # lawtype_selected = st_pyecharts(bar3, width=800, height=400, events=events)
-        lawtype_selected = print_bar(x_data3, y_data3, "处罚数量", "法律法规统计")
+        bar3, lawtype_selected = print_bar(x_data3, y_data3, "处罚数量", "法律法规统计")
         # display law type selected
         if lawtype_selected is not None:
             # get unique id of selected law type
@@ -670,11 +685,11 @@ def display_dfmonth(search_df):
         lawtype_count = lawtype[["法律法规", "数量统计"]]  # 把法律法规的数量进行统计
         # pandas数据排序
         lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
-        result = ""
+        result5 = ""
         for i in range(5):
             try:
-                result = (
-                    result
+                result5 = (
+                    result5
                     + str(lawtype_count.iloc[i, 0])
                     + "("
                     + str(lawtype_count.iloc[i, 1])
@@ -682,10 +697,10 @@ def display_dfmonth(search_df):
                 )
             except:
                 break
-        st.markdown(
-            "##### 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
-            + result[: len(result) - 1]
-        )
+        # st.markdown(
+        #     "##### 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+        #     + result5[: len(result5) - 1]
+        # )
         # by具体条文
         # lawdf["数量统计"] = ""
         new_lawtype = (
@@ -699,11 +714,11 @@ def display_dfmonth(search_df):
         lawtype_count = new_lawtype[["法律法规明细", "数量统计"]]  # 把法律法规的数量进行统计
         # pandas数据排序
         lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
-        result = ""
+        result6 = ""
         for i in range(5):
             try:
-                result = (
-                    result
+                result6 = (
+                    result6
                     + str(lawtype_count.iloc[i, 0])
                     + "("
                     + str(lawtype_count.iloc[i, 1])
@@ -711,9 +726,56 @@ def display_dfmonth(search_df):
                 )
             except:
                 break
-        st.markdown(
-            "##### 法律法规统计-具体条文维度：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result[: len(result) - 1]
+        image5_text = (
+            " 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+            + result5[: len(result5) - 1]
+            + "\n"
+            + "法律法规统计-具体条文维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+            + result6[: len(result6) - 1]
         )
+        st.markdown("##### " + image5_text)
+    # display summary
+    st.markdown("### 分析报告下载")
+
+    if st.button("生成分析报告"):
+        t1 = time.localtime()
+        t1 = time.strftime("%Y-%m-%d %H%M%S", t1)
+
+        image1 = bar.render(path=os.path.join(pencsrc, t1 + "image1.html"))
+        image2 = line.render(path=os.path.join(pencsrc, t1 + t1 + "image2.html"))
+        image3 = bar1.render(path=os.path.join(pencsrc, t1 + t1 + "image3.html"))
+        image4 = bar2.render(path=os.path.join(pencsrc, t1 + t1 + "image4.html"))
+        image5 = bar3.render(path=os.path.join(pencsrc, t1 + t1 + "image5.html"))
+        # 做title
+        title = st.session_state["keywords_csrc1"]
+        title_str = ""
+        # st.write(str(title[1]))
+        title_str = "(分析范围：期间:" + str(title[0]) + "至" + str(title[1]) + ","
+        # if len(title[0])!=0:
+        #     title_str=title_str+'发文名称为:'+title[0]+'，'
+        # if len(str(title[1]))!=0:
+        #     title_str=title_str+'开始日期为:'+str(title[1])+'，'
+        if len(str(title[2])) != 0:
+            title_str = title_str + "结束日期为:" + str(title[2]) + "，"
+        if len(title[3]) != 0:
+            title_str = title_str + "发文单位为:" + title[3] + "，"
+        if len(title[4]) != 0:
+            title_str = title_str + "案件关键词为:" + title[4] + "，"
+        if len(title[5]) == 2:
+            #     title_str=title_str+'，'
+            # else:
+            title_str = title_str + "文书类型为:" + "、".join(title[5]) + "，"
+        title_str = title_str[: len(title_str) - 1] + ")"
+        title_str = "处罚事件分析报告\n" + title_str
+        file_name = make_docx(
+            title_str,
+            [image1_text, image2_text, image3_text, image4_text, image5_text],
+            [image1, image2, image3, image4, image5],
+        )
+        st.download_button(
+            "下载分析报告", data=file_name.read(), file_name="分析报告.docx"
+        )  # ,on_click=lambda: os.remove(file_name)
+        # "下载搜索结果", data=search_dfnew.to_csv().encode("utf_8_sig"), file_name="搜索结果.csv"
 
 
 def json2df(site_json):
@@ -1035,7 +1097,7 @@ def print_bar(x_data, y_data, y_axis_name, title):
     }
     # use events
     clickevent = st_pyecharts(bar, events=events, height=400)
-    return clickevent
+    return bar, clickevent
 
 
 # print line charts
@@ -1044,7 +1106,7 @@ def print_line(x_data, y_data, y_axis_name, title):
     line = (
         Line()
         .add_xaxis(x_data)
-        .add_yaxis(y_axis_name, y_data, label_opts=opts.LabelOpts(is_show=False))
+        .add_yaxis(y_axis_name, y_data, label_opts=opts.LabelOpts(is_show=True))
         .set_global_opts(
             title_opts=opts.TitleOpts(title=title),
             # legend_opts=opts.LegendOpts(pos_top="48%"),
@@ -1057,4 +1119,42 @@ def print_line(x_data, y_data, y_axis_name, title):
     }
     # use events
     clickevent = st_pyecharts(line, events=events, height=400)
-    return clickevent
+    return line, clickevent
+
+
+def make_docx(title, text, image):  # 制作docx的函数，title以str形式传入，其他以list的形式传入，输出为字符串的形式
+    document = Document()
+
+    # st.write(title_str)
+    # add title
+    document.add_paragraph().add_run(title).bold = True
+    # document.add_paragraph(title)
+    document.styles["Normal"].font.size = Pt(12)
+    document.styles["Normal"].font.name = "Times New Roman"  # 设置西文字体
+    document.styles["Normal"]._element.rPr.rFonts.set(
+        qn("w:eastAsia"), "FangSong"
+    )  # 设置中文字体使用字
+    # document.styles['Normal'].font.bold = True
+    # 加粗字体
+
+    for i, j in zip(text, image):  # [image1_text,image2_text],[image1,image2]
+        # document.styles['Normal'].font.bold = False
+        t = time.localtime()
+        t = time.strftime("%Y-%m-%d %H%M%S", t)
+        make_snapshot(driver, j, t + ".png", is_remove_html=True)  #
+        document.add_paragraph(i)
+        document.styles["Normal"].font.size = Pt(12)
+        document.styles["Normal"].font.name = "Times New Roman"  # 设置西文字体
+        document.styles["Normal"]._element.rPr.rFonts.set(
+            qn("w:eastAsia"), "FangSong"
+        )  # 设置中文字体使用字体2->宋体
+        document.add_picture(t + ".png", width=docx.shared.Inches(5.4))  # 6英尺是最大宽度
+        # print('当前图像高度', str(document.inline_shapes[0].height)+'当前图像宽度'+str(document.inline_shapes[0].width)) # 打印当前图片大小
+        last_paragraph = document.paragraphs[-1]
+        last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        os.remove(t + ".png")
+    file_stream = io.BytesIO()
+    document.save(file_stream)
+    file_stream.seek(0)
+    # document.save(t1+'.docx')
+    return file_stream
