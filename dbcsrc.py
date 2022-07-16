@@ -20,7 +20,9 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Line
 from pyecharts.commons.utils import JsCode
 from pyecharts.render import make_snapshot
-from snapshot_selenium import snapshot as driver
+
+# from snapshot_selenium import snapshot as driver
+from snapshot_phantomjs import snapshot as driver
 from streamlit_echarts import st_pyecharts
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
