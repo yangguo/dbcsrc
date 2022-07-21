@@ -9,5 +9,6 @@ paddlepaddle
 pdfplumber
 python-docx
 pdf2image
-# snapshot_selenium
-snapshot_phantomjs
+snapshot_selenium
+# snapshot_phantomjs
+chromedriver-binary
