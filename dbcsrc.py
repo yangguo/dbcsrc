@@ -7,7 +7,6 @@ import os
 import time
 from ast import literal_eval
 
-import chromedriver_binary  # Adds chromedriver binary to path
 import docx
 import pandas as pd
 import requests
@@ -21,7 +20,8 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Line
 from pyecharts.commons.utils import JsCode
 from pyecharts.render import make_snapshot
-from snapshot_selenium import snapshot as driver
+# from snapshot_selenium 
+import snapshot as driver
 
 # from snapshot_phantomjs import snapshot as driver
 from streamlit_echarts import st_pyecharts
