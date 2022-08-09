@@ -1,3 +1,5 @@
+from ast import literal_eval
+
 import pandas as pd
 import streamlit as st
 
@@ -32,6 +34,7 @@ from dbcsrc2 import (  # get_csrc2detail,
     searchcsrc2,
     update_csrc2analysis,
     update_csrc2text,
+    update_label,
     update_sumeventdf2,
 )
 from doc2text import docxconvertion
@@ -44,7 +47,7 @@ tempdir = "data/penalty/csrc2/temp"
 
 def main():
 
-    menu = ["案例总数", "案例搜索1", "案例搜索2", "案例更新1", "案例更新2", "附件处理2"]
+    menu = ["案例总数", "案例搜索1", "案例搜索2", "案例更新1", "案例更新2", "附件处理2", "案例分类2"]
     choice = st.sidebar.selectbox("选择", menu)
     if choice == "案例总数":
         st.subheader("典型案例总数")
@@ -237,6 +240,36 @@ def main():
         if remove_attachment_btn:
             remove_tempfiles()
             st.success("删除附件完成")
+
+    elif choice == "案例分类2":
+        df = get_csrc2analysis()
+        # get columns
+        columns = df.columns
+        # choose columns
+        select_column = st.sidebar.selectbox("选择分类字段", columns)
+        # get selected column
+
+        # text are for text
+        # article_text = st.text_area("输入文本", value="")
+        # text area for input label list
+        labeltext = st.text_area("输入标签列表", value="")
+        # radio button for choose multi label or single label
+        multi_label = st.sidebar.checkbox("是否多标签", value=False, key="multi_label")
+
+        # button for classify
+        classify_button = st.sidebar.button("标签分类")
+        if classify_button:
+            if labeltext == "":
+                st.error("输入标签列表")
+            else:
+                # convert to list
+                labellist = literal_eval(labeltext)
+                # if not null
+                if len(labellist) != 0:
+                    update_label(select_column, labellist, multi_label)
+                    st.success("标签分类完成")
+                else:
+                    st.error("请输入标签列表")
 
     elif choice == "案例搜索1":
         st.subheader("案例搜索1")

@@ -83,6 +83,17 @@ def split_words(text):
 
 # display dataframe in echarts table
 def df2echartstable(df, title):
+    """
+    Display dataframe in echarts table with title
+
+    Parameters:
+    df (pandas.DataFrame): dataframe to display
+    title (str): title of the table
+
+    Example:
+    df2echartstable(df, "Table Title")
+    """
+
     table = Table()
     headers = df.columns.tolist()
     rows = df.values.tolist()

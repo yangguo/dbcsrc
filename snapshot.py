@@ -3,8 +3,8 @@ import time
 from typing import Any
 
 from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
 
 SNAPSHOT_JS = """
     var ele = document.querySelector('div[_echarts_instance_]');
@@ -56,7 +56,13 @@ def make_snapshot(
 
 def get_chrome_driver():
     options = webdriver.ChromeOptions()
-    options.add_argument("headless")
+    # options.add_argument("headless")
+    # headless
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+
     service = ChromeService(executable_path=ChromeDriverManager().install())
     # return webdriver.Chrome(options=options)
     driver = webdriver.Chrome(service=service, options=options)

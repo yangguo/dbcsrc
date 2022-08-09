@@ -4,6 +4,7 @@ import os
 import random
 import re
 import time
+from ast import literal_eval
 
 import numpy as np
 import pandas as pd
@@ -15,8 +16,10 @@ from pyecharts import options as opts
 from pyecharts.charts import Map, Pie
 from streamlit_echarts import Map as st_Map
 from streamlit_echarts import st_pyecharts
+from streamlit_tags import st_tags
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
+from classifier import get_class
 from dbcsrc import get_csvdf, get_now, make_docx, print_bar
 from doc2text import convert_uploadfiles
 from utils import df2aggrid, split_words
@@ -122,6 +125,16 @@ def get_lawdetail2():
     # fillna
     lawdf = lawdf.fillna("")
     return lawdf
+
+
+def get_csrc2label():
+    labeldf = get_csvdf(pencsrc2, "csrc2label")
+    # literal_eval apply to labels and scores
+    labeldf["labels"] = labeldf["labels"].apply(literal_eval)
+    labeldf["scores"] = labeldf["scores"].apply(literal_eval)
+    # fillna
+    labeldf = labeldf.fillna("")
+    return labeldf
 
 
 def get_csrclenanalysis():
@@ -338,7 +351,7 @@ def display_eventdetail2(search_df):
 
     selected_rows_df = search_dfnew[search_dfnew["链接"] == url]
     # display event detail
-    st.write("案情经过")
+    st.markdown("##### 案情经过")
     # update columns name
     selected_rows_df.columns = ["发文名称", "发文日期", "文号", "内容", "链接", "发文机构"]
     # transpose dataframe
@@ -348,6 +361,21 @@ def display_eventdetail2(search_df):
     # display
     st.table(selected_rows_df.astype(str))
 
+    # get labeldf
+    labeldf = get_csrc2label()
+    # search labels by url
+    labeldata = labeldf[labeldf["id"] == url]
+    # display labels
+    labels = labeldata["labels"].values[0]
+    scorels = labeldata["scores"].values[0]
+    # convert scores to string
+    scorels2 = ["%.3f" % x for x in scorels]
+    scorestr = "/".join(scorels2)
+    # st.markdown(scorestr)
+    keywords = st_tags(
+        label="##### 案件类型", text=scorestr, value=labels, suggestions=labels
+    )
+
     # get lawdetail
     lawdf = get_lawdetail2()
     # search lawdetail by selected_rows_id
@@ -356,7 +384,7 @@ def display_eventdetail2(search_df):
     if len(selected_rows_lawdetail) > 0:
 
         # display lawdetail
-        st.write("处罚依据")
+        st.markdown("##### 处罚依据")
         lawdata = selected_rows_lawdetail[["法律法规", "条文"]]
         # display lawdata
         lawdtl = df2aggrid(lawdata)
@@ -994,3 +1022,57 @@ def update_csrc2analysis():
         upddf1.reset_index(drop=True, inplace=True)
         savename = "csrc2analysis"
         savedf2(upddf1, savename)
+
+
+def update_label(select_column, labellist, multi_label):
+    newdf = get_csrc2analysis()
+    newurlls = newdf["链接"].tolist()
+    olddf = get_csrc2label()
+    # if olddf is not empty
+    if olddf.empty:
+        oldurlls = []
+    else:
+        oldurlls = olddf["id"].tolist()
+    # get new urlls not in oldidls
+    newidls = [x for x in newurlls if x not in oldurlls]
+
+    upddf = newdf[newdf["链接"].isin(newidls)]
+    # if newdf is not empty, save it
+    if upddf.empty is False:
+        updlen = len(upddf)
+        st.info("待更新标签" + str(updlen) + "条数据")
+        # savename = "to_label"
+        # savedf2(upddf, savename)
+        with st.spinner("更新标签中..."):
+            generate_label(upddf, select_column, labellist, multi_label)
+
+
+def generate_label(df, select_column, labellist, multi_label):
+
+    artls = df[select_column].tolist()
+    urls = df["链接"].tolist()
+
+    txtls = []
+    idls = []
+    for i, item in enumerate(zip(artls, urls)):
+        article, url = item
+        txtls.append(str(article))
+        idls.append(url)
+        mod = (i + 1) % 100
+        if mod == 0 and i > 0:
+            results = get_class(txtls, labellist, multi_label=multi_label)
+            tempdf = pd.DataFrame({"result": results, "id": idls})
+            tempdf["labels"] = tempdf["result"].apply(lambda x: x["labels"][:3])
+            tempdf["scores"] = tempdf["result"].apply(lambda x: x["scores"][:3])
+            tempdf1 = tempdf[["id", "labels", "scores"]]
+            savename = "csrc2label" + get_now() + str(i + 1) + ".csv"
+            savedf2(tempdf1, savename)
+            txtls = []
+            idls = []
+    results = get_class(txtls, labellist, multi_label=multi_label)
+    tempdf = pd.DataFrame({"result": results, "id": idls})
+    tempdf["labels"] = tempdf["result"].apply(lambda x: x["labels"][:3])
+    tempdf["scores"] = tempdf["result"].apply(lambda x: x["scores"][:3])
+    tempdf1 = tempdf[["id", "labels", "scores"]]
+    savename = "csrc2label" + get_now() + "final.csv"
+    savedf2(tempdf1, savename)
