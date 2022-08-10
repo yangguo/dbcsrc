@@ -14,3 +14,5 @@ selenium
 # snapshot_phantomjs
 webdriver_manager
 streamlit-tags
+transformers
+sentencepiece
