@@ -13,3 +13,4 @@ selenium
 # snapshot_selenium
 # snapshot_phantomjs
 webdriver_manager
+streamlit-tags
