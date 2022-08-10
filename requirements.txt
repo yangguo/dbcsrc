@@ -16,3 +16,4 @@ webdriver_manager
 streamlit-tags
 transformers
 sentencepiece
+torch
