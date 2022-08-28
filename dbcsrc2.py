@@ -365,16 +365,20 @@ def display_eventdetail2(search_df):
     labeldf = get_csrc2label()
     # search labels by url
     labeldata = labeldf[labeldf["id"] == url]
-    # display labels
-    labels = labeldata["labels"].values[0]
-    scorels = labeldata["scores"].values[0]
-    # convert scores to string
-    scorels2 = ["%.3f" % x for x in scorels]
-    scorestr = "/".join(scorels2)
-    # st.markdown(scorestr)
-    keywords = st_tags(
-        label="##### 案件类型", text=scorestr, value=labels, suggestions=labels
-    )
+    # display labels if labeldata is not empty
+    if labeldata.empty:
+        st.error("没有找到相关标签")
+    else:
+        # display labels
+        labels = labeldata["labels"].values[0]
+        scorels = labeldata["scores"].values[0]
+        # convert scores to string
+        scorels2 = ["%.3f" % x for x in scorels]
+        scorestr = "/".join(scorels2)
+        # st.markdown(scorestr)
+        keywords = st_tags(
+            label="##### 案件类型", text=scorestr, value=labels, suggestions=labels
+        )
 
     # get lawdetail
     lawdf = get_lawdetail2()
