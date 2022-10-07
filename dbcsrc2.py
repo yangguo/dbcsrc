@@ -20,7 +20,7 @@ from streamlit_tags import st_tags
 
 from checkrule import get_lawdtlbyid, get_rulelist_byname
 from classifier import get_class
-from dbcsrc import get_csvdf, get_now, make_docx, print_bar
+from dbcsrc import get_csvdf, get_now, get_nowdate, make_docx, print_bar, print_line
 from doc2text import convert_uploadfiles
 from utils import df2aggrid, split_words
 
@@ -360,6 +360,18 @@ def display_eventdetail2(search_df):
     selected_rows_df.columns = ["案情内容"]
     # display
     st.table(selected_rows_df.astype(str))
+
+    # get amtdf
+    amtdf = get_csrc2amt()
+    # search amt by url
+    amtdata = amtdf[amtdf["url"] == url]
+    # display amount if amtdata is not empty
+    if amtdata.empty:
+        st.error("没有找到相关罚款金额信息")
+    else:
+        # display penalty amount
+        amount = amtdata["amount"].values[0]
+        st.metric("罚款金额", amount)
 
     # get labeldf
     labeldf = get_csrc2label()
@@ -721,6 +733,64 @@ def display_search_df(searchdf):
         # display map
         components.html(map.render_embed(), height=650)
 
+    # get eventdf sum amount by month
+    df_sum, df_sigle_penalty = sum_amount_by_month(df_month)
+
+    sum_data = df_sum["sum"].tolist()
+    line, yearmonthline = print_line(x_data, sum_data, "处罚金额", "案例金额统计")
+
+    if yearmonthline is not None:
+        # filter date by year and month
+        searchdfnew = df_month[df_month["month"] == yearmonth]
+        # drop column "month"
+        searchdfnew.drop(columns=["month"], inplace=True)
+        # set session state
+        st.session_state["search_result_csrc2"] = searchdfnew
+
+    # 图四解析：
+    sum_data_number = 0  # 把案件金额的数组进行求和
+    more_than_100 = 0  # 把案件金额大于100的数量进行统计
+    case_total = 0  # 把案件的总数量进行统计
+
+    penaltycount = df_sigle_penalty["amount"].tolist()
+    for i in penaltycount:
+        sum_data_number = sum_data_number + i / 10000
+        if i > 100 * 10000:
+            more_than_100 = more_than_100 + 1
+        if i != 0:
+            case_total = case_total + 1
+
+    for i in sum_data:
+        sum_data_number = sum_data_number + i / 10000
+        if i > 100 * 10000:
+            more_than_100 = more_than_100 + 1
+    # sum_data_number=round(sum_data_number,2)
+    # get index of max sum
+    topsum1 = df_sum["sum"].nlargest(1)
+    topsum1_index = df_sum["sum"].idxmax()
+    # get month value of max count
+    topsum1month = df_month.loc[topsum1_index, "month"]
+    image4_text = (
+        "图四解析：从"
+        + minmonth
+        + "至"
+        + maxmonth
+        + "，共发生罚款案件"
+        + str(case_total)
+        + "起;期间共涉及处罚金额"
+        + str(round(sum_data_number, 2))
+        + "万元，处罚事件平均处罚金额为"
+        + str(round(sum_data_number / case_total, 2))
+        + "万元，其中处罚金额高于100万元处罚事件共"
+        + str(more_than_100)
+        + "起。"
+        + topsum1month
+        + "发生最高处罚金额"
+        + str(round(topsum1.values[0] / 10000, 2))
+        + "万元。"
+    )
+    st.markdown("##### " + image4_text)
+
     # display summary
     st.markdown("### 分析报告下载")
 
@@ -754,8 +824,11 @@ def display_search_df(searchdf):
         image1 = bar.render(path=os.path.join(pencsrc2, t1 + "image1.html"))
         image2 = pie.render(path=os.path.join(pencsrc2, t1 + "image2.html"))
         image3 = map.render(path=os.path.join(pencsrc2, t1 + "image3.html"))
+        image4 = line.render(path=os.path.join(pencsrc2, t1 + "image4.html"))
         file_name = make_docx(
-            title_str, [image1_text, image2_text, image3_text], [image1, image2, image3]
+            title_str,
+            [image1_text, image2_text, image3_text, image4_text],
+            [image1, image2, image3, image4],
         )
         st.download_button(
             "下载分析报告", data=file_name.read(), file_name="分析报告.docx"
@@ -1080,3 +1153,37 @@ def generate_label(df, select_column, labellist, multi_label):
     tempdf1 = tempdf[["id", "labels", "scores"]]
     savename = "csrc2label" + get_now() + "final.csv"
     savedf2(tempdf1, savename)
+
+
+def download_csrcsum():
+    # get old sumeventdf
+    oldsum2 = get_csrc2detail()
+    # detailname
+    detailname = "csrcdtlall" + get_nowdate() + ".csv"
+
+    # download detail data
+    st.download_button(
+        "下载案例数据", data=oldsum2.to_csv().encode("utf_8_sig"), file_name=detailname
+    )
+
+
+def get_csrc2amt():
+    amtdf = get_csvdf(pencsrc2, "csrc2amt")
+    # process amount
+    amtdf["amount"] = amtdf["amount"].astype(float)
+    return amtdf
+
+    # sum amount column of df by month
+
+
+def sum_amount_by_month(df):
+    amtdf = get_csrc2amt()
+    df1 = pd.merge(
+        df, amtdf.drop_duplicates("url"), left_on="链接", right_on="url", how="left"
+    )
+    df1["发文日期"] = pd.to_datetime(df1["发文日期"]).dt.date
+    # df=df[df['发文日期']>=pd.to_datetime('2020-01-01')]
+    df1["month"] = df1["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
+    df_month_sum = df1.groupby(["month"])["amount"].sum().reset_index(name="sum")
+    df_sigle_penalty = df1[["month", "amount"]]
+    return df_month_sum, df_sigle_penalty

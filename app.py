@@ -24,6 +24,7 @@ from dbcsrc2 import (  # get_csrc2detail,
     display_eventdetail2,
     display_summary2,
     download_attachment,
+    download_csrcsum,
     generate_lawdf2,
     get_csrc2analysis,
     get_csrc2textupdate,
@@ -108,6 +109,8 @@ def main():
         st.subheader("案例更新2")
         # display summary2
         sumdf2 = display_summary2()
+        # download csrcsum
+        download_csrcsum()
         # get org list
         org_list = sumdf2["机构"].unique()
 

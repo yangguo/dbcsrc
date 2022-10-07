@@ -20,12 +20,12 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Line
 from pyecharts.commons.utils import JsCode
 from pyecharts.render import make_snapshot
-# from snapshot_selenium 
-import snapshot as driver
 
 # from snapshot_phantomjs import snapshot as driver
 from streamlit_echarts import st_pyecharts
 
+# from snapshot_selenium
+import snapshot as driver
 from checkrule import get_lawdtlbyid, get_rulelist_byname
 from utils import df2aggrid, df2echartstable, split_words
 
@@ -1161,3 +1161,10 @@ def make_docx(title, text, image):  # 制作docx的函数，title以str形式传
     file_stream.seek(0)
     # document.save(t1+'.docx')
     return file_stream
+
+
+# get current date and time string
+def get_nowdate():
+    now = datetime.datetime.now()
+    now_str = now.strftime("%Y%m%d")
+    return now_str
