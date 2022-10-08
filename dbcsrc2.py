@@ -612,6 +612,8 @@ def display_search_df(searchdf):
 
             # set session state
             st.session_state["search_result_csrc2"] = searchdfnew
+            # refresh page
+            # st.experimental_rerun()
 
         # 图一解析开始
         maxmonth = df_month["month"].max()
@@ -700,6 +702,8 @@ def display_search_df(searchdf):
             searchdfnew = searchdf[searchdf["机构"] == orgname]
             # set session state
             st.session_state["search_result_csrc2"] = searchdfnew
+            # refresh page
+            # st.experimental_rerun()
 
         # 图二解析开始
         orgls = pd.value_counts(df_month["机构"]).keys().tolist()
@@ -741,11 +745,13 @@ def display_search_df(searchdf):
 
     if yearmonthline is not None:
         # filter date by year and month
-        searchdfnew = df_month[df_month["month"] == yearmonth]
+        searchdfnew = df_month[df_month["month"] == yearmonthline]
         # drop column "month"
         searchdfnew.drop(columns=["month"], inplace=True)
         # set session state
         st.session_state["search_result_csrc2"] = searchdfnew
+        # refresh page
+        # st.experimental_rerun()
 
     # 图四解析：
     sum_data_number = 0  # 把案件金额的数组进行求和
@@ -765,11 +771,15 @@ def display_search_df(searchdf):
         if i > 100 * 10000:
             more_than_100 = more_than_100 + 1
     # sum_data_number=round(sum_data_number,2)
+    if case_total > 0:
+        avg_sum = round(sum_data_number / case_total, 2)
+    else:
+        avg_sum = 0
     # get index of max sum
     topsum1 = df_sum["sum"].nlargest(1)
     topsum1_index = df_sum["sum"].idxmax()
     # get month value of max count
-    topsum1month = df_month.loc[topsum1_index, "month"]
+    topsum1month = df_sum.loc[topsum1_index, "month"]
     image4_text = (
         "图四解析：从"
         + minmonth
@@ -780,7 +790,7 @@ def display_search_df(searchdf):
         + "起;期间共涉及处罚金额"
         + str(round(sum_data_number, 2))
         + "万元，处罚事件平均处罚金额为"
-        + str(round(sum_data_number / case_total, 2))
+        + str(avg_sum)
         + "万元，其中处罚金额高于100万元处罚事件共"
         + str(more_than_100)
         + "起。"
