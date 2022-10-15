@@ -1,6 +1,7 @@
 from ast import literal_eval
 
 import pandas as pd
+import requests
 import streamlit as st
 
 from dbcsrc import (  # count_by_month,; display_dfmonth,
@@ -26,10 +27,12 @@ from dbcsrc2 import (  # get_csrc2detail,
     download_attachment,
     download_csrcsum,
     generate_lawdf2,
+    get_csrc2amt,
     get_csrc2analysis,
     get_csrc2textupdate,
     get_csrcdownload,
     get_csrclenanalysis,
+    get_lawdetail2,
     get_sumeventdf2,
     remove_tempfiles,
     searchcsrc2,
@@ -253,7 +256,7 @@ def main():
         # get selected column
 
         # text are for text
-        # article_text = st.text_area("输入文本", value="")
+        article_text = st.text_area("输入文本", value="")
         # text area for input label list
         labeltext = st.text_area("输入标签列表", value="")
         # radio button for choose multi label or single label
@@ -269,7 +272,18 @@ def main():
                 labellist = literal_eval(labeltext)
                 # if not null
                 if len(labellist) != 0:
-                    update_label(select_column, labellist, multi_label)
+                    # update_label(select_column, labellist, multi_label)
+                    res = requests.post(
+                        f"http://localhost:8000/classify",
+                        json={
+                            "article": article_text,
+                            "candidate_labels": labellist,
+                            "multi_label": False,
+                        },
+                    )
+                    st.info(res)
+                    resjson = res.json()
+                    st.info(resjson)
                     st.success("标签分类完成")
                 else:
                     st.error("请输入标签列表")
@@ -557,11 +571,16 @@ def main():
         # get min and max date of old eventdf
         min_date2 = df["发文日期"].min()
         max_date2 = df["发文日期"].max()
-        # use metric
-        # st.sidebar.write("案例总数", oldlen2)
-        # st.sidebar.write("最晚发文日期", max_date2)
-        # st.sidebar.write("最早发文日期", min_date2)
-
+        # get cbircamt
+        csrc2amt = get_csrc2amt()
+        # get lawcbirc
+        csrc2law = get_lawdetail2()
+        # get lawlist
+        lawlist = csrc2law["法律法规"].unique()
+        # merge df and csrc2amt with url
+        dfl = pd.merge(df, csrc2amt, left_on="链接", right_on="url", how="left")
+        # merge dfl and csrc2law with url
+        dfl = pd.merge(dfl, csrc2law, left_on="链接", right_on="链接", how="left")
         # get one year before max date
         one_year_before = max_date2 - pd.Timedelta(days=365)
         # choose search type
@@ -579,10 +598,14 @@ def main():
                     filename_text = st.text_input("发文名称")
                     # input case keyword
                     case_text = st.text_input("案件关键词")
+                    # input minimum penalty amount
+                    min_penalty = st.number_input("最低处罚金额", value=0)
                 with col2:
                     end_date = st.date_input("结束日期", value=max_date2)
                     # input wenhao keyword
                     wenhao_text = st.text_input("文号")
+                    # choose reference law
+                    law_select = st.multiselect("处罚依据", lawlist)
                     # input org keyword from org list
                     org_text = st.multiselect("发文机构", org_list)
                     if org_text == []:
@@ -598,6 +621,8 @@ def main():
                 ):
                     st.warning("请输入搜索条件")
                     # st.stop()
+                if law_select == []:
+                    law_select = lawlist
                 # search by filename, date, wenhao, case, org
                 st.session_state["keywords_csrc2"] = [
                     filename_text,
@@ -609,13 +634,15 @@ def main():
                 ]
                 # search by filename, date, wenhao, case, org
                 search_df = searchcsrc2(
-                    df,
+                    dfl,
                     filename_text,
                     start_date,
                     end_date,
                     wenhao_text,
                     case_text,
                     org_text,
+                    min_penalty,
+                    law_select,
                 )
                 # set search result in session state
                 st.session_state["search_result_csrc2"] = search_df

@@ -64,6 +64,8 @@ def get_csrcdetail():
     pendf = get_csvdf(pencsrc, "sdresult")
     # format date
     pendf["发文日期"] = pd.to_datetime(pendf["发文日期"]).dt.date
+    # sort by date
+    pendf = pendf.sort_values(by="发文日期", ascending=False)
     # fillna
     pendf = pendf.fillna("")
     return pendf
@@ -308,7 +310,7 @@ def sum_amount_by_month(df):
     df["amt"] = df["amt"].astype(float)
     df["amt"] = df["amt"] * 10000
     df_month_sum = df.groupby(["month"])["amt"].sum().reset_index(name="sum")
-    df_sigle_penalty = df[["month", "amt"]]
+    df_sigle_penalty = df.groupby("id")["amt"].sum().reset_index()
     return df_month_sum, df_sigle_penalty
 
 
@@ -328,7 +330,6 @@ def display_dfmonth(search_df):
     df_month = count_by_month(search_df)
     # get eventdf sum amount by month
     df_sum, df_sigle_penalty = sum_amount_by_month(selected_peopledetail)
-
     # display checkbox to show/hide graph1
     # showgraph1 = st.sidebar.checkbox("案例数量和金额统计", key="showgraph1")
     showgraph1 = True
@@ -436,10 +437,10 @@ def display_dfmonth(search_df):
             if i != 0:
                 case_total = case_total + 1
 
-        for i in sum_data:
-            sum_data_number = sum_data_number + i / 10000
-            if i > 100 * 10000:
-                more_than_100 = more_than_100 + 1
+        # for i in sum_data:
+        #     sum_data_number = sum_data_number + i / 10000
+        #     if i > 100 * 10000:
+        #         more_than_100 = more_than_100 + 1
         # sum_data_number=round(sum_data_number,2)
         # get index of max sum
         topsum1 = df_sum["sum"].nlargest(1)

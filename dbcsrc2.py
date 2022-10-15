@@ -279,7 +279,17 @@ def display_summary2():
 
 
 # search by filename, date, wenhao,case,org
-def searchcsrc2(df, filename, start_date, end_date, wenhao, case, org):
+def searchcsrc2(
+    df,
+    filename,
+    start_date,
+    end_date,
+    wenhao,
+    case,
+    org,
+    min_penalty,
+    law_select,
+):
     col = ["名称", "发文日期", "文号", "内容", "链接", "机构"]
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
@@ -298,10 +308,14 @@ def searchcsrc2(df, filename, start_date, end_date, wenhao, case, org):
         & (df["文号"].str.contains(wenhao))
         & (df["内容"].str.contains(case))
         & (df["机构"].isin(org))
+        & (df["amount"] >= min_penalty)
+        & (df["法律法规"].isin(law_select))
     ][col]
 
     # sort by date desc
     searchdf.sort_values(by=["发文日期"], ascending=False, inplace=True)
+    # drop duplicates
+    searchdf.drop_duplicates(subset=["链接"], inplace=True)
     # reset index
     searchdf.reset_index(drop=True, inplace=True)
     return searchdf
