@@ -5,7 +5,7 @@ beautifulsoup4
 streamlit-aggrid
 streamlit-echarts
 paddleocr
-# paddlepaddle
+paddlepaddle
 pdfplumber
 python-docx
 pdf2image

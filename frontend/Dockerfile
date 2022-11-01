@@ -1,12 +1,12 @@
 FROM python:3.9
 
 # install chromedriver_linux64
-# RUN apt-get update && \
-#     apt-get install -y gnupg wget curl unzip --no-install-recommends && \
-#     wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-#     echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
-#     apt-get update -y && \
-#     apt-get install -y google-chrome-stable 
+RUN apt-get update && \
+    apt-get install -y gnupg wget curl unzip --no-install-recommends && \
+    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
+    apt-get update -y && \
+    apt-get install -y google-chrome-stable 
     #&& \
 #     CHROMEVER=$(google-chrome --product-version | grep -o "[^\.]*\.[^\.]*\.[^\.]*") && \
 #     DRIVERVER=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROMEVER") && \
@@ -18,13 +18,13 @@ FROM python:3.9
 
 # RUN apt-get update
 # install libreoffice
-# RUN apt-get install -y libreoffice
+RUN apt-get install -y libreoffice
 
 # install poppler-utils
-# RUN apt-get install -y poppler-utils
+RUN apt-get install -y poppler-utils
 
 # install chinese fonts
-# RUN apt-get install -y ttf-wqy-zenhei ttf-wqy-microhei 
+RUN apt-get install -y ttf-wqy-zenhei ttf-wqy-microhei 
 
 WORKDIR /app
 
