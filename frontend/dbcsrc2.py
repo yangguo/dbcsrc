@@ -12,16 +12,14 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
+from checkrule import get_lawdtlbyid, get_rulelist_byname
+from dbcsrc import get_csvdf, get_now, get_nowdate, make_docx, print_bar, print_line
+from doc2text import convert_uploadfiles
 from pyecharts import options as opts
 from pyecharts.charts import Map, Pie
 from streamlit_echarts import Map as st_Map
 from streamlit_echarts import st_pyecharts
 from streamlit_tags import st_tags
-
-from checkrule import get_lawdtlbyid, get_rulelist_byname
-from classifier import get_class
-from dbcsrc import get_csvdf, get_now, get_nowdate, make_docx, print_bar, print_line
-from doc2text import convert_uploadfiles
 from utils import df2aggrid, split_words
 
 pencsrc2 = "data/penalty/csrc2"
@@ -780,10 +778,10 @@ def display_search_df(searchdf):
         if i != 0:
             case_total = case_total + 1
 
-    for i in sum_data:
-        sum_data_number = sum_data_number + i / 10000
-        if i > 100 * 10000:
-            more_than_100 = more_than_100 + 1
+    # for i in sum_data:
+    #     sum_data_number = sum_data_number + i / 10000
+    #     if i > 100 * 10000:
+    #         more_than_100 = more_than_100 + 1
     # sum_data_number=round(sum_data_number,2)
     if case_total > 0:
         avg_sum = round(sum_data_number / case_total, 2)
@@ -1125,7 +1123,7 @@ def update_csrc2analysis():
         savedf2(upddf1, savename)
 
 
-def update_label(select_column, labellist, multi_label):
+def update_label():
     newdf = get_csrc2analysis()
     newurlls = newdf["链接"].tolist()
     olddf = get_csrc2label()
@@ -1142,41 +1140,14 @@ def update_label(select_column, labellist, multi_label):
     if upddf.empty is False:
         updlen = len(upddf)
         st.info("待更新标签" + str(updlen) + "条数据")
-        # savename = "to_label"
+        savename = "csrc2_tolabel" + get_nowdate() + ".csv"
         # savedf2(upddf, savename)
-        with st.spinner("更新标签中..."):
-            generate_label(upddf, select_column, labellist, multi_label)
-
-
-def generate_label(df, select_column, labellist, multi_label):
-
-    artls = df[select_column].tolist()
-    urls = df["链接"].tolist()
-
-    txtls = []
-    idls = []
-    for i, item in enumerate(zip(artls, urls)):
-        article, url = item
-        txtls.append(str(article))
-        idls.append(url)
-        mod = (i + 1) % 100
-        if mod == 0 and i > 0:
-            results = get_class(txtls, labellist, multi_label=multi_label)
-            tempdf = pd.DataFrame({"result": results, "id": idls})
-            tempdf["labels"] = tempdf["result"].apply(lambda x: x["labels"][:3])
-            tempdf["scores"] = tempdf["result"].apply(lambda x: x["scores"][:3])
-            tempdf1 = tempdf[["id", "labels", "scores"]]
-            savename = "csrc2label" + get_now() + str(i + 1) + ".csv"
-            savedf2(tempdf1, savename)
-            txtls = []
-            idls = []
-    results = get_class(txtls, labellist, multi_label=multi_label)
-    tempdf = pd.DataFrame({"result": results, "id": idls})
-    tempdf["labels"] = tempdf["result"].apply(lambda x: x["labels"][:3])
-    tempdf["scores"] = tempdf["result"].apply(lambda x: x["scores"][:3])
-    tempdf1 = tempdf[["id", "labels", "scores"]]
-    savename = "csrc2label" + get_now() + "final.csv"
-    savedf2(tempdf1, savename)
+        # download detail data
+        st.download_button(
+            "下载案例数据", data=upddf.to_csv().encode("utf_8_sig"), file_name=savename
+        )
+        # with st.spinner("更新标签中..."):
+        #     generate_label(upddf, select_column, labellist, multi_label)
 
 
 def download_csrcsum():
@@ -1188,6 +1159,36 @@ def download_csrcsum():
     # download detail data
     st.download_button(
         "下载案例数据", data=oldsum2.to_csv().encode("utf_8_sig"), file_name=detailname
+    )
+
+    # download lawdf data
+    lawdf = get_lawdetail2()
+    lawname = "csrc2law" + get_nowdate() + ".csv"
+    st.download_button(
+        "下载法律数据", data=lawdf.to_csv().encode("utf_8_sig"), file_name=lawname
+    )
+
+    # download label data
+    labeldf = get_csrc2label()
+    labelname = "csrc2label" + get_nowdate() + ".csv"
+    st.download_button(
+        "下载标签数据", data=labeldf.to_csv().encode("utf_8_sig"), file_name=labelname
+    )
+
+    # download analysis data
+    analysisdf = get_csrc2analysis()
+    analysisname = "csrc2analysis" + get_nowdate() + ".csv"
+    st.download_button(
+        "下载分析数据",
+        data=analysisdf.to_csv().encode("utf_8_sig"),
+        file_name=analysisname,
+    )
+
+    # download amount data
+    amountdf = get_csrc2amt()
+    amountname = "csrc2amount" + get_nowdate() + ".csv"
+    st.download_button(
+        "下载金额数据", data=amountdf.to_csv().encode("utf_8_sig"), file_name=amountname
     )
 
 

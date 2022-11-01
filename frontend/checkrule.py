@@ -1,6 +1,5 @@
 import pandas as pd
 import streamlit as st
-
 from utils import get_csvdf, get_rulefolder, split_words
 
 rulefolder = "data/rules"

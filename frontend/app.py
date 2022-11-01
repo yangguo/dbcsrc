@@ -3,7 +3,6 @@ from ast import literal_eval
 import pandas as pd
 import requests
 import streamlit as st
-
 from dbcsrc import (  # count_by_month,; display_dfmonth,
     display_eventdetail,
     display_summary,
@@ -248,45 +247,113 @@ def main():
             st.success("删除附件完成")
 
     elif choice == "案例分类2":
-        df = get_csrc2analysis()
-        # get columns
-        columns = df.columns
-        # choose columns
-        select_column = st.sidebar.selectbox("选择分类字段", columns)
-        # get selected column
 
-        # text are for text
-        article_text = st.text_area("输入文本", value="")
-        # text area for input label list
-        labeltext = st.text_area("输入标签列表", value="")
-        # radio button for choose multi label or single label
-        multi_label = st.sidebar.checkbox("是否多标签", value=False, key="multi_label")
+        options = st.sidebar.radio("选项", ["生成待标签案例", "处罚金额分析", "案例分类", "案例批量分类"])
 
-        # button for classify
-        classify_button = st.sidebar.button("标签分类")
-        if classify_button:
-            if labeltext == "":
-                st.error("输入标签列表")
-            else:
-                # convert to list
-                labellist = literal_eval(labeltext)
-                # if not null
-                if len(labellist) != 0:
-                    # update_label(select_column, labellist, multi_label)
-                    res = requests.post(
-                        f"http://localhost:8000/classify",
-                        json={
-                            "article": article_text,
-                            "candidate_labels": labellist,
-                            "multi_label": False,
-                        },
-                    )
-                    st.info(res)
-                    resjson = res.json()
-                    st.info(resjson)
-                    st.success("标签分类完成")
+        if options == "生成待标签案例":
+            # button for generate label text
+            labeltext_button = st.button("生成待标签文本")
+            if labeltext_button:
+                update_label()
+                st.sidebar.success("生成待标签文本完成")
+
+        elif options == "处罚金额分析":
+            # upload file button
+            upload_file = st.file_uploader("上传文件", type=["csv"])
+
+            # button for penalty amount analysis
+            amount_button = st.button("处罚金额分析")
+            if amount_button:
+                # if file not null
+                if upload_file is not None:
+                    filename = upload_file.name
+                    try:
+                        res = requests.post(
+                            f"http://localhost:8000/upload",
+                            files={"file": upload_file},
+                        )
+                        st.success("处罚金额分析完成")
+                    except Exception as e:
+                        st.error(e)
+                        st.error("处罚金额分析失败")
                 else:
-                    st.error("请输入标签列表")
+                    st.error("请上传文件")
+
+        elif options == "案例分类":
+            # text are for text
+            article_text = st.text_area("输入文本", value="")
+            # text area for input label list
+            labeltext = st.text_area("输入标签列表", value="")
+            # radio button for choose multi label or single label
+            multi_label = st.checkbox("是否多标签", value=False, key="multi_label")
+
+            # button for generate label text
+            classify_button = st.button("案例分类")
+            if classify_button:
+                if labeltext == "":
+                    st.error("输入标签列表")
+                    labellist = []
+                else:
+                    # convert to list
+                    labellist = literal_eval(labeltext)
+
+                try:
+                    url = f"http://localhost:8000/classify"
+                    payload = {
+                        "article": article_text,
+                        "candidate_labels": labellist,
+                        "multi_label": multi_label,
+                    }
+                    headers = {}
+                    res = requests.post(url, headers=headers, params=payload)
+                    st.success("案例分类完成")
+                    st.write(res.json())
+                except Exception as e:
+                    st.error("案例分类失败")
+                    st.write(e)
+
+        elif options == "案例批量分类":
+            # upload file button
+            upload_file = st.file_uploader("上传文件", type=["csv"])
+
+            # text area for input label list
+            labeltext = st.text_area("输入标签列表", value="")
+            # radio button for choose multi label or single label
+            multi_label = st.checkbox("是否多标签", value=False, key="multi_label")
+
+            # button for generate label text
+            classify_button = st.button("案例分类")
+            if classify_button:
+                if upload_file is not None:
+                    filename = upload_file.name
+                else:
+                    st.error("请上传文件")
+
+                if labeltext == "":
+                    st.error("输入标签列表")
+                    labellist = []
+                else:
+                    # convert to list
+                    labellist = literal_eval(labeltext)
+
+                try:
+                    url = f"http://localhost:8000/batchclassify"
+                    payload = {
+                        "candidate_labels": labellist,
+                        "multi_label": multi_label,
+                    }
+                    headers = {}
+                    res = requests.post(
+                        url,
+                        headers=headers,
+                        params=payload,
+                        files={"file": upload_file},
+                    )
+                    st.success("案例分类完成")
+                    st.write(res.text)
+                except Exception as e:
+                    st.error("案例分类失败")
+                    st.write(e)
 
     elif choice == "案例搜索1":
         st.subheader("案例搜索1")

@@ -10,8 +10,12 @@ from ast import literal_eval
 import docx
 import pandas as pd
 import requests
+
+# from snapshot_selenium
+import snapshot as driver
 import streamlit as st
 from bs4 import BeautifulSoup
+from checkrule import get_lawdtlbyid, get_rulelist_byname
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.ns import qn
@@ -23,10 +27,6 @@ from pyecharts.render import make_snapshot
 
 # from snapshot_phantomjs import snapshot as driver
 from streamlit_echarts import st_pyecharts
-
-# from snapshot_selenium
-import snapshot as driver
-from checkrule import get_lawdtlbyid, get_rulelist_byname
 from utils import df2aggrid, df2echartstable, split_words
 
 pencsrc = "data/penalty/csrc"
@@ -788,12 +788,16 @@ def json2df(site_json):
     issueorgls = []
     filenols = []
     datels = []
-    for i in range(20):
-        idls.append(site_json["pageUtil"]["pageList"][i]["lawWritId"])
-        namels.append(site_json["pageUtil"]["pageList"][i]["name"])
-        issueorgls.append(site_json["pageUtil"]["pageList"][i]["issueOrgName"])
-        filenols.append(site_json["pageUtil"]["pageList"][i]["fileno"])
-        datels.append(site_json["pageUtil"]["pageList"][i]["dsptDate"])
+    # if not empty
+    if site_json["pageUtil"]["pageList"] != []:
+        for i in range(20):
+            idls.append(site_json["pageUtil"]["pageList"][i]["lawWritId"])
+            namels.append(site_json["pageUtil"]["pageList"][i]["name"])
+            issueorgls.append(site_json["pageUtil"]["pageList"][i]["issueOrgName"])
+            filenols.append(site_json["pageUtil"]["pageList"][i]["fileno"])
+            datels.append(site_json["pageUtil"]["pageList"][i]["dsptDate"])
+    else:
+        st.error("数据为空")
 
     eventdf = pd.DataFrame(
         {
