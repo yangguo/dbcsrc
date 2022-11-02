@@ -3,8 +3,11 @@ from typing import List, Union
 
 import pandas as pd
 from classifier import df2label, get_class
+from doc2text import convert_uploadfiles, docxconvertion
 from extractamount import df2amount
 from fastapi import FastAPI, File, Query, UploadFile
+
+tempdir = "../data/penalty/csrc2/temp"
 
 app = FastAPI()
 
@@ -56,3 +59,15 @@ async def upload(file: UploadFile = File(...)):
     buffer.close()
     file.file.close()
     return {"filename": file.filename, "contents": contents}
+
+
+@app.get("/docxconvert")
+async def docxconvert():
+    docxconvertion(tempdir)
+    return {"dirpath": tempdir}
+
+
+@app.post("/convertuploadfiles")
+async def convertuploadfiles(txtls: List[str] = Query(default=[]), dirpath: str = ""):
+    resls = convert_uploadfiles(txtls, dirpath)
+    return {"resls": resls}

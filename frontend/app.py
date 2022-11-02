@@ -40,12 +40,15 @@ from dbcsrc2 import (  # get_csrc2detail,
     update_label,
     update_sumeventdf2,
 )
-from doc2text import docxconvertion
+
+# from doc2text import docxconvertion
 
 # use wide layout
 st.set_page_config(page_title="案例分析", layout="wide")
 
-tempdir = "/data/penalty/csrc2/temp"
+# tempdir = "../data/penalty/csrc2/temp"
+# backendurl="http://backend.docker:8000"
+backendurl = "http://localhost:8000"
 
 
 def main():
@@ -208,8 +211,15 @@ def main():
         # button for convert
         convert_button = st.sidebar.button("word格式转换")
         if convert_button:
-            docxconvertion(tempdir)
-            st.success("word格式转换完成")
+            # docxconvertion(tempdir)
+            
+            try:
+                url = backendurl + "/docxconvert"
+                r = requests.get(url)
+                st.success("word格式转换完成")
+                st.write(r.text)
+            except Exception as e:
+                st.error(e)
 
         downdf = get_csrcdownload()
         # if lendf is empty:
@@ -255,7 +265,7 @@ def main():
             labeltext_button = st.button("生成待标签文本")
             if labeltext_button:
                 update_label()
-                st.sidebar.success("生成待标签文本完成")
+                st.success("生成待标签文本完成")
 
         elif options == "处罚金额分析":
             # upload file button
@@ -268,8 +278,9 @@ def main():
                 if upload_file is not None:
                     filename = upload_file.name
                     try:
+                        url = backendurl + "/upload"
                         res = requests.post(
-                            f"http://backend.docker:8000/upload",
+                            url,
                             files={"file": upload_file},
                         )
                         st.success("处罚金额分析完成")
@@ -290,27 +301,26 @@ def main():
             # button for generate label text
             classify_button = st.button("案例分类")
             if classify_button:
-                if labeltext == "":
-                    st.error("输入标签列表")
-                    labellist = []
+                if article_text == "" or labeltext == "":
+                    st.error("输入文本及标签列表")
                 else:
                     # convert to list
                     labellist = literal_eval(labeltext)
 
-                try:
-                    url = f"http://backend.docker:8000/classify"
-                    payload = {
-                        "article": article_text,
-                        "candidate_labels": labellist,
-                        "multi_label": multi_label,
-                    }
-                    headers = {}
-                    res = requests.post(url, headers=headers, params=payload)
-                    st.success("案例分类完成")
-                    st.write(res.json())
-                except Exception as e:
-                    st.error("案例分类失败")
-                    st.write(e)
+                    try:
+                        url = backendurl + "/classify"
+                        payload = {
+                            "article": article_text,
+                            "candidate_labels": labellist,
+                            "multi_label": multi_label,
+                        }
+                        headers = {}
+                        res = requests.post(url, headers=headers, params=payload)
+                        st.success("案例分类完成")
+                        st.write(res.json())
+                    except Exception as e:
+                        st.error("案例分类失败")
+                        st.write(e)
 
         elif options == "案例批量分类":
             # upload file button
@@ -337,7 +347,7 @@ def main():
                     labellist = literal_eval(labeltext)
 
                 try:
-                    url = f"http://backend.docker:8000/batchclassify"
+                    url = backendurl + "/batchclassify"
                     payload = {
                         "candidate_labels": labellist,
                         "multi_label": multi_label,

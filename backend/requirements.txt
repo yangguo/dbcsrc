@@ -8,3 +8,7 @@ chinese2digits
 paddlenlp
 paddlepaddle
 python-multipart
+paddleocr
+pdfplumber
+python-docx
+pdf2image

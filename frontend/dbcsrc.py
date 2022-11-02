@@ -29,7 +29,7 @@ from pyecharts.render import make_snapshot
 from streamlit_echarts import st_pyecharts
 from utils import df2aggrid, df2echartstable, split_words
 
-pencsrc = "/data/penalty/csrc"
+pencsrc = "../data/penalty/csrc"
 # mapfolder = 'data/temp/citygeo.csv'
 
 BASE_URL = (

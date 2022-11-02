@@ -13,7 +13,7 @@ from st_aggrid.grid_options_builder import GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 from streamlit_echarts import st_pyecharts
 
-rulefolder = "/data/rules"
+rulefolder = "../data/rules"
 
 
 @st.cache

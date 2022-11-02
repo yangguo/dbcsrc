@@ -14,7 +14,8 @@ import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
 from checkrule import get_lawdtlbyid, get_rulelist_byname
 from dbcsrc import get_csvdf, get_now, get_nowdate, make_docx, print_bar, print_line
-from doc2text import convert_uploadfiles
+
+# from doc2text import convert_uploadfiles
 from pyecharts import options as opts
 from pyecharts.charts import Map, Pie
 from streamlit_echarts import Map as st_Map
@@ -22,9 +23,11 @@ from streamlit_echarts import st_pyecharts
 from streamlit_tags import st_tags
 from utils import df2aggrid, split_words
 
-pencsrc2 = "/data/penalty/csrc2"
-tempdir = "/data/penalty/csrc2/temp"
-mappath = "/data/map/chinageo.json"
+pencsrc2 = "../data/penalty/csrc2"
+tempdir = "../data/penalty/csrc2/temp"
+mappath = "../data/map/chinageo.json"
+# backendurl="http://backend.docker:8000"
+backendurl = "http://localhost:8000"
 
 # orgid map to orgname
 org2id = {
@@ -1061,7 +1064,22 @@ def update_csrc2text():
     downdf = get_csrcdownload()
     # get filename ls
     txtls = downdf["filename"].tolist()
-    resls = convert_uploadfiles(txtls, tempdir)
+    # resls = convert_uploadfiles(txtls, tempdir)
+
+    try:
+        url = backendurl + "/convertuploadfiles"
+        payload = {
+            "txtls": txtls,
+            "dirpath": tempdir,
+        }
+        headers = {}
+        res = requests.post(url, headers=headers, params=payload)
+        result = res.json()
+        resls = result["resls"]
+        st.success("文件转换成功")
+    except Exception as e:
+        st.error("转换错误: " + str(e))
+        resls = []
     downdf["text"] = resls
     savename = "csrc2textupdate"
     savetemp(downdf, savename)

@@ -2,10 +2,10 @@ import pandas as pd
 import streamlit as st
 from utils import get_csvdf, get_rulefolder, split_words
 
-rulefolder = "/data/rules"
-plcpath = "/data/rules/lawdfall0507.csv"
-metapath = "/data/rules/lawmeta0517.csv"
-dtlpath = "/data/rules/lawdtl0517.csv"
+rulefolder = "../data/rules"
+plcpath = "../data/rules/lawdfall0507.csv"
+metapath = "../data/rules/lawmeta0517.csv"
+dtlpath = "../data/rules/lawdtl0517.csv"
 
 
 def get_samplerule(key_list, industry_choice):
