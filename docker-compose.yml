@@ -13,7 +13,7 @@ services:
       - backend
     volumes:
       - ./frontend:/app
-      - /home/yang/Desktop/datavolume:/data
+      - ../datavolume:/data
 
   backend:
     build: backend
@@ -25,7 +25,7 @@ services:
           - backend.docker
     volumes:
       - ./backend:/app
-      - /home/yang/Desktop/datavolume:/data
+      - ../datavolume:/data
 
 networks:
   AIservice:
