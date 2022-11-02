@@ -17,3 +17,4 @@ streamlit-tags
 transformers
 sentencepiece
 torch
+streamlit==1.11

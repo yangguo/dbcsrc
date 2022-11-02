@@ -45,7 +45,7 @@ from doc2text import docxconvertion
 # use wide layout
 st.set_page_config(page_title="案例分析", layout="wide")
 
-tempdir = "data/penalty/csrc2/temp"
+tempdir = "/data/penalty/csrc2/temp"
 
 
 def main():
@@ -269,7 +269,7 @@ def main():
                     filename = upload_file.name
                     try:
                         res = requests.post(
-                            f"http://localhost:8000/upload",
+                            f"http://0.0.0.0:8000/upload",
                             files={"file": upload_file},
                         )
                         st.success("处罚金额分析完成")
@@ -298,7 +298,7 @@ def main():
                     labellist = literal_eval(labeltext)
 
                 try:
-                    url = f"http://localhost:8000/classify"
+                    url = f"http://0.0.0.0:8000/classify"
                     payload = {
                         "article": article_text,
                         "candidate_labels": labellist,
@@ -337,7 +337,7 @@ def main():
                     labellist = literal_eval(labeltext)
 
                 try:
-                    url = f"http://localhost:8000/batchclassify"
+                    url = f"http://0.0.0.0:8000/batchclassify"
                     payload = {
                         "candidate_labels": labellist,
                         "multi_label": multi_label,

@@ -22,9 +22,9 @@ from streamlit_echarts import st_pyecharts
 from streamlit_tags import st_tags
 from utils import df2aggrid, split_words
 
-pencsrc2 = "data/penalty/csrc2"
-tempdir = "data/penalty/csrc2/temp"
-mappath = "data/map/chinageo.json"
+pencsrc2 = "/data/penalty/csrc2"
+tempdir = "/data/penalty/csrc2/temp"
+mappath = "/data/map/chinageo.json"
 
 # orgid map to orgname
 org2id = {

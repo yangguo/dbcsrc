@@ -1,2 +1,10 @@
 fastapi
 uvicorn
+pandas
+transformers
+torch
+sentencepiece
+chinese2digits
+paddlenlp
+paddlepaddle
+python-multipart

@@ -1,3 +1,4 @@
 libreoffice
 poppler-utils
 phantomjs
+protobuf-compiler
