@@ -47,8 +47,8 @@ from dbcsrc2 import (  # get_csrc2detail,
 st.set_page_config(page_title="案例分析", layout="wide")
 
 # tempdir = "../data/penalty/csrc2/temp"
-# backendurl="http://backend.docker:8000"
-backendurl = "http://localhost:8000"
+backendurl="http://backend.docker:8000"
+#backendurl = "http://localhost:8000"
 
 
 def main():

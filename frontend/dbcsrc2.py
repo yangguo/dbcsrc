@@ -26,8 +26,8 @@ from utils import df2aggrid, split_words
 pencsrc2 = "../data/penalty/csrc2"
 tempdir = "../data/penalty/csrc2/temp"
 mappath = "../data/map/chinageo.json"
-# backendurl="http://backend.docker:8000"
-backendurl = "http://localhost:8000"
+backendurl="http://backend.docker:8000"
+#backendurl = "http://localhost:8000"
 
 # orgid map to orgname
 org2id = {
