@@ -269,7 +269,7 @@ def main():
                     filename = upload_file.name
                     try:
                         res = requests.post(
-                            f"http://0.0.0.0:8000/upload",
+                            f"http://backend.docker:8000/upload",
                             files={"file": upload_file},
                         )
                         st.success("处罚金额分析完成")
@@ -298,7 +298,7 @@ def main():
                     labellist = literal_eval(labeltext)
 
                 try:
-                    url = f"http://0.0.0.0:8000/classify"
+                    url = f"http://backend.docker:8000/classify"
                     payload = {
                         "article": article_text,
                         "candidate_labels": labellist,
@@ -337,7 +337,7 @@ def main():
                     labellist = literal_eval(labeltext)
 
                 try:
-                    url = f"http://0.0.0.0:8000/batchclassify"
+                    url = f"http://backend.docker:8000/batchclassify"
                     payload = {
                         "candidate_labels": labellist,
                         "multi_label": multi_label,
