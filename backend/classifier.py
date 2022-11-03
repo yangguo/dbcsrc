@@ -12,9 +12,9 @@ def get_class(article, candidate_labels, multi_label=False):
     return results
 
 
-def df2label(df, candidate_labels, multi_label=False):
-    artls = df["内容"].tolist()
-    urls = df["链接"].tolist()
+def df2label(df, idcol, contentcol, candidate_labels, multi_label=False):
+    artls = df[contentcol].tolist()
+    urls = df[idcol].tolist()
 
     txtls = []
     idls = []

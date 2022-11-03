@@ -1,8 +1,8 @@
 import datetime
 import os
 
-pencsrc2 = "data/penalty/csrc2"
-tempdir = "data/penalty/csrc2/temp"
+pencsrc2 = "../data/penalty/csrc2"
+tempdir = "../data/penalty/csrc2/temp"
 
 # get current date and time string
 def get_nowdate():

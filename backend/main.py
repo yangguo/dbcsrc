@@ -35,30 +35,26 @@ async def classify(
 async def batchclassify(
     candidate_labels: List[str] = Query(default=[]),
     multi_label: bool = False,
-    file: UploadFile = File(...),
+    # file: UploadFile = File(...),
+    idcol: str = "",
+    contentcol: str = "",
+    df_in: str = "",
 ):
-    contents = file.file.read()
-    s = str(contents, "utf-8")
-    buffer = StringIO(s)
-    df = pd.read_csv(buffer)
-    df2label(df, candidate_labels, multi_label)
-    buffer.close()
-    file.file.close()
-    return {"filename": file.filename}
+    # contents = file.file.read()
+    # s = str(contents, "utf-8")
+    # buffer = StringIO(s)
+    # df = pd.read_csv(buffer)
+    df = pd.read_json(df_in)
+    df2label(df, idcol, contentcol, candidate_labels, multi_label)
+    # buffer.close()
+    # file.file.close()
+    # return {"filename": file.filename}
 
 
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    contents = file.file.read()
-    # buffer = BytesIO()
-    # buffer.write(contents)
-    s = str(contents, "utf-8")
-    buffer = StringIO(s)
-    df = pd.read_csv(buffer)
-    df2amount(df)
-    buffer.close()
-    file.file.close()
-    return {"filename": file.filename, "contents": contents}
+@app.post("/amtanalysis")
+async def amtanalysis(idcol: str, contentcol: str, df_in: str):
+    df = pd.read_json(df_in)
+    df2amount(df, idcol, contentcol)
 
 
 @app.get("/docxconvert")

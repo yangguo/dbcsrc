@@ -1455,15 +1455,15 @@ def extract_money(stringall):  # string_all 为一个list,里面写证监局的�
     return sum_list
 
 
-def df2amount(df):
-    df1 = df[["链接", "内容"]]
+def df2amount(df, idcol, contentcol):
+    df1 = df[[idcol, contentcol]]
 
     urls = []
     amtls = []
     start = 0
     for i in range(start, len(df1)):
-        url = df1.iloc[i]["链接"]
-        content = df1.iloc[i]["内容"]
+        url = df1.iloc[i][idcol]
+        content = df1.iloc[i][contentcol]
         print(i)
         print(content)
         amount = extract_money([str(content)])

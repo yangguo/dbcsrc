@@ -47,8 +47,8 @@ from dbcsrc2 import (  # get_csrc2detail,
 st.set_page_config(page_title="案例分析", layout="wide")
 
 # tempdir = "../data/penalty/csrc2/temp"
-backendurl="http://backend.docker:8000"
-#backendurl = "http://localhost:8000"
+backendurl = "http://backend.docker:8000"
+# backendurl = "http://localhost:8000"
 
 
 def main():
@@ -212,7 +212,7 @@ def main():
         convert_button = st.sidebar.button("word格式转换")
         if convert_button:
             # docxconvertion(tempdir)
-            
+
             try:
                 url = backendurl + "/docxconvert"
                 r = requests.get(url)
@@ -270,25 +270,40 @@ def main():
         elif options == "处罚金额分析":
             # upload file button
             upload_file = st.file_uploader("上传文件", type=["csv"])
-
-            # button for penalty amount analysis
-            amount_button = st.button("处罚金额分析")
-            if amount_button:
-                # if file not null
-                if upload_file is not None:
-                    filename = upload_file.name
+            # if file not null
+            if upload_file is None:
+                st.error("请上传文件")
+            else:
+                # read csv file into pandas dataframe
+                df = pd.read_csv(upload_file)
+                # get column name list
+                col_list = df.columns.tolist()
+                # choose id column
+                idcol = st.selectbox("选择id字段", col_list)
+                # choose content column
+                contentcol = st.selectbox("选择内容字段", col_list)
+                # button for penalty amount analysis
+                amount_button = st.button("处罚金额分析")
+                if amount_button:
+                    # get penalty amount analysis result
                     try:
-                        url = backendurl + "/upload"
+                        url = backendurl + "/amtanalysis"
+                        payload = {
+                            "idcol": idcol,
+                            "contentcol": contentcol,
+                            "df_in": df.to_json(),
+                        }
+                        headers = {}
                         res = requests.post(
                             url,
-                            files={"file": upload_file},
+                            headers=headers,
+                            params=payload,
                         )
                         st.success("处罚金额分析完成")
+                        st.write(res.text)
                     except Exception as e:
                         st.error(e)
                         st.error("处罚金额分析失败")
-                else:
-                    st.error("请上传文件")
 
         elif options == "案例分类":
             # text are for text
@@ -331,39 +346,51 @@ def main():
             # radio button for choose multi label or single label
             multi_label = st.checkbox("是否多标签", value=False, key="multi_label")
 
-            # button for generate label text
-            classify_button = st.button("案例分类")
-            if classify_button:
-                if upload_file is not None:
-                    filename = upload_file.name
-                else:
-                    st.error("请上传文件")
+            # if file not null
+            if upload_file is None:
+                st.error("请上传文件")
+            else:
+                # read csv file into pandas dataframe
+                df = pd.read_csv(upload_file)
+                # get column name list
+                col_list = df.columns.tolist()
+                # choose id column
+                idcol = st.selectbox("选择id字段", col_list)
+                # choose content column
+                contentcol = st.selectbox("选择内容字段", col_list)
 
-                if labeltext == "":
-                    st.error("输入标签列表")
-                    labellist = []
-                else:
-                    # convert to list
-                    labellist = literal_eval(labeltext)
+                # button for generate label text
+                classify_button = st.button("案例分类")
+                if classify_button:
 
-                try:
-                    url = backendurl + "/batchclassify"
-                    payload = {
-                        "candidate_labels": labellist,
-                        "multi_label": multi_label,
-                    }
-                    headers = {}
-                    res = requests.post(
-                        url,
-                        headers=headers,
-                        params=payload,
-                        files={"file": upload_file},
-                    )
-                    st.success("案例分类完成")
-                    st.write(res.text)
-                except Exception as e:
-                    st.error("案例分类失败")
-                    st.write(e)
+                    if labeltext == "":
+                        st.error("输入标签列表")
+                        labellist = []
+                    else:
+                        # convert to list
+                        labellist = literal_eval(labeltext)
+
+                    try:
+                        url = backendurl + "/batchclassify"
+                        payload = {
+                            "candidate_labels": labellist,
+                            "multi_label": multi_label,
+                            "idcol": idcol,
+                            "contentcol": contentcol,
+                            "df_in": df.to_json(),
+                        }
+                        headers = {}
+                        res = requests.post(
+                            url,
+                            headers=headers,
+                            params=payload,
+                            # files={"file": upload_file},
+                        )
+                        st.success("案例分类完成")
+                        st.write(res.text)
+                    except Exception as e:
+                        st.error("案例分类失败")
+                        st.write(e)
 
     elif choice == "案例搜索1":
         st.subheader("案例搜索1")
