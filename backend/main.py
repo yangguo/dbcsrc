@@ -1,4 +1,4 @@
-from io import BytesIO, StringIO
+import io
 from typing import List, Union
 
 import pandas as pd
@@ -6,6 +6,9 @@ from classifier import df2label, get_class
 from doc2text import convert_uploadfiles, docxconvertion
 from extractamount import df2amount
 from fastapi import FastAPI, File, Query, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse
+from locationanalysis import df2location
+from peopleanalysis import df2people
 
 tempdir = "../data/penalty/csrc2/temp"
 
@@ -38,23 +41,38 @@ async def batchclassify(
     # file: UploadFile = File(...),
     idcol: str = "",
     contentcol: str = "",
-    df_in: str = "",
+    file: bytes = File(...),
 ):
-    # contents = file.file.read()
-    # s = str(contents, "utf-8")
-    # buffer = StringIO(s)
-    # df = pd.read_csv(buffer)
-    df = pd.read_json(df_in)
-    df2label(df, idcol, contentcol, candidate_labels, multi_label)
-    # buffer.close()
-    # file.file.close()
-    # return {"filename": file.filename}
+    file_obj = io.BytesIO(file)
+    df = pd.read_csv(file_obj)
+    resdf = df2label(df, idcol, contentcol, candidate_labels, multi_label)
+    return JSONResponse(content=resdf.to_json(orient="records"))
 
 
 @app.post("/amtanalysis")
-async def amtanalysis(idcol: str, contentcol: str, df_in: str):
-    df = pd.read_json(df_in)
-    df2amount(df, idcol, contentcol)
+async def amtanalysis(idcol: str, contentcol: str, file: bytes = File(...)):
+    file_obj = io.BytesIO(file)
+    df = pd.read_csv(file_obj)
+    resdf = df2amount(df, idcol, contentcol)
+    return JSONResponse(content=resdf.to_json(orient="records"))
+
+
+@app.post("/locanalysis")
+async def locanalysis(
+    idcol: str, titlecol: str, contentcol: str, file: bytes = File(...)
+):
+    file_obj = io.BytesIO(file)
+    df = pd.read_csv(file_obj)
+    resdf = df2location(df, idcol, titlecol, contentcol)
+    return JSONResponse(content=resdf.to_json(orient="records"))
+
+
+@app.post("/peopleanalysis")
+async def peopleanalysis(idcol: str, contentcol: str, file: bytes = File(...)):
+    file_obj = io.BytesIO(file)
+    df = pd.read_csv(file_obj)
+    resdf = df2people(df, idcol, contentcol)
+    return JSONResponse(content=resdf.to_json(orient="records"))
 
 
 @app.get("/docxconvert")

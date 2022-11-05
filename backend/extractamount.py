@@ -1472,12 +1472,13 @@ def df2amount(df, idcol, contentcol):
         amtls.append(amount)
 
         if (i + 1) % 100 == 0 and i > start:
-            tempdf = pd.DataFrame({"url": urls, "amt": amtls})
+            tempdf = pd.DataFrame({"id": urls, "amt": amtls})
             tempdf["amount"] = tempdf["amt"].apply(lambda x: x[0])
             savename = "tempamt-" + str(i)
             savetemp(tempdf, savename)
 
-    resdf = pd.DataFrame({"url": urls, "amt": amtls})
+    resdf = pd.DataFrame({"id": urls, "amt": amtls})
     resdf["amount"] = resdf["amt"].apply(lambda x: x[0])
-    savename = "csrc2amt" + get_nowdate()
-    savedf2(resdf, savename)
+    # savename = "csrc2amt" + get_nowdate()+".csv"
+    # savedf2(resdf, savename)
+    return resdf

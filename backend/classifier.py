@@ -29,6 +29,7 @@ def df2label(df, idcol, contentcol, candidate_labels, multi_label=False):
             tempdf = pd.DataFrame({"result": results, "id": idls})
             tempdf["labels"] = tempdf["result"].apply(lambda x: x["labels"][:3])
             tempdf["scores"] = tempdf["result"].apply(lambda x: x["scores"][:3])
+            tempdf["label"] = tempdf["labels"].apply(lambda x: x[0])
             savename = "templabel-" + str(i + 1)
             savetemp(tempdf, savename)
 
@@ -36,6 +37,8 @@ def df2label(df, idcol, contentcol, candidate_labels, multi_label=False):
     tempdf = pd.DataFrame({"result": results, "id": idls})
     tempdf["labels"] = tempdf["result"].apply(lambda x: x["labels"][:3])
     tempdf["scores"] = tempdf["result"].apply(lambda x: x["scores"][:3])
-    tempdf1 = tempdf[["id", "labels", "scores"]]
-    savename = "csrc2label" + get_nowdate()
-    savedf2(tempdf1, savename)
+    tempdf["label"] = tempdf["labels"].apply(lambda x: x[0])
+    tempdf1 = tempdf[["id", "labels", "scores", "label"]]
+    # savename = "csrc2label" + get_nowdate()
+    # savedf2(tempdf1, savename)
+    return tempdf1
