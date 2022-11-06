@@ -13,3 +13,5 @@ pdfplumber
 python-docx
 pdf2image
 streamlit==1.11.1
+jionlp
+addressparser
