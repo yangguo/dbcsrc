@@ -26,8 +26,8 @@ from utils import df2aggrid, split_words
 pencsrc2 = "../data/penalty/csrc2"
 tempdir = "../data/penalty/csrc2/temp"
 mappath = "../data/map/chinageo.json"
-backendurl="http://backend.docker:8000"
-#backendurl = "http://localhost:8000"
+# backendurl = "http://backend.docker:8000"
+backendurl = "http://localhost:8000"
 
 # orgid map to orgname
 org2id = {
@@ -133,6 +133,8 @@ def get_csrc2label():
     # literal_eval apply to labels and scores
     labeldf["labels"] = labeldf["labels"].apply(literal_eval)
     labeldf["scores"] = labeldf["scores"].apply(literal_eval)
+    # set label column from first item of labels
+    # labeldf["label"] = labeldf["labels"].apply(lambda x: x[0])
     # fillna
     labeldf = labeldf.fillna("")
     return labeldf
@@ -179,7 +181,7 @@ def lawls2dict(ls):
             lawdict = dict()
             lawls = re.findall(r"《(.*?)》", item)
             #         print(lawls)
-            artls = re.findall(r"(第[^《》、和章节款（）]*?条)", item)
+            artls = re.findall(r"(第[^《》、和章节款（）\(\)]*?条)", item)
             #         print(artls)
             lawdict["法律法规"] = lawls[0]
             lawdict["条文"] = artls
@@ -279,7 +281,7 @@ def display_summary2():
     return sumdf2
 
 
-# search by filename, date, wenhao,case,org
+# search by filename, date, wenhao,case,org,law,label
 def searchcsrc2(
     df,
     filename,
@@ -290,8 +292,9 @@ def searchcsrc2(
     org,
     min_penalty,
     law_select,
+    label_select,
 ):
-    col = ["名称", "发文日期", "文号", "内容", "链接", "机构"]
+    col = ["名称", "发文日期", "文号", "内容", "链接", "机构", "amount", "label"]
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     # split words
@@ -311,7 +314,10 @@ def searchcsrc2(
         & (df["机构"].isin(org))
         & (df["amount"] >= min_penalty)
         & (df["法律法规"].isin(law_select))
+        & (df["label"].isin(label_select))
     ][col]
+    # set column name
+    searchdf.columns = ["名称", "发文日期", "文号", "内容", "链接", "机构", "处罚金额", "违规类型"]
 
     # sort by date desc
     searchdf.sort_values(by=["发文日期"], ascending=False, inplace=True)
@@ -368,7 +374,7 @@ def display_eventdetail2(search_df):
     # display event detail
     st.markdown("##### 案情经过")
     # update columns name
-    selected_rows_df.columns = ["发文名称", "发文日期", "文号", "内容", "链接", "发文机构"]
+    # selected_rows_df.columns = ["发文名称", "发文日期", "文号", "内容", "链接", "发文机构"]
     # transpose dataframe
     selected_rows_df = selected_rows_df.T
     # set column name
@@ -376,36 +382,36 @@ def display_eventdetail2(search_df):
     # display
     st.table(selected_rows_df.astype(str))
 
-    # get amtdf
-    amtdf = get_csrc2amt()
-    # search amt by url
-    amtdata = amtdf[amtdf["url"] == url]
-    # display amount if amtdata is not empty
-    if amtdata.empty:
-        st.error("没有找到相关罚款金额信息")
-    else:
-        # display penalty amount
-        amount = amtdata["amount"].values[0]
-        st.metric("罚款金额", amount)
+    # # get amtdf
+    # amtdf = get_csrc2amt()
+    # # search amt by url
+    # amtdata = amtdf[amtdf["url"] == url]
+    # # display amount if amtdata is not empty
+    # if amtdata.empty:
+    #     st.error("没有找到相关罚款金额信息")
+    # else:
+    #     # display penalty amount
+    #     amount = amtdata["amount"].values[0]
+    #     st.metric("罚款金额", amount)
 
-    # get labeldf
-    labeldf = get_csrc2label()
-    # search labels by url
-    labeldata = labeldf[labeldf["id"] == url]
-    # display labels if labeldata is not empty
-    if labeldata.empty:
-        st.error("没有找到相关标签")
-    else:
-        # display labels
-        labels = labeldata["labels"].values[0]
-        scorels = labeldata["scores"].values[0]
-        # convert scores to string
-        scorels2 = ["%.3f" % x for x in scorels]
-        scorestr = "/".join(scorels2)
-        # st.markdown(scorestr)
-        keywords = st_tags(
-            label="##### 案件类型", text=scorestr, value=labels, suggestions=labels
-        )
+    # # get labeldf
+    # labeldf = get_csrc2label()
+    # # search labels by url
+    # labeldata = labeldf[labeldf["id"] == url]
+    # # display labels if labeldata is not empty
+    # if labeldata.empty:
+    #     st.error("没有找到相关标签")
+    # else:
+    #     # display labels
+    #     labels = labeldata["labels"].values[0]
+    #     scorels = labeldata["scores"].values[0]
+    #     # convert scores to string
+    #     scorels2 = ["%.3f" % x for x in scorels]
+    #     scorestr = "/".join(scorels2)
+    #     # st.markdown(scorestr)
+    #     keywords = st_tags(
+    #         label="##### 案件类型", text=scorestr, value=labels, suggestions=labels
+    #     )
 
     # get lawdetail
     lawdf = get_lawdetail2()
@@ -664,93 +670,6 @@ def display_search_df(searchdf):
 
         # display total coun
         st.markdown("##### " + image1_text)
-    # display checkbox to show/hide graph2
-    # showgraph2 = st.sidebar.checkbox("按发文机构统计", key="showgraph2")
-    # fix value of showgraph2
-    showgraph2 = True
-    if showgraph2:
-        # count by orgname
-        df_org_count = df_month.groupby(["机构"]).size().reset_index(name="count")
-        # draw echarts bar chart
-        # bar = (Bar().add_xaxis(
-        #     xaxis_data=df_org_count['机构'].tolist(),
-        #     ).add_yaxis(
-        #         series_name="数量",
-        #         y_axis=df_org_count['count'].tolist(),
-        #         yaxis_index=0).set_global_opts(title_opts=opts.TitleOpts(
-        #             title="按发文机构统计")))
-        # st_pyecharts(bar)
-        # draw echarts pie chart
-        # pie = (
-        #     Pie()
-        #     .add(
-        #         "",
-        #         [
-        #             list(z)
-        #             for z in zip(
-        #                 df_org_count["机构"].tolist(), df_org_count["count"].tolist()
-        #             )
-        #         ],
-        #         radius=["30%", "60%"],
-        #         # center=["35%", "50%"]
-        #     )
-        #     # set legend position
-        #     .set_global_opts(
-        #         title_opts=opts.TitleOpts(title="按发文机构统计")
-        #         # set legend position to down
-        #         ,
-        #         legend_opts=opts.LegendOpts(pos_bottom="bottom"),
-        #         visualmap_opts=opts.VisualMapOpts(max_=max(df_org_count["count"])),
-        #     )
-        #     .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
-        # )
-        # events = {
-        #     "click": "function(params) { console.log(params.name); return params.name }",
-        #     # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
-        # }
-        # orgname = st_pyecharts(pie, width=800, height=650, events=events)
-        pie, orgname = print_pie(
-            df_org_count["机构"].tolist(), df_org_count["count"].tolist(), "按发文机构统计"
-        )
-        if orgname is not None:
-            # filter searchdf by orgname
-            searchdfnew = searchdf[searchdf["机构"] == orgname]
-            # set session state
-            st.session_state["search_result_csrc2"] = searchdfnew
-            # refresh page
-            # st.experimental_rerun()
-
-        # 图二解析开始
-        orgls = pd.value_counts(df_month["机构"]).keys().tolist()
-        countls = pd.value_counts(df_month["机构"]).tolist()
-        result = ""
-
-        for org, count in zip(orgls[:3], countls[:3]):
-            result = result + org + "（" + str(count) + "起）,"
-
-        image2_text = (
-            "图二解析："
-            + minmonth
-            + "至"
-            + maxmonth
-            + "，共"
-            + str(len(orgls))
-            + "家地区监管机构提出处罚意见，"
-            + "排名前三的机构为："
-            + result[: len(result) - 1]
-        )
-        st.markdown("#####  " + image2_text)
-
-    org_ls = df_org_count["机构"].tolist()
-    count_ls = df_org_count["count"].tolist()
-    org_ls1 = fix_cityname(org_ls, cityls)
-    new_orgls, new_countls = count_by_province(org_ls, count_ls)
-    showgraph3 = True
-    if showgraph3:
-        map = print_map(new_orgls, new_countls, "处罚地图", "处罚数量")
-        # st_pyecharts(map_data, map=map, width=800, height=650)
-        # display map
-        components.html(map.render_embed(), height=650)
 
     # get eventdf sum amount by month
     df_sum, df_sigle_penalty = sum_amount_by_month(df_month)
@@ -768,7 +687,7 @@ def display_search_df(searchdf):
         # refresh page
         # st.experimental_rerun()
 
-    # 图四解析：
+    # 图二解析：
     sum_data_number = 0  # 把案件金额的数组进行求和
     more_than_100 = 0  # 把案件金额大于100的数量进行统计
     case_total = 0  # 把案件的总数量进行统计
@@ -795,8 +714,8 @@ def display_search_df(searchdf):
     topsum1_index = df_sum["sum"].idxmax()
     # get month value of max count
     topsum1month = df_sum.loc[topsum1_index, "month"]
-    image4_text = (
-        "图四解析：从"
+    image2_text = (
+        "图二解析：从"
         + minmonth
         + "至"
         + maxmonth
@@ -814,7 +733,152 @@ def display_search_df(searchdf):
         + str(round(topsum1.values[0] / 10000, 2))
         + "万元。"
     )
-    st.markdown("##### " + image4_text)
+    st.markdown("##### " + image2_text)
+
+    # count by orgname
+    df_org_count = df_month.groupby(["机构"]).size().reset_index(name="count")
+
+    org_ls = df_org_count["机构"].tolist()
+    count_ls = df_org_count["count"].tolist()
+    # org_ls1 = fix_cityname(org_ls, cityls)
+    new_orgls, new_countls = count_by_province(org_ls, count_ls)
+
+    map = print_map(new_orgls, new_countls, "处罚地图", "处罚数量")
+    # st_pyecharts(map_data, map=map, width=800, height=650)
+    # display map
+    components.html(map.render_embed(), height=650)
+
+    pie, orgname = print_pie(
+        df_org_count["机构"].tolist(), df_org_count["count"].tolist(), "按发文机构统计"
+    )
+    if orgname is not None:
+        # filter searchdf by orgname
+        searchdfnew = searchdf[searchdf["机构"] == orgname]
+        # set session state
+        st.session_state["search_result_csrc2"] = searchdfnew
+        # refresh page
+        # st.experimental_rerun()
+
+    # 图四解析开始
+    orgls = pd.value_counts(df_month["机构"]).keys().tolist()
+    countls = pd.value_counts(df_month["机构"]).tolist()
+    result = ""
+
+    for org, count in zip(orgls[:3], countls[:3]):
+        result = result + org + "（" + str(count) + "起）,"
+
+    image4_text = (
+        "图四解析："
+        + minmonth
+        + "至"
+        + maxmonth
+        + "，共"
+        + str(len(orgls))
+        + "家地区监管机构提出处罚意见，"
+        + "排名前三的机构为："
+        + result[: len(result) - 1]
+    )
+    st.markdown("#####  " + image4_text)
+
+    # 图五解析：
+    # penalty type count
+    penaltytype = searchdf.groupby("违规类型")["链接"].nunique().reset_index(name="数量统计")
+    # sort by count
+    penaltytype = penaltytype.sort_values(by="数量统计", ascending=False)
+    x_data2 = penaltytype["违规类型"].tolist()
+    y_data2 = penaltytype["数量统计"].tolist()
+    bar2, pentype_selected = print_bar(x_data2[:20], y_data2[:20], "处罚数量", "前20违规类型统计")
+
+    result5 = ""
+    for i in range(5):
+        try:
+            result5 = (
+                result5
+                + str(penaltytype.iloc[i, 0])
+                + "("
+                + str(penaltytype.iloc[i, 1])
+                + "起),"
+            )
+        except Exception as e:
+            print(e)
+            break
+    image5_text = "图五解析：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result5[: len(result5) - 1]
+    st.markdown("##### " + image5_text)
+
+    # 图六解析：
+    # get url list from searchdf
+    urllist = searchdf["链接"].tolist()
+    # get lawdetail
+    lawdf = get_lawdetail2()
+    # search lawdetail by selected_rows_id
+    selected_lawdetail = lawdf[lawdf["链接"].isin(urllist)]
+
+    # law type count
+    lawtype = (
+        selected_lawdetail.groupby("法律法规")["链接"].nunique().reset_index(name="数量统计")
+    )
+    # sort by count
+    lawtype = lawtype.sort_values(by="数量统计", ascending=False)
+
+    x_data3 = lawtype["法律法规"].tolist()
+    y_data3 = lawtype["数量统计"].tolist()
+    bar3, lawtype_selected = print_bar(x_data3[:20], y_data3[:20], "处罚数量", "前20法律法规统计")
+
+    # 图六解析开始
+    lawtype_count = lawtype[["法律法规", "数量统计"]]  # 把法律法规的数量进行统计
+    # pandas数据排序
+    lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
+    result6a = ""
+    for i in range(5):
+        try:
+            result6a = (
+                result6a
+                + str(lawtype_count.iloc[i, 0])
+                + "("
+                + str(lawtype_count.iloc[i, 1])
+                + "起),"
+            )
+        except Exception as e:
+            print(e)
+            break
+    # st.markdown(
+    #     "##### 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+    #     + result5[: len(result5) - 1]
+    # )
+    # by具体条文
+    # lawdf["数量统计"] = ""
+    new_lawtype = (
+        selected_lawdetail.groupby(["法律法规", "条文"])["链接"]
+        .nunique()
+        .reset_index(name="数量统计")
+    )
+    # new_lawtype=lawdf.groupby(['法律法规','条文'])#%%%
+    new_lawtype["法律法规明细"] = new_lawtype["法律法规"] + "(" + new_lawtype["条文"] + ")"
+
+    lawtype_count = new_lawtype[["法律法规明细", "数量统计"]]  # 把法律法规的数量进行统计
+    # pandas数据排序
+    lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
+    result6b = ""
+    for i in range(5):
+        try:
+            result6b = (
+                result6b
+                + str(lawtype_count.iloc[i, 0])
+                + "("
+                + str(lawtype_count.iloc[i, 1])
+                + "起),"
+            )
+        except Exception as e:
+            print(e)
+            break
+    image6_text = (
+        " 图六解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+        + result6a[: len(result6a) - 1]
+        + "\n"
+        + "法律法规统计-具体条文维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+        + result6b[: len(result6b) - 1]
+    )
+    st.markdown("##### " + image6_text)
 
     # display summary
     st.markdown("### 分析报告下载")
@@ -847,13 +911,22 @@ def display_search_df(searchdf):
 
         image3_text = "图三解析：处罚地图"
         image1 = bar.render(path=os.path.join(pencsrc2, t1 + "image1.html"))
-        image2 = pie.render(path=os.path.join(pencsrc2, t1 + "image2.html"))
-        image3 = map.render(path=os.path.join(pencsrc2, t1 + "image3.html"))
-        image4 = line.render(path=os.path.join(pencsrc2, t1 + "image4.html"))
+        image2 = line.render(path=os.path.join(pencsrc2, t1 + "image2.html"))
+        image3 = pie.render(path=os.path.join(pencsrc2, t1 + "image3.html"))
+        image4 = map.render(path=os.path.join(pencsrc2, t1 + "image4.html"))
+        image5 = bar2.render(path=os.path.join(pencsrc2, t1 + "image5.html"))
+        image6 = bar3.render(path=os.path.join(pencsrc2, t1 + "image6.html"))
         file_name = make_docx(
             title_str,
-            [image1_text, image2_text, image3_text, image4_text],
-            [image1, image2, image3, image4],
+            [
+                image1_text,
+                image2_text,
+                image3_text,
+                image4_text,
+                image5_text,
+                image6_text,
+            ],
+            [image1, image2, image3, image4, image5, image6],
         )
         st.download_button(
             "下载分析报告", data=file_name.read(), file_name="分析报告.docx"
@@ -1214,6 +1287,8 @@ def get_csrc2amt():
     amtdf = get_csvdf(pencsrc2, "csrc2amt")
     # process amount
     amtdf["amount"] = amtdf["amount"].astype(float)
+    cols = ["id", "amount", "amt"]
+    amtdf = amtdf[cols]
     return amtdf
 
     # sum amount column of df by month
@@ -1222,7 +1297,7 @@ def get_csrc2amt():
 def sum_amount_by_month(df):
     amtdf = get_csrc2amt()
     df1 = pd.merge(
-        df, amtdf.drop_duplicates("url"), left_on="链接", right_on="url", how="left"
+        df, amtdf.drop_duplicates("id"), left_on="链接", right_on="id", how="left"
     )
     df1["发文日期"] = pd.to_datetime(df1["发文日期"]).dt.date
     # df=df[df['发文日期']>=pd.to_datetime('2020-01-01')]

@@ -1,3 +1,4 @@
+import io
 from ast import literal_eval
 
 import pandas as pd
@@ -28,6 +29,7 @@ from dbcsrc2 import (  # get_csrc2detail,
     generate_lawdf2,
     get_csrc2amt,
     get_csrc2analysis,
+    get_csrc2label,
     get_csrc2textupdate,
     get_csrcdownload,
     get_csrclenanalysis,
@@ -47,8 +49,8 @@ from dbcsrc2 import (  # get_csrc2detail,
 st.set_page_config(page_title="案例分析", layout="wide")
 
 # tempdir = "../data/penalty/csrc2/temp"
-backendurl = "http://backend.docker:8000"
-# backendurl = "http://localhost:8000"
+# backendurl = "http://backend.docker:8000"
+backendurl = "http://localhost:8000"
 
 
 def main():
@@ -99,7 +101,7 @@ def main():
             lawdf = generate_lawdf(eventdf)
             # savedf(lawdf,'lawdf')
             st.success("处罚依据分析完成")
-            st.write(lawdf[:50])
+            st.write(lawdf.sample(50))
 
         # convert eventdf to peopledf
         peopledfconvert = st.sidebar.button("处罚人员分析")
@@ -108,7 +110,7 @@ def main():
             peopledf = generate_peopledf(eventdf)
             # savedf(peopledf,'peopledf')
             st.success("处罚人员分析完成")
-            st.write(peopledf[:50])
+            st.write(peopledf.sample(50))
 
     elif choice == "案例更新2":
         st.subheader("案例更新2")
@@ -169,7 +171,7 @@ def main():
             lawdf = generate_lawdf2(eventdf)
             # savedf(lawdf,'lawdf')
             st.success("处罚依据分析完成")
-            st.write(lawdf[:50])
+            st.write(lawdf.sample(50))
 
     elif choice == "附件处理2":
 
@@ -288,19 +290,37 @@ def main():
                     # get penalty amount analysis result
                     try:
                         url = backendurl + "/amtanalysis"
+                        # Convert dataframe to BytesIO object (for parsing as file into FastAPI later)
+                        file_bytes_obj = io.BytesIO()
+                        df.to_csv(
+                            file_bytes_obj, index=False
+                        )  # write to BytesIO buffer
+                        file_bytes_obj.seek(0)  # Reset pointer to avoid EmptyDataError
                         payload = {
                             "idcol": idcol,
                             "contentcol": contentcol,
-                            "df_in": df.to_json(),
+                            # "df_in": df.to_json(),
                         }
+                        files = {"file": file_bytes_obj}
                         headers = {}
                         res = requests.post(
                             url,
                             headers=headers,
                             params=payload,
+                            files=files,
                         )
                         st.success("处罚金额分析完成")
-                        st.write(res.text)
+                        # get result
+                        result = res.json()
+                        # convert result to dataframe
+                        result_df = pd.read_json(result)
+                        # download result
+                        st.download_button(
+                            label="下载结果",
+                            data=result_df.to_csv().encode("utf-8-sig"),
+                            file_name="amtresult.csv",
+                            mime="text/csv",
+                        )
                     except Exception as e:
                         st.error(e)
                         st.error("处罚金额分析失败")
@@ -372,22 +392,39 @@ def main():
 
                     try:
                         url = backendurl + "/batchclassify"
+                        # Convert dataframe to BytesIO object (for parsing as file into FastAPI later)
+                        file_bytes_obj = io.BytesIO()
+                        df.to_csv(
+                            file_bytes_obj, index=False
+                        )  # write to BytesIO buffer
+                        file_bytes_obj.seek(0)  # Reset pointer to avoid EmptyDataError
+                        files = {"file": file_bytes_obj}
                         payload = {
                             "candidate_labels": labellist,
                             "multi_label": multi_label,
                             "idcol": idcol,
                             "contentcol": contentcol,
-                            "df_in": df.to_json(),
+                            # "df_in": df.to_json(),
                         }
                         headers = {}
                         res = requests.post(
                             url,
                             headers=headers,
                             params=payload,
-                            # files={"file": upload_file},
+                            files={"file": file_bytes_obj},
                         )
                         st.success("案例分类完成")
-                        st.write(res.text)
+                        # get result
+                        result = res.json()
+                        # convert result to dataframe
+                        result_df = pd.read_json(result)
+                        # download result
+                        st.download_button(
+                            label="下载结果",
+                            data=result_df.to_csv().encode("utf-8-sig"),
+                            file_name="classifyresult.csv",
+                            mime="text/csv",
+                        )
                     except Exception as e:
                         st.error("案例分类失败")
                         st.write(e)
@@ -675,16 +712,22 @@ def main():
         # get min and max date of old eventdf
         min_date2 = df["发文日期"].min()
         max_date2 = df["发文日期"].max()
-        # get cbircamt
+        # get amtdf
         csrc2amt = get_csrc2amt()
-        # get lawcbirc
+        # get lawdf
         csrc2law = get_lawdetail2()
         # get lawlist
         lawlist = csrc2law["法律法规"].unique()
-        # merge df and csrc2amt with url
-        dfl = pd.merge(df, csrc2amt, left_on="链接", right_on="url", how="left")
+        # get labeldf
+        csrc2label = get_csrc2label()
+        # get labellist
+        labellist = csrc2label["label"].unique()
+        # merge df and csrc2amt with id
+        dfl = pd.merge(df, csrc2amt, left_on="链接", right_on="id", how="left")
         # merge dfl and csrc2law with url
         dfl = pd.merge(dfl, csrc2law, left_on="链接", right_on="链接", how="left")
+        # merge dfl and csrc2label with id
+        dfl = pd.merge(dfl, csrc2label, left_on="链接", right_on="id", how="left")
         # get one year before max date
         one_year_before = max_date2 - pd.Timedelta(days=365)
         # choose search type
@@ -704,6 +747,8 @@ def main():
                     case_text = st.text_input("案件关键词")
                     # input minimum penalty amount
                     min_penalty = st.number_input("最低处罚金额", value=0)
+                    # choose label
+                    label_text = st.multiselect("违规类型", labellist)
                 with col2:
                     end_date = st.date_input("结束日期", value=max_date2)
                     # input wenhao keyword
@@ -712,8 +757,6 @@ def main():
                     law_select = st.multiselect("处罚依据", lawlist)
                     # input org keyword from org list
                     org_text = st.multiselect("发文机构", org_list)
-                    if org_text == []:
-                        org_text = org_list
                 # search button
                 searchbutton = st.form_submit_button("搜索")
             if searchbutton:
@@ -727,6 +770,10 @@ def main():
                     # st.stop()
                 if law_select == []:
                     law_select = lawlist
+                if org_text == []:
+                    org_text = org_list
+                if label_text == []:
+                    label_text = labellist
                 # search by filename, date, wenhao, case, org
                 st.session_state["keywords_csrc2"] = [
                     filename_text,
@@ -735,6 +782,9 @@ def main():
                     wenhao_text,
                     case_text,
                     org_text,
+                    min_penalty,
+                    law_select,
+                    label_text,
                 ]
                 # search by filename, date, wenhao, case, org
                 search_df = searchcsrc2(
@@ -747,6 +797,7 @@ def main():
                     org_text,
                     min_penalty,
                     law_select,
+                    label_text,
                 )
                 # set search result in session state
                 st.session_state["search_result_csrc2"] = search_df
