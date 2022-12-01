@@ -1242,11 +1242,21 @@ def update_label():
 
 
 def download_csrcsum():
+    st.markdown("#### 案例数据下载")
+
     # get old sumeventdf
     oldsum2 = get_csrc2detail()
+    # get lengh
+    oldlen = len(oldsum2)
+    st.write("案例数据量：" + str(oldlen))
+    # get id nunique
+    oldidn = oldsum2["链接"].nunique()
+    st.write("案例数据id数：" + str(oldidn))
+    # drop duplicate by id
+    oldsum2.drop_duplicates(subset=["链接"], inplace=True)
+
     # detailname
     detailname = "csrcdtlall" + get_nowdate() + ".csv"
-
     # download detail data
     st.download_button(
         "下载案例数据", data=oldsum2.to_csv().encode("utf_8_sig"), file_name=detailname
@@ -1254,13 +1264,30 @@ def download_csrcsum():
 
     # download lawdf data
     lawdf = get_lawdetail2()
-    lawname = "csrc2law" + get_nowdate() + ".csv"
+    # get lengh
+    lawlen = len(lawdf)
+    st.write("法律数据量：" + str(lawlen))
+    # get id nunique
+    lawidn = lawdf["链接"].nunique()
+    st.write("法律数据id数：" + str(lawidn))
+
+    # lawname
+    lawname = "csrc2lawdf" + get_nowdate() + ".csv"
     st.download_button(
         "下载法律数据", data=lawdf.to_csv().encode("utf_8_sig"), file_name=lawname
     )
 
     # download label data
     labeldf = get_csrc2label()
+    # get lengh
+    labellen = len(labeldf)
+    st.write("标签数据量：" + str(labellen))
+    # get id nunique
+    labelidn = labeldf["id"].nunique()
+    st.write("标签数据id数：" + str(labelidn))
+    # drop duplicate by id
+    labeldf.drop_duplicates(subset=["id"], inplace=True)
+
     labelname = "csrc2label" + get_nowdate() + ".csv"
     st.download_button(
         "下载标签数据", data=labeldf.to_csv().encode("utf_8_sig"), file_name=labelname
@@ -1268,6 +1295,15 @@ def download_csrcsum():
 
     # download analysis data
     analysisdf = get_csrc2analysis()
+    # get lengh
+    analysislen = len(analysisdf)
+    st.write("分析数据量：" + str(analysislen))
+    # get id nunique
+    analysisidn = analysisdf["链接"].nunique()
+    st.write("分析数据id数：" + str(analysisidn))
+    # drop duplicate by id
+    analysisdf.drop_duplicates(subset=["链接"], inplace=True)
+
     analysisname = "csrc2analysis" + get_nowdate() + ".csv"
     st.download_button(
         "下载分析数据",
@@ -1277,6 +1313,15 @@ def download_csrcsum():
 
     # download amount data
     amountdf = get_csrc2amt()
+    # get lengh
+    amountlen = len(amountdf)
+    st.write("金额数据量：" + str(amountlen))
+    # get id nunique
+    amountidn = amountdf["id"].nunique()
+    st.write("金额数据id数：" + str(amountidn))
+    # drop duplicate by id
+    amountdf.drop_duplicates(subset=["id"], inplace=True)
+
     amountname = "csrc2amount" + get_nowdate() + ".csv"
     st.download_button(
         "下载金额数据", data=amountdf.to_csv().encode("utf_8_sig"), file_name=amountname
@@ -1287,7 +1332,7 @@ def get_csrc2amt():
     amtdf = get_csvdf(pencsrc2, "csrc2amt")
     # process amount
     amtdf["amount"] = amtdf["amount"].astype(float)
-    cols = ["id", "amount", "amt"]
+    cols = ["id", "amount"]
     amtdf = amtdf[cols]
     return amtdf
 

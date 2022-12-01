@@ -55,7 +55,7 @@ backendurl = "http://localhost:8000"
 
 def main():
 
-    menu = ["案例总数", "案例搜索1", "案例搜索2", "案例更新1", "案例更新2", "附件处理2", "案例分类2"]
+    menu = ["案例总数", "案例搜索1", "案例搜索2", "案例更新1", "案例更新2", "附件处理2", "案例分类2", "案例下载2"]
     choice = st.sidebar.selectbox("选择", menu)
     if choice == "案例总数":
         st.subheader("典型案例总数")
@@ -116,8 +116,6 @@ def main():
         st.subheader("案例更新2")
         # display summary2
         sumdf2 = display_summary2()
-        # download csrcsum
-        download_csrcsum()
         # get org list
         org_list = sumdf2["机构"].unique()
 
@@ -815,6 +813,9 @@ def main():
             display_eventdetail2(search_df)
         else:
             st.warning("没有搜索结果")
+
+    elif choice == "案例下载2":
+        download_csrcsum()
 
 
 if __name__ == "__main__":
