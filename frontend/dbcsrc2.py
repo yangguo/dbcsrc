@@ -1217,28 +1217,50 @@ def update_csrc2analysis():
 def update_label():
     newdf = get_csrc2analysis()
     newurlls = newdf["链接"].tolist()
-    olddf = get_csrc2label()
-    # if olddf is not empty
-    if olddf.empty:
-        oldurlls = []
+    labeldf = get_csrc2label()
+    amtdf = get_csrc2amt()
+    # if labeldf is not empty
+    if labeldf.empty:
+        oldlabells = []
     else:
-        oldurlls = olddf["id"].tolist()
-    # get new urlls not in oldidls
-    newidls = [x for x in newurlls if x not in oldurlls]
+        oldlabells = labeldf["id"].tolist()
 
-    upddf = newdf[newdf["链接"].isin(newidls)]
+    if amtdf.empty:
+        oldamtls = []
+    else:
+        oldamtls = amtdf["id"].tolist()
+
+    # get new urlls not in oldlabells
+    newlabells = [x for x in newurlls if x not in oldlabells]
+    labelupddf = newdf[newdf["链接"].isin(newlabells)]
     # if newdf is not empty, save it
-    if upddf.empty is False:
-        updlen = len(upddf)
-        st.info("待更新标签" + str(updlen) + "条数据")
+    if labelupddf.empty is False:
+        labelupdlen = len(labelupddf)
+        st.info("待更新标签" + str(labelupdlen) + "条数据")
         savename = "csrc2_tolabel" + get_nowdate() + ".csv"
         # savedf2(upddf, savename)
         # download detail data
         st.download_button(
-            "下载案例数据", data=upddf.to_csv().encode("utf_8_sig"), file_name=savename
+            "下载案例数据", data=labelupddf.to_csv().encode("utf_8_sig"), file_name=savename
         )
-        # with st.spinner("更新标签中..."):
-        #     generate_label(upddf, select_column, labellist, multi_label)
+    else:
+        st.info("标签数据已更新")
+
+    # get new urlls not in oldamtls
+    newamtls = [x for x in newurlls if x not in oldamtls]
+    amtupddf = newdf[newdf["链接"].isin(newamtls)]
+    # if newdf is not empty, save it
+    if amtupddf.empty is False:
+        amtupdlen = len(amtupddf)
+        st.info("待更新金额" + str(amtupdlen) + "条数据")
+        savename = "csrc2_toamt" + get_nowdate() + ".csv"
+        # savedf2(upddf, savename)
+        # download detail data
+        st.download_button(
+            "下载案例数据", data=amtupddf.to_csv().encode("utf_8_sig"), file_name=savename
+        )
+    else:
+        st.info("金额数据已更新")
 
 
 def download_csrcsum():

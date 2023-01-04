@@ -1,4 +1,3 @@
-import copy
 import math
 import pickle
 import re
@@ -8,7 +7,7 @@ from operator import itemgetter
 import chinese2digits as c2d
 import pandas as pd
 from paddlenlp import Taskflow
-from utils import get_nowdate, savedf2, savetemp
+from utils import savetemp
 
 
 def judge_end(S):
@@ -135,7 +134,8 @@ def wash_data(data):
                     c2d.takeNumberFromString(result)["digitsStringList"][0]
                 )
                 results_new.append(result)
-            except:
+            except Exception as e:
+                print(e)
                 pass
                 # results.remove(results[i])
 
@@ -144,7 +144,7 @@ def wash_data(data):
     # new_df_str = str(data).replace(' ', '').replace(',', '').replace('，', '')
     # 先对数字进行去千分符处理
 
-    rexp = re.compile("(\d{1,3}([,，]\d{3})*(\.\d+)?)")
+    rexp = re.compile(r"(\d{1,3}([,，]\d{3})*(\.\d+)?)")
     temp = rexp.findall(data)
     # 找r中tuple最长的string组成新list
     temp = [max(i, key=len) for i in temp]
@@ -155,7 +155,7 @@ def wash_data(data):
         data = data.replace(i, i.replace(",", "").replace("，", ""))
     new_df_str = data
     # 去除句首加顿号的情况用&代替
-    rexp = re.compile("[一二三四五六七八九十\d+](?<!元)[、]")
+    rexp = re.compile(r"[一二三四五六七八九十\d+](?<!元)[、]")
     temp = rexp.findall(new_df_str)
     for i in temp:
         new_df_str = new_df_str.replace(i, i.replace("、", "&"))
@@ -204,9 +204,14 @@ def wash_data(data):
         )
         # new_df_str=re.sub(r'决定[^:：]', '决定：',new_df_str)#把不规则的决定调试好
         new_df_str = new_df_str.strip("。") + "。"
+        new_df_str = new_df_str.replace(".万元", "万元")
+        new_df_str = new_df_str.replace(".元", "元")
         return new_df_str
-    except:
+    except Exception as e:
+        print(e)
         new_df_str = new_df_str.strip("。") + "。"
+        new_df_str = new_df_str.replace(".万元", "万元")
+        new_df_str = new_df_str.replace(".元", "元")
         return new_df_str
 
 
@@ -231,8 +236,8 @@ def compare(
     all = pd.DataFrame(columns=["list1", "list2", "list2-list1"])
     if list1 == []:
         # print(temp)
-        all1 = all
-        all2 = all
+        # all1 = all
+        # all2 = all
         return all
     elif list2 == []:
         all["list1"] = list1
@@ -402,7 +407,8 @@ def get_number(moneys):
                 elif "万" in money[2]:
                     money[2] = money[2].replace("万", "")
                     money[2] = float(money[2]) * 10000
-            except:
+            except Exception as e:
+                print(e)
                 money[2] = float(money[2])
             sum = sum + round(money[2], 2)
     else:
@@ -431,13 +437,13 @@ def cut_string(
                 elif o == 1:
                     del a[-1]
                 a = ",".join(a)
-                l = len(a)
+                leng = len(a)
                 # print(l)
                 if o == 0:
-                    result.append([ss[1] - l, ss[1], a])
+                    result.append([ss[1] - leng, ss[1], a])
                     # result=result+[[ss[1] - l, ss[1], a]]
                 elif o == 1:
-                    result.append([ss[0], ss[0] + l, a])
+                    result.append([ss[0], ss[0] + leng, a])
                     # result=result+[[ss[0], ss[0] + l, a]]
                 # result.append([ss[0],ss[1],a])
                 results = results + result
@@ -1027,7 +1033,7 @@ def accurate_compare(
 
 def calculate_顿号(list1, list2, list3, method1, method2):  # 专门用来求顿号的函数
     result = []
-    temp_copy = copy.deepcopy(list2)
+    # temp_copy = copy.deepcopy(list2)
     # print(len(list3))
     for i in list3:
         if method1 == 1:
@@ -1298,10 +1304,9 @@ def split_santence(string, s=128):  # string是要分的句子，s为阈值
     return result1
 
 
-# endregion
-
-
-def extract_money(stringall):  # string_all 为一个list,里面写证监局的文
+def extract_money(
+    stringall, flag=1
+):  # string_all 为一个list,里面写证监局的文，flag=1代表罚款，flag=2代表没收
     # 2先对文字进行简单裁剪(关键词['局决定','会决定','现对','鉴于',',决定：','，决定：','的规定','的要求']),我只要这些词之后的东西
     # region
     content = stringall
@@ -1316,14 +1321,18 @@ def extract_money(stringall):  # string_all 为一个list,里面写证监局的�
 
     # 3用paddle提取金额
     # region
-    temps = nlp_input(["罚款"], cutted_contents)
+    if flag == 1:
+        choose = "罚款"
+    if flag == 2:
+        choose = "没收金额"
+    temps = nlp_input([choose], cutted_contents)
     result_罚款_df = pd.DataFrame(columns=["编号", "罚款详情"])
     for i in range(len(temps)):
         temp1s = []
         if len(temps[i]) == 0:
             temp1s.append(["", "", ""])
         else:
-            for temp1 in temps[i]["罚款"]:
+            for temp1 in temps[i][choose]:
                 temp1s.append([temp1["start"], temp1["end"], temp1["text"]])
         result_罚款_df = pd.concat(
             [result_罚款_df, pd.DataFrame({"编号": [str(i)], "罚款详情": [temp1s]})]
@@ -1447,7 +1456,8 @@ def extract_money(stringall):  # string_all 为一个list,里面写证监局的�
                         sum = get_number(temp_金额)[1] * c
                     sums = sums + sum
                 sum_list.append(sums)
-        except:
+        except Exception as e:
+            print(e)
             print(cutted_contents[iall])
             print(iall)
             sum_list.append(0)
@@ -1458,27 +1468,36 @@ def extract_money(stringall):  # string_all 为一个list,里面写证监局的�
 def df2amount(df, idcol, contentcol):
     df1 = df[[idcol, contentcol]]
 
-    urls = []
-    amtls = []
+    idls = []
+    finels = []
+    confisls = []
     start = 0
-    for i in range(start, len(df1)):
-        url = df1.iloc[i][idcol]
+    end = len(df1)
+    for i in range(start, end):
+        id = df1.iloc[i][idcol]
         content = df1.iloc[i][contentcol]
         print(i)
         print(content)
-        amount = extract_money([str(content)])
-        print(amount)
-        urls.append(url)
-        amtls.append(amount)
+        fine = extract_money([str(content)], 1)
+        confiscate = extract_money([str(content)], 2)
+        print("fine:", fine)
+        print("confiscate:", confiscate)
+        idls.append(id)
+        finels.append(fine)
+        confisls.append(confiscate)
 
         if (i + 1) % 100 == 0 and i > start:
-            tempdf = pd.DataFrame({"id": urls, "amt": amtls})
-            tempdf["amount"] = tempdf["amt"].apply(lambda x: x[0])
+            tempdf = pd.DataFrame({"id": idls, "finels": finels, "confisls": confisls})
+            tempdf["fine"] = tempdf["finels"].apply(lambda x: x[0])
+            tempdf["confiscate"] = tempdf["confisls"].apply(lambda x: x[0])
+            tempdf["amount"] = tempdf["fine"] + tempdf["confiscate"]
             savename = "tempamt-" + str(i)
             savetemp(tempdf, savename)
 
-    resdf = pd.DataFrame({"id": urls, "amt": amtls})
-    resdf["amount"] = resdf["amt"].apply(lambda x: x[0])
+    resdf = pd.DataFrame({"id": idls, "finels": finels, "confisls": confisls})
+    resdf["fine"] = resdf["finels"].apply(lambda x: x[0])
+    resdf["confiscate"] = resdf["confisls"].apply(lambda x: x[0])
+    resdf["amount"] = resdf["fine"] + resdf["confiscate"]
     # savename = "csrc2amt" + get_nowdate()+".csv"
     # savedf2(resdf, savename)
     return resdf

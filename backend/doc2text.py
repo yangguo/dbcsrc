@@ -54,11 +54,12 @@ def pdfurl2txt(url):
 
 def paddleocr2text(image_file):
     result = ocr.ocr(image_file, cls=True)
-    # print(result)
-    txtls = [line[1][0] for line in result]
-    #     print(txtls)
-    txt = "\n".join(txtls)
-    return txt
+    text = ""
+    for idx in range(len(result)):
+        res = result[idx]
+        txts = [line[1][0] for line in res]
+        text += "\n".join(txts)
+    return text
 
 
 def pdfurl2ocr(url, uploadpath):
@@ -291,7 +292,7 @@ def convert_uploadfiles(txtls, uploadpath):
             ):
                 text = picurl2ocr(datapath)
             else:
-                text = np.nan
+                text = ""
         except Exception as e:
             st.error(str(e))
             text = ""
