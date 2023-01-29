@@ -142,3 +142,4 @@ dmypy.json
 .flake8
 .trunk
 data/
+*.zip
