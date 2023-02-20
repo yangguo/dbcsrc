@@ -131,8 +131,8 @@ def get_lawdetail2():
 def get_csrc2label():
     labeldf = get_csvdf(pencsrc2, "csrc2label")
     # literal_eval apply to labels and scores
-    labeldf["labels"] = labeldf["labels"].apply(literal_eval)
-    labeldf["scores"] = labeldf["scores"].apply(literal_eval)
+    # labeldf["labels"] = labeldf["labels"].apply(literal_eval)
+    # labeldf["scores"] = labeldf["scores"].apply(literal_eval)
     # set label column from first item of labels
     # labeldf["label"] = labeldf["labels"].apply(lambda x: x[0])
     # fillna
@@ -212,7 +212,7 @@ def fix_abb(x, abbdict):
 
 # convert eventdf to lawdf
 def generate_lawdf2(d1):
-    d1["doc1"] = d1["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "")
+    d1["doc1"] = d1["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "", regex=True)
     compat = "(?!《).(《[^,，；。]*?》[^；。]*?第[^,，；。《]*条)"
     compat2 = "(?!《).(《[^,，；。]*?》)"
     compat3 = "《([^,，；。]*?)》[^；。]*?简称.*?《([^,，；。]*?)》"
@@ -740,13 +740,12 @@ def display_search_df(searchdf):
 
     org_ls = df_org_count["机构"].tolist()
     count_ls = df_org_count["count"].tolist()
-    # org_ls1 = fix_cityname(org_ls, cityls)
     new_orgls, new_countls = count_by_province(org_ls, count_ls)
-
-    map = print_map(new_orgls, new_countls, "处罚地图", "处罚数量")
-    # st_pyecharts(map_data, map=map, width=800, height=650)
+    new_orgls1 = fix_cityname(new_orgls, cityls)
+    map_data, map = print_map(new_orgls1, new_countls, "处罚地图", "处罚数量")
+    st_pyecharts(map_data, map=map, width=800, height=650)
     # display map
-    components.html(map.render_embed(), height=650)
+    # components.html(map.render_embed(), height=650)
 
     pie, orgname = print_pie(
         df_org_count["机构"].tolist(), df_org_count["count"].tolist(), "按发文机构统计"
@@ -913,7 +912,7 @@ def display_search_df(searchdf):
         image1 = bar.render(path=os.path.join(pencsrc2, t1 + "image1.html"))
         image2 = line.render(path=os.path.join(pencsrc2, t1 + "image2.html"))
         image3 = pie.render(path=os.path.join(pencsrc2, t1 + "image3.html"))
-        image4 = map.render(path=os.path.join(pencsrc2, t1 + "image4.html"))
+        image4 = map_data.render(path=os.path.join(pencsrc2, t1 + "image4.html"))
         image5 = bar2.render(path=os.path.join(pencsrc2, t1 + "image5.html"))
         image6 = bar3.render(path=os.path.join(pencsrc2, t1 + "image6.html"))
         file_name = make_docx(
@@ -1032,14 +1031,16 @@ def print_map(province_name, province_values, title_name, dataname):
         )
     )
     # st_pyecharts(map_data, map=map, height=700)  # ,width=800 )
-    return map_data
+    return map_data, map
 
 
 # content length analysis by length
 def content_length_analysis(length):
     # eventdf = get_csrc2detail()
     eventdf = get_csrc2analysis()
-    eventdf["内容"] = eventdf["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "")
+    eventdf["内容"] = eventdf["内容"].str.replace(
+        r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "", regex=True
+    )
     eventdf["len"] = eventdf["内容"].astype(str).apply(len)
     misdf = eventdf[eventdf["len"] <= length]
     # get df by column name
@@ -1181,7 +1182,9 @@ def combine_csrc2text():
         "cat",
         "filename",
     ]
-    updf1["内容"] = updf1["内容"].str.replace(r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "")
+    updf1["内容"] = updf1["内容"].str.replace(
+        r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "", regex=True
+    )
     # reset index
     updf1.reset_index(drop=True, inplace=True)
     savename = "csrc2analysis"
@@ -1344,7 +1347,7 @@ def download_csrcsum():
     # drop duplicate by id
     amountdf.drop_duplicates(subset=["id"], inplace=True)
 
-    amountname = "csrc2amount" + get_nowdate() + ".csv"
+    amountname = "csrc2amt" + get_nowdate() + ".csv"
     st.download_button(
         "下载金额数据", data=amountdf.to_csv().encode("utf_8_sig"), file_name=amountname
     )
