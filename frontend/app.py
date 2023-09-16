@@ -41,6 +41,7 @@ from dbcsrc2 import (  # get_csrc2detail,
     update_csrc2text,
     update_label,
     update_sumeventdf2,
+    uplink_csrcsum,
 )
 
 # from doc2text import docxconvertion
@@ -54,8 +55,17 @@ backendurl = "http://localhost:8000"
 
 
 def main():
-
-    menu = ["案例总数", "案例搜索1", "案例搜索2", "案例更新1", "案例更新2", "附件处理2", "案例分类2", "案例下载2"]
+    menu = [
+        "案例总数",
+        "案例搜索1",
+        "案例搜索2",
+        "案例更新1",
+        "案例更新2",
+        "附件处理2",
+        "案例分类2",
+        "案例下载2",
+        "案例上线2",
+    ]
     choice = st.sidebar.selectbox("选择", menu)
     if choice == "案例总数":
         st.subheader("典型案例总数")
@@ -172,7 +182,6 @@ def main():
             st.write(lawdf.sample(50))
 
     elif choice == "附件处理2":
-
         # analysis content length
         content_len = st.sidebar.number_input("输入内容长度", value=10)
         content_len_btn = st.sidebar.button("附件分析")
@@ -192,18 +201,23 @@ def main():
             st.write(lendf)
 
         with st.sidebar.form("下载附件"):
+            # # choose up number and down number
+            # up_num = st.number_input("起始位置", value=0, min_value=0)
+            # # convert to int
+            # up_num = int(up_num)
+            # down_num = st.number_input("结束位置", value=1)
+            # # convert to int
+            # down_num = int(down_num)
+            # choose number list from lendf index
+            num_list = lendf.index.tolist()
+
             # choose up number and down number
-            up_num = st.number_input("起始位置", value=0, min_value=0)
-            # convert to int
-            up_num = int(up_num)
-            down_num = st.number_input("结束位置", value=1)
-            # convert to int
-            down_num = int(down_num)
+            down_list = st.multiselect("附件位置", num_list)
             # download attachment button
             download_att_btn = st.form_submit_button("下载附件")
 
         if download_att_btn:
-            downdf = download_attachment(up_num, down_num)
+            downdf = download_attachment(down_list)
             downlen = len(downdf)
             st.success("下载附件完成" + str(downlen) + "条案例")
             # st.write(downdf)
@@ -257,7 +271,6 @@ def main():
             st.success("删除附件完成")
 
     elif choice == "案例分类2":
-
         options = st.sidebar.radio("选项", ["生成待标签案例", "处罚金额分析", "案例分类", "案例批量分类"])
 
         if options == "生成待标签案例":
@@ -380,7 +393,6 @@ def main():
                 # button for generate label text
                 classify_button = st.button("案例分类")
                 if classify_button:
-
                     if labeltext == "":
                         st.error("输入标签列表")
                         labellist = []
@@ -564,7 +576,6 @@ def main():
                 search_df = st.session_state["search_result_csrc"]
 
         elif search_type == "处罚人员":
-
             # get csrc detail
             csrcdf = get_csrcdetail()
             # get people detail
@@ -816,6 +827,9 @@ def main():
 
     elif choice == "案例下载2":
         download_csrcsum()
+
+    elif choice == "案例上线2":
+        uplink_csrcsum()
 
 
 if __name__ == "__main__":

@@ -9,8 +9,10 @@ from pathlib import Path
 import docx
 import numpy as np
 import pdfplumber
+import pytesseract
 import streamlit as st
-from paddleocr import PaddleOCR
+
+# from paddleocr import PaddleOCR
 from pdf2image import convert_from_path
 from PIL import Image
 
@@ -18,11 +20,10 @@ Image.MAX_IMAGE_PIXELS = None
 
 # uploadpath = "uploads/"
 
-ocr = PaddleOCR(use_angle_cls=True, lang="ch")
+# ocr = PaddleOCR(use_angle_cls=True, lang="ch")
 
 
 def docxurl2txt(url):
-
     text = ""
     try:
         doc = docx.Document(url)
@@ -52,13 +53,18 @@ def pdfurl2txt(url):
     return result
 
 
-def paddleocr2text(image_file):
-    result = ocr.ocr(image_file, cls=True)
-    text = ""
-    for idx in range(len(result)):
-        res = result[idx]
-        txts = [line[1][0] for line in res]
-        text += "\n".join(txts)
+# def paddleocr2text(image_file):
+#     result = ocr.ocr(image_file, cls=True)
+#     text = ""
+#     for idx in range(len(result)):
+#         res = result[idx]
+#         txts = [line[1][0] for line in res]
+#         text += "\n".join(txts)
+#     return text
+
+
+def pytesseract2text(image_file):
+    text = pytesseract.image_to_string(Image.open(image_file), lang="chi_sim")
     return text
 
 
@@ -82,7 +88,8 @@ def pdfurl2ocr(url, uploadpath):
 
     # Iterate from 1 to total number of pages
     for image_file in image_file_list:
-        text += paddleocr2text(image_file)
+        # text += paddleocr2text(image_file)
+        text += pytesseract2text(image_file)
         # delete image file
         os.remove(image_file)
 
@@ -113,7 +120,8 @@ def docxurl2ocr(url, uploadpath):
 
     # Iterate from 1 to total number of pages
     for image_file in image_file_list:
-        text += paddleocr2text(image_file)
+        # text += paddleocr2text(image_file)
+        text += pytesseract2text(image_file)
         # delete image file
         os.remove(image_file)
 
@@ -122,7 +130,8 @@ def docxurl2ocr(url, uploadpath):
 
 def picurl2ocr(url):
     text = ""
-    text += paddleocr2text(url)
+    # text += paddleocr2text(url)
+    text += pytesseract2text(url)
     return text
 
 
@@ -144,7 +153,6 @@ def save_uploadedfile(uploadedfile, uploadpath):
 
 
 def docxconvertion(uploadpath):
-
     docdest = os.path.join(uploadpath, "doc")
     wpsdest = os.path.join(uploadpath, "wps")
     # doccdest = os.path.join(basepath,'docc')
@@ -233,7 +241,6 @@ def remove_uploadfiles(uploadpath):
 
 # convert all files in uploadfolder to text
 def convert_uploadfiles(txtls, uploadpath):
-
     resls = []
     for file in txtls:
         # st.info(file)

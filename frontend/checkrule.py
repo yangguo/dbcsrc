@@ -71,10 +71,10 @@ def get_rulelist_byname(name, fileno, org, startdate, enddate):
     fileno_list = split_words(fileno)
     # if startdate is empty, set it to '1900-01-01'
     if startdate == "":
-        startdate = pd.to_datetime("1900-01-01")
+        startdate = pd.to_datetime("1900-01-01").date()
     # if enddate is empty, set it to '2100-01-01'
     if enddate == "":
-        enddate = pd.to_datetime("2100-01-01")
+        enddate = pd.to_datetime("2100-01-01").date()
     # search
     searchresult = plcdf[
         (plcdf["文件名称"].str.contains(name_list))
@@ -91,7 +91,7 @@ def get_rulelist_byname(name, fileno, org, startdate, enddate):
 
 
 # get plcdf
-@st.cache(allow_output_mutation=True)
+# @st.cache(allow_output_mutation=True)
 def get_plcdf():
     plcdf = pd.read_csv(plcpath)
     cols = [

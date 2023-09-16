@@ -16,7 +16,7 @@ from streamlit_echarts import st_pyecharts
 rulefolder = "../data/rules"
 
 
-@st.cache
+# @st.cache
 def get_csvdf(rulefolder):
     files2 = glob.glob(rulefolder + "**/*.csv", recursive=True)
     dflist = []

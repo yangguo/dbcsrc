@@ -13,6 +13,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
 from checkrule import get_lawdtlbyid, get_rulelist_byname
+from database import delete_data, get_collection, get_data, insert_data
 from dbcsrc import get_csvdf, get_now, get_nowdate, make_docx, print_bar, print_line
 
 # from doc2text import convert_uploadfiles
@@ -20,7 +21,8 @@ from pyecharts import options as opts
 from pyecharts.charts import Map, Pie
 from streamlit_echarts import Map as st_Map
 from streamlit_echarts import st_pyecharts
-from streamlit_tags import st_tags
+
+# from streamlit_tags import st_tags
 from utils import df2aggrid, split_words
 
 pencsrc2 = "../data/penalty/csrc2"
@@ -107,6 +109,7 @@ cityls = [
     "澳门特别行政区",
 ]
 
+
 # @st.cache(allow_output_mutation=True)
 def get_csrc2detail():
     pendf = get_csvdf(pencsrc2, "csrcdtlall")
@@ -144,7 +147,7 @@ def get_csrclenanalysis():
     pendf = get_csvdf(tempdir, "csrclenanalysis")
     if not pendf.empty:
         # fillna
-        pendf = pendf.fillna("")[["名称", "链接", "内容", "len", "filename"]]
+        pendf = pendf.fillna("")  # [["名称", "链接", "内容", "len", "filename"]]
     return pendf
 
 
@@ -166,6 +169,8 @@ def get_csrc2textupdate():
 
 def get_csrc2analysis():
     pendf = get_csvdf(pencsrc2, "csrc2analysis")
+    # collection = get_collection('pencsrc2', 'csrc2analysis')
+    # pendf= get_data(collection)
     if not pendf.empty:
         # format date
         pendf["发文日期"] = pd.to_datetime(pendf["发文日期"]).dt.date
@@ -419,7 +424,6 @@ def display_eventdetail2(search_df):
     selected_rows_lawdetail = lawdf[lawdf["链接"] == url]
 
     if len(selected_rows_lawdetail) > 0:
-
         # display lawdetail
         st.markdown("##### 处罚依据")
         lawdata = selected_rows_lawdetail[["法律法规", "条文"]]
@@ -1044,9 +1048,9 @@ def content_length_analysis(length):
     eventdf["len"] = eventdf["内容"].astype(str).apply(len)
     misdf = eventdf[eventdf["len"] <= length]
     # get df by column name
-    misdf1 = misdf[["名称", "链接", "内容", "len", "filename"]]
-    # sort by len
-    misdf1 = misdf1.sort_values(by="len", ascending=False)
+    misdf1 = misdf[["发文日期", "名称", "链接", "内容", "len", "filename"]]
+    # sort by 发文日期
+    misdf1 = misdf1.sort_values(by="发文日期", ascending=False)
     # reset index
     misdf1.reset_index(drop=True, inplace=True)
     # savename
@@ -1057,13 +1061,13 @@ def content_length_analysis(length):
 
 
 # download attachment
-def download_attachment(up_num, down_num):
+def download_attachment(down_list):
     # get csrclenanalysis df
     lendf = get_csrclenanalysis()
     # get misls from url
     misls = lendf["链接"].tolist()
-    # submisls by up_num and down_num
-    submisls = misls[up_num : down_num + 1]
+    # get submisls by index list
+    submisls = [misls[i] for i in down_list]
 
     resultls = []
     errorls = []
@@ -1077,7 +1081,7 @@ def download_attachment(up_num, down_num):
             sd = BeautifulSoup(dd.content, "html.parser")
             dirpath = url.rsplit("/", 1)[0]
             try:
-                filepath = sd.find_all("div", id="files")[0].a["href"]
+                filepath = sd.find_all("div", class_="detail-news")[0].a["href"]
                 datapath = dirpath + "/" + filepath
                 st.info(datapath)
                 response = requests.get(datapath, stream=True)
@@ -1111,7 +1115,7 @@ def download_attachment(up_num, down_num):
         count += 1
 
     misdf = pd.concat(resultls)
-    savecsv = "csrcmiscontent"
+    savecsv = "csrcmiscontent" + get_now()
     # reset index
     misdf.reset_index(drop=True, inplace=True)
     savetemp(misdf, savecsv)
@@ -1375,3 +1379,120 @@ def sum_amount_by_month(df):
     df_month_sum = df1.groupby(["month"])["amount"].sum().reset_index(name="sum")
     df_sigle_penalty = df1[["month", "amount"]]
     return df_month_sum, df_sigle_penalty
+
+
+def uplink_csrcsum():
+    st.markdown("#### 案例数据上线")
+
+    # get old sumeventdf
+    oldsum2 = get_csrc2detail()
+    # get lengh
+    oldlen = len(oldsum2)
+    st.write("案例数据量：" + str(oldlen))
+    # get id nunique
+    oldidn = oldsum2["链接"].nunique()
+    st.write("案例数据id数：" + str(oldidn))
+    # drop duplicate by id
+    oldsum2.drop_duplicates(subset=["链接"], inplace=True)
+
+    # detailname
+    detailname = "csrcdtlall" + get_nowdate() + ".csv"
+
+    # download lawdf data
+    lawdf = get_lawdetail2()
+    # get lengh
+    lawlen = len(lawdf)
+    st.write("法律数据量：" + str(lawlen))
+    # get id nunique
+    lawidn = lawdf["链接"].nunique()
+    st.write("法律数据id数：" + str(lawidn))
+
+    # lawname
+    lawname = "csrc2lawdf" + get_nowdate() + ".csv"
+
+    # download label data
+    labeldf = get_csrc2label()
+    # get lengh
+    labellen = len(labeldf)
+    st.write("标签数据量：" + str(labellen))
+    # get id nunique
+    labelidn = labeldf["id"].nunique()
+    st.write("标签数据id数：" + str(labelidn))
+    # drop duplicate by id
+    labeldf.drop_duplicates(subset=["id"], inplace=True)
+
+    labelname = "csrc2label" + get_nowdate() + ".csv"
+
+    # download amount data
+    amountdf = get_csrc2amt()
+    # get lengh
+    amountlen = len(amountdf)
+    st.write("金额数据量：" + str(amountlen))
+    # get id nunique
+    amountidn = amountdf["id"].nunique()
+    st.write("金额数据id数：" + str(amountidn))
+    # drop duplicate by id
+    amountdf.drop_duplicates(subset=["id"], inplace=True)
+
+    amountname = "csrc2amt" + get_nowdate() + ".csv"
+
+    # download analysis data
+    analysisdf = get_csrc2analysis()
+    # get lengh
+    analysislen = len(analysisdf)
+    st.write("分析数据量：" + str(analysislen))
+    # get id nunique
+    analysisidn = analysisdf["链接"].nunique()
+    st.write("分析数据id数：" + str(analysisidn))
+    # drop duplicate by id
+    analysisdf.drop_duplicates(subset=["链接"], inplace=True)
+
+    # st.write(analysisdf.head())
+    # convert date to datetime
+    # analysisdf["发文日期"] = pd.to_datetime(analysisdf["发文日期"])
+
+    # analysisname = "csrc2analysis" + get_nowdate() + ".csv"
+
+    collection = get_collection("pencsrc2", "csrc2analysis")
+
+    # get all online data
+    online_data = get_data(collection)
+
+    # get unique id number from online data
+    online_id = online_data["链接"].nunique()
+
+    # display online data
+    st.write("在线案例数据量：" + str(online_id))
+
+    # download online data
+    onlinename = "online_csrc2analysis" + get_nowdate() + ".csv"
+    st.download_button(
+        "下载在线案例数据",
+        data=online_data.to_csv().encode("utf_8_sig"),
+        file_name=onlinename,
+    )
+
+    # delete data from the MongoDB collection
+    if st.button("删除案例数据"):
+        delete_data(collection)
+        st.success("案例数据删除成功！")
+
+    # get different data
+    diff_data = analysisdf[~analysisdf["链接"].isin(online_data["链接"])]
+
+    # display different data
+    st.write("差异数据量：" + str(len(diff_data)))
+    st.write(diff_data)
+
+    # download different data
+    diffname = "diff_csrc2analysis" + get_nowdate() + ".csv"
+    st.download_button(
+        "下载差异数据",
+        data=diff_data.to_csv().encode("utf_8_sig"),
+        file_name=diffname,
+    )
+
+    # Insert data into the MongoDB collection
+    # if st.button("更新上线案例数据"):
+    #     insert_data(diff_data, collection)
+    #     st.success("更新案例数据上线成功！")

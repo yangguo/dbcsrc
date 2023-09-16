@@ -42,6 +42,7 @@ urldbase = (
 
 jspath = "{}/".format(os.path.dirname(os.path.abspath("data/map/echarts.min.js")))
 
+
 # @st.cache(allow_output_mutation=True)
 def get_csvdf(penfolder, beginwith):
     files2 = glob.glob(penfolder + "**/" + beginwith + "*.csv", recursive=True)
@@ -75,10 +76,17 @@ def get_csrcdetail():
 def get_csrcsum():
     pendf = get_csvdf(pencsrc, "sumevent")
     # format date
-    pendf["date1"] = pd.to_datetime(pendf["date"], errors="coerce").dt.date
+    pendf["date1"] = pd.to_datetime(pendf["date"], errors="coerce")
     pendf.loc[pendf["date1"].isnull(), "date1"] = pd.to_datetime(
-        pendf[pendf["date1"].isnull()]["date"], unit="ms", errors="coerce"
+        pendf.loc[pendf["date1"].isnull(), "date"], unit="ms", errors="coerce"
     ).dt.date
+
+    # Check for remaining nulls
+    null_rows = pendf[pendf["date1"].isnull()]
+    if not null_rows.empty:
+        print("Rows where date conversion failed:")
+        print(null_rows)
+
     return pendf
 
 
