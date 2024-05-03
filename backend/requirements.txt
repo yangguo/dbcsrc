@@ -12,7 +12,7 @@ paddleocr
 pdfplumber
 python-docx
 pdf2image
-streamlit==1.11.1
+streamlit==1.30.0
 jionlp
 addressparser
 opencv-python-headless
