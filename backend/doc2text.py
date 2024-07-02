@@ -1,3 +1,4 @@
+import base64
 import fnmatch
 import glob
 import os
@@ -7,14 +8,17 @@ import zipfile
 from pathlib import Path
 
 import docx
-import numpy as np
 import pdfplumber
 import pytesseract
-import streamlit as st
+
+# import streamlit as st
+from easyofd import OFD
 
 # from paddleocr import PaddleOCR
 from pdf2image import convert_from_path
 from PIL import Image
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -32,7 +36,7 @@ def docxurl2txt(url):
             fullText.append(para.text)
             text = "\n".join(fullText)
     except Exception as e:
-        st.error(str(e))
+        print(str(e))
 
     return text
 
@@ -49,7 +53,7 @@ def pdfurl2txt(url):
                 if txt != "":
                     result += txt
     except Exception as e:
-        st.error(str(e))
+        print(str(e))
     return result
 
 
@@ -149,7 +153,7 @@ def find_files(path: str, glob_pat: str, ignore_case: bool = False):
 def save_uploadedfile(uploadedfile, uploadpath):
     with open(os.path.join(uploadpath, uploadedfile.name), "wb") as f:
         f.write(uploadedfile.getbuffer())
-    return st.success("上传文件:{} 成功。".format(uploadedfile.name))
+    return print("上传文件:{} 成功。".format(uploadedfile.name))
 
 
 def docxconvertion(uploadpath):
@@ -163,7 +167,7 @@ def docxconvertion(uploadpath):
     docxfiles = find_files(uploadpath, "*.docx", True)
 
     for filepath in docfiles:
-        st.info(filepath)
+        print(filepath)
         # filename = os.path.basename(filepath)
         #     print(filename)
         #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
@@ -180,7 +184,7 @@ def docxconvertion(uploadpath):
         )
 
     for filepath in wpsfiles:
-        st.info(filepath)
+        print(filepath)
         # filename = os.path.basename(filepath)
         #     print(filename)
         #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
@@ -204,7 +208,7 @@ def docxconvertion(uploadpath):
     #     subprocess.call(['soffice', '--headless', '--convert-to', 'docx', filepath,"--outdir",doccdest])
 
     for filepath in docxfiles:
-        st.info(filepath)
+        print(filepath)
         # filename = os.path.basename(filepath)
         #     print(filename)
         #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
@@ -236,7 +240,7 @@ def remove_uploadfiles(uploadpath):
         try:
             os.remove(f)
         except OSError as e:
-            st.error("Error: %s : %s" % (f, e.strerror))
+            print("Error: %s : %s" % (f, e.strerror))
 
 
 # convert all files in uploadfolder to text
@@ -253,7 +257,7 @@ def convert_uploadfiles(txtls, uploadpath):
             if ext.lower() == ".doc":
                 # datapath = uploadpath + "doc/" + base + ".docx"
                 datapath = os.path.join(uploadpath, "doc", base + ".docx")
-                st.info(datapath)
+                print(datapath)
                 text = docxurl2txt(datapath)
                 text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
                 if text1 == "":
@@ -262,7 +266,7 @@ def convert_uploadfiles(txtls, uploadpath):
             elif ext.lower() == ".wps":
                 # datapath = uploadpath + "wps/" + base + ".docx"
                 datapath = os.path.join(uploadpath, "wps", base + ".docx")
-                st.info(datapath)
+                print(datapath)
                 text = docxurl2txt(datapath)
                 text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
                 if text1 == "":
@@ -273,18 +277,27 @@ def convert_uploadfiles(txtls, uploadpath):
             #             print(datapath)
             #             text=docxurl2txt(datapath)
             elif ext.lower() == ".docx":
-                st.info(datapath)
+                print(datapath)
                 text = docxurl2txt(datapath)
                 text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
                 if text1 == "":
                     datapath = os.path.join(uploadpath, "docx", file)
-                    st.info(datapath)
+                    print(datapath)
                     text = docxurl2txt(datapath)
                     text2 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
                     if text2 == "":
                         text = docxurl2ocr(datapath, uploadpath)
 
             elif ext.lower() == ".pdf":
+                print(datapath)
+                text = pdfurl2txt(datapath)
+                text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
+                if text1 == "":
+                    text = pdfurl2ocr(datapath, uploadpath)
+
+            elif ext.lower() == ".ofd":
+                datapath = os.path.join(uploadpath, "ofd", base + ".pdf")
+                print(datapath)
                 text = pdfurl2txt(datapath)
                 text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
                 if text1 == "":
@@ -301,7 +314,7 @@ def convert_uploadfiles(txtls, uploadpath):
             else:
                 text = ""
         except Exception as e:
-            st.error(str(e))
+            print(str(e))
             text = ""
         resls.append(text)
     return resls
@@ -313,3 +326,60 @@ def extract_text(df, uploadpath):
     resls = convert_uploadfiles(txtls, uploadpath)
     df["文本"] = resls
     return df
+
+
+def ofdconvertion(uploadpath):
+    initfonts()
+    register_fonts()
+    ofdfiles = find_files(uploadpath, "*.ofd", True)
+
+    for filepath in ofdfiles:
+        print(filepath)
+        file_prefix = os.path.splitext(os.path.basename(filepath))[0]  # Get file prefix
+        with open(filepath, "rb") as f:
+            ofdb64 = str(base64.b64encode(f.read()), "utf-8")
+            ofd = OFD()  # Initialize OFD tool class
+            ofd.read(
+                ofdb64, save_xml=True, xml_name=f"{file_prefix}_xml"
+            )  # Read ofdb64
+            pdf_bytes = ofd.to_pdf()  # Convert to PDF
+            # img_np = ofd.to_jpg()  # Convert to image
+            ofd.del_data()
+        # create pdf folder if not exists
+        if not os.path.exists(os.path.join(uploadpath, "ofd")):
+            os.makedirs(os.path.join(uploadpath, "ofd"))
+
+        pdfpath = os.path.join(uploadpath, "ofd", f"{file_prefix}.pdf")
+
+        with open(pdfpath, "wb") as f:
+            f.write(pdf_bytes)
+
+
+def initfonts():
+    original_getfont = pdfmetrics.getFont
+
+    def patched_getfont(fontName):
+        if fontName == "黑体":
+            return original_getfont("SimHei")
+        elif fontName == "宋体":
+            return original_getfont("SimSun")
+        return original_getfont(fontName)
+
+    pdfmetrics.getFont = patched_getfont
+
+
+def register_fonts():
+    simhei_font_path = "/Library/Fonts/SimHei.ttf"
+    simsun_font_path = "/Library/Fonts/SimSun.ttf"
+
+    if os.path.exists(simhei_font_path):
+        pdfmetrics.registerFont(TTFont("SimHei", simhei_font_path))
+        print(f"Registered font SimHei from {simhei_font_path}")
+    else:
+        print(f"SimHei font not found at {simhei_font_path}")
+
+    if os.path.exists(simsun_font_path):
+        pdfmetrics.registerFont(TTFont("SimSun", simsun_font_path))
+        print(f"Registered font SimSun from {simsun_font_path}")
+    else:
+        print(f"SimSun font not found at {simsun_font_path}")

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-mongo_connection_string = os.getenv("MONGO_CONNECTION_STRING")
+mongo_connection_string = os.getenv("MONGO_DB_URL")
 
 
 # Connect to the MongoDB Docker container

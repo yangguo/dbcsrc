@@ -1,6 +1,6 @@
 import pandas as pd
 from paddlenlp import Taskflow
-from utils import get_nowdate, savedf2, savetemp
+from utils import savetemp
 
 
 def text2schema(text, topic):

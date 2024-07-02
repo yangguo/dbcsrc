@@ -84,7 +84,6 @@ def count_list(list1, str1):  # 计算list1中str1出现的次数
 
 
 def nlp_input(str, string):  # str为字符串目标list，string为字符串总量
-
     schema = str  # Define the schema for entity extraction
     ie = Taskflow("information_extraction", schema=schema, batch_size=14)
     return ie(string)
@@ -179,10 +178,11 @@ def wash_data(data):
         new_df_str = insert_str(new_df_str, num[i][0], replace_num)
 
     result = get_Chinese_number(
-        r"[零,壹,贰,叁,肆,伍,陆,柒,捌,玖,拾,陌,阡,一,二,两,三,四,五,六,七,八,九,十,百,千,万,亿]", new_df_str, 2
+        r"[零,壹,贰,叁,肆,伍,陆,柒,捌,玖,拾,陌,阡,一,二,两,三,四,五,六,七,八,九,十,百,千,万,亿]",
+        new_df_str,
+        2,
     )
     try:
-
         temp = pd.DataFrame(columns=["数字", "中文", "长度"])
         temp["数字"] = result[1]
         temp["中文"] = result[0]
@@ -197,7 +197,9 @@ def wash_data(data):
             new_df_str = new_df_str.replace(temp.iloc[i, 1], temp.iloc[i, 0])
         new_df_str = new_df_str.strip("。") + "。"  # 末尾加句号
         new_df_str = re.sub(
-            r"[一二三四五六七八九十\d]、", lambda x: x.group(0).replace("、", ")"), new_df_str
+            r"[一二三四五六七八九十\d]、",
+            lambda x: x.group(0).replace("、", ")"),
+            new_df_str,
         )  # 洗去数字加顿号的形式
         new_df_str = re.sub(
             r"决定[^:：]", lambda x: x.group(0).replace("决定", "决定："), new_df_str
@@ -476,7 +478,6 @@ def get_relation(a, b):  # 这是判断两个点关系的函数
 def multi_relation(
     list1, list2
 ):  # 这是判断一堆点关系的函数list1为主list2为被比较list,list1为行坐标,list2为列坐标
-
     list1 = [str(i) for i in list1]
     list2 = [str(i) for i in list2]
     df = pd.DataFrame(index=list1, columns=list2)
@@ -495,7 +496,6 @@ def list_small(list1, list2, strict=1):
     if list1 == []:
         return list1
     elif list2 == []:
-
         return []
     else:
         for i in list1:
@@ -643,7 +643,6 @@ def list_big(list1, list2, strict=1):
     if list1 == []:
         return list1
     elif list2 == []:
-
         return []
     else:
         for i in list1:
@@ -708,7 +707,6 @@ def list_abs(list1, list2, n, strict=1):
     if list1 == []:
         return list1
     elif list2 == []:
-
         return []
     else:
         for i in list1:
@@ -777,7 +775,6 @@ def list_distance(list1, list2, n, strict=1):
     if list1 == []:
         return list1
     elif list2 == []:
-
         return []
     else:
         for i in list1:
@@ -841,7 +838,6 @@ def list_distance(list1, list2, n, strict=1):
 
 
 def save_variable(v, filename):  # 用于存储变量
-
     f = open(filename, "wb")  # 打开或创建名叫filename的文档。
     pickle.dump(v, f)  # 在文件filename中写入v
     #     pickle.dump(a, handle)
@@ -1310,7 +1306,16 @@ def extract_money(
     # 2先对文字进行简单裁剪(关键词['局决定','会决定','现对','鉴于',',决定：','，决定：','的规定','的要求']),我只要这些词之后的东西
     # region
     content = stringall
-    querys = ["局决定", "会决定", "现对", "鉴于", ",决定：", "，决定：", "的规定", "的要求"]
+    querys = [
+        "局决定",
+        "会决定",
+        "现对",
+        "鉴于",
+        ",决定：",
+        "，决定：",
+        "的规定",
+        "的要求",
+    ]
     temp = []
     for i in range(len(content)):
         temp.append([0, 0, content[i]])

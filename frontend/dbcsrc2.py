@@ -4,26 +4,29 @@ import os
 import random
 import re
 import time
-from ast import literal_eval
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
-from checkrule import get_lawdtlbyid, get_rulelist_byname
-from database import delete_data, get_collection, get_data, insert_data
-from dbcsrc import get_csvdf, get_now, get_nowdate, make_docx, print_bar, print_line
-
-# from doc2text import convert_uploadfiles
-from pyecharts import options as opts
-from pyecharts.charts import Map, Pie
-from streamlit_echarts import Map as st_Map
-from streamlit_echarts import st_pyecharts
+from database import delete_data, get_collection, get_data
+from dbcsrc import get_csvdf, get_now, get_nowdate
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from snapshot import get_chrome_driver
 
 # from streamlit_tags import st_tags
-from utils import df2aggrid, split_words
+from utils import split_words
+
+# from doc2text import convert_uploadfiles
+# from pyecharts import options as opts
+# from pyecharts.charts import Map, Pie
+# from streamlit_echarts import Map as st_Map
+# from streamlit_echarts import st_pyecharts
+
 
 pencsrc2 = "../data/penalty/csrc2"
 tempdir = "../data/penalty/csrc2/temp"
@@ -289,40 +292,40 @@ def display_summary2():
 # search by filename, date, wenhao,case,org,law,label
 def searchcsrc2(
     df,
-    filename,
+    # filename,
     start_date,
     end_date,
     wenhao,
+    people,
     case,
     org,
     min_penalty,
     law_select,
-    label_select,
 ):
-    col = ["名称", "发文日期", "文号", "内容", "链接", "机构", "amount", "label"]
+    # col = ["名称", "发文日期", "文号", "内容", "链接", "机构", "amount", "label"]
     # convert date to datetime
     # df['发文日期'] = pd.to_datetime(df['发文日期']).dt.date
     # split words
-    if filename != "":
-        filename = split_words(filename)
+    # if filename != "":
+    #     filename = split_words(filename)
     if wenhao != "":
         wenhao = split_words(wenhao)
     if case != "":
         case = split_words(case)
 
     searchdf = df[
-        (df["名称"].str.contains(filename))
-        & (df["发文日期"] >= start_date)
+        # (df["名称"].str.contains(filename))
+        (df["发文日期"] >= start_date)
         & (df["发文日期"] <= end_date)
-        & (df["文号"].str.contains(wenhao))
-        & (df["内容"].str.contains(case))
+        & (df["wenhao"].str.contains(wenhao))
+        & (df["event"].str.contains(case))
         & (df["机构"].isin(org))
         & (df["amount"] >= min_penalty)
-        & (df["法律法规"].isin(law_select))
-        & (df["label"].isin(label_select))
-    ][col]
+        & (df["law"].str.contains(law_select))
+        & (df["people"].str.contains(people))
+    ]  # [col]
     # set column name
-    searchdf.columns = ["名称", "发文日期", "文号", "内容", "链接", "机构", "处罚金额", "违规类型"]
+    # searchdf.columns = ["名称", "发文日期", "文号", "内容", "链接", "机构", "处罚金额", "违规类型"]
 
     # sort by date desc
     searchdf.sort_values(by=["发文日期"], ascending=False, inplace=True)
@@ -350,36 +353,83 @@ def display_eventdetail2(search_df):
     st.markdown("### 搜索结果" + "(" + str(total) + "条)")
     # add download button to left
     st.download_button(
-        "下载搜索结果", data=search_dfnew.to_csv().encode("utf_8_sig"), file_name="搜索结果.csv"
+        "下载搜索结果",
+        data=search_dfnew.to_csv().encode("utf_8_sig"),
+        file_name="搜索结果.csv",
     )
     # display columns
-    discols = ["发文日期", "名称", "机构", "链接"]
+    discols = ["发文日期", "名称", "机构", "category", "链接"]
     # get display df
     display_df = search_dfnew[discols]
     # update columns name
-    display_df.columns = ["发文日期", "发文名称", "发文机构", "链接"]
+    display_df.columns = ["发文日期", "发文名称", "发文机构", "案例类型", "链接"]
+
+    # reset index
+    display_df.reset_index(drop=True, inplace=True)
+
+    data = st.dataframe(display_df, on_select="rerun", selection_mode="single-row")
+
+    selected_rows = data["selection"]["rows"]
 
     # st.table(search_df)
-    data = df2aggrid(display_df)
+    # data = df2aggrid(display_df)
     # display download button
     # st.sidebar.download_button(
     #     "下载搜索结果", data=search_dfnew.to_csv().encode("utf-8"), file_name="搜索结果.csv"
     # )
     # display data
-    selected_rows = data["selected_rows"]
+    # selected_rows = data["selected_rows"]
     if selected_rows == []:
         st.error("请先选择查看案例")
         st.stop()
     # # convert selected_rows to dataframe
     # selected_rows_df = pd.DataFrame(selected_rows)
+
     # get url from selected_rows
-    url = selected_rows[0]["链接"]
+    # url = selected_rows[0]["链接"]
+    url = display_df.loc[selected_rows[0], "链接"]
 
     selected_rows_df = search_dfnew[search_dfnew["链接"] == url]
     # display event detail
     st.markdown("##### 案情经过")
     # update columns name
     # selected_rows_df.columns = ["发文名称", "发文日期", "文号", "内容", "链接", "发文机构"]
+    # select display columns
+    selected_rows_df = selected_rows_df[
+        [
+            "发文日期",
+            "summary",
+            "wenhao",
+            "people",
+            "event",
+            "law",
+            "penalty",
+            "机构",
+            "date",
+            "category",
+            "amount",
+            "province",
+            "industry",
+            "内容",
+        ]
+    ]
+    # rename columns
+    selected_rows_df.columns = [
+        "发布日期",
+        "摘要",
+        "文号",
+        "当事人",
+        "违法事实",
+        "处罚依据",
+        "处罚决定",
+        "处罚机关",
+        "处罚日期",
+        "案件类型",
+        "罚款金额",
+        "处罚地区",
+        "行业类型",
+        "内容",
+    ]
     # transpose dataframe
     selected_rows_df = selected_rows_df.T
     # set column name
@@ -387,6 +437,8 @@ def display_eventdetail2(search_df):
     # display
     st.table(selected_rows_df.astype(str))
 
+    st.markdown("##### 案例链接")
+    st.markdown(url)
     # # get amtdf
     # amtdf = get_csrc2amt()
     # # search amt by url
@@ -419,57 +471,66 @@ def display_eventdetail2(search_df):
     #     )
 
     # get lawdetail
-    lawdf = get_lawdetail2()
-    # search lawdetail by selected_rows_id
-    selected_rows_lawdetail = lawdf[lawdf["链接"] == url]
+    # lawdf = get_lawdetail2()
+    # # search lawdetail by selected_rows_id
+    # selected_rows_lawdetail = lawdf[lawdf["链接"] == url]
 
-    if len(selected_rows_lawdetail) > 0:
-        # display lawdetail
-        st.markdown("##### 处罚依据")
-        lawdata = selected_rows_lawdetail[["法律法规", "条文"]]
-        # display lawdata
-        lawdtl = df2aggrid(lawdata)
-        selected_law = lawdtl["selected_rows"]
-        if selected_law == []:
-            st.error("请先选择查看监管条文")
-        else:
-            # get selected_law's rule name
-            selected_law_name = selected_law[0]["法律法规"]
-            # get selected_law's rule article
-            selected_law_article = selected_law[0]["条文"]
-            # get law detail by name
-            ruledf = get_rulelist_byname(selected_law_name, "", "", "", "")
-            # get law ids
-            ids = ruledf["lawid"].tolist()
-            # get law detail by id
-            metadf, dtldf = get_lawdtlbyid(ids)
-            # display law meta
-            st.write("监管法规")
-            st.table(metadf)
-            # get law detail by article
-            articledf = dtldf[dtldf["标题"].str.contains(selected_law_article)]
-            # display law detail
-            st.write("监管条文")
-            st.table(articledf)
-    else:
-        st.write("没有相关监管法规")
+    # if len(selected_rows_lawdetail) > 0:
+    #     # display lawdetail
+    #     st.markdown("##### 处罚依据")
+    #     lawdata = selected_rows_lawdetail[["法律法规", "条文"]]
+    #     # display lawdata
+    #     lawdtl = df2aggrid(lawdata)
+    #     selected_law = lawdtl["selected_rows"]
+    #     if selected_law == []:
+    #         st.error("请先选择查看监管条文")
+    #     else:
+    #         # get selected_law's rule name
+    #         selected_law_name = selected_law[0]["法律法规"]
+    #         # get selected_law's rule article
+    #         selected_law_article = selected_law[0]["条文"]
+    #         # get law detail by name
+    #         ruledf = get_rulelist_byname(selected_law_name, "", "", "", "")
+    #         # get law ids
+    #         ids = ruledf["lawid"].tolist()
+    #         # get law detail by id
+    #         metadf, dtldf = get_lawdtlbyid(ids)
+    #         # display law meta
+    #         st.write("监管法规")
+    #         st.table(metadf)
+    #         # get law detail by article
+    #         articledf = dtldf[dtldf["标题"].str.contains(selected_law_article)]
+    #         # display law detail
+    #         st.write("监管条文")
+    #         st.table(articledf)
+    # else:
+    #     st.write("没有相关监管法规")
 
 
 # get sumeventdf in page number range
 def get_sumeventdf2(orgname, start, end):
     resultls = []
-    resultls = []
     errorls = []
     count = 0
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
     for pageno in range(start, end + 1):
         st.info("page:" + str(pageno))
         url = get_url2(orgname) + str(pageno)
         try:
-            dd = requests.get(url, verify=False)
+            dd = requests.get(url, headers=headers, verify=False)
+            dd.raise_for_status()  # Raise an error for bad status codes
             sd = BeautifulSoup(dd.content, "html.parser")
-            json_data = json.loads(str(sd.text), strict=False)
+            # Strip any extra data outside JSON content
+            json_text = str(sd.text).strip()
+            json_data = json.loads(json_text, strict=False)
+            # json_data = json.loads(str(sd.text), strict=False)
             itemls = json_data["data"]["results"]
 
+            # st.write("itemls:", itemls)
             titlels = []
             wenhaols = []
             datels = []
@@ -525,9 +586,22 @@ def get_sumeventdf2(orgname, start, end):
             # update orgname
             csrceventdf["机构"] = orgname
             resultls.append(csrceventdf)
+
+        except requests.exceptions.HTTPError as e:
+            if dd.status_code == 403:
+                print(
+                    "403 Forbidden error. Check if the URL requires authentication or if your IP is blocked."
+                )
+            print(f"HTTP error!: {e}")
+            print(f"check url: {url}")
+            errorls.append(url)
+        except json.JSONDecodeError as e:
+            st.error(f"JSON decode error: {e}")
+            st.error(f"check url: {url}")
+            errorls.append(url)
         except Exception as e:
             st.error("error!: " + str(e))
-            st.error("check url:" + str(url))
+            st.error("check url: " + str(url))
             errorls.append(url)
 
         mod = (count + 1) % 5
@@ -584,7 +658,8 @@ def get_url2(orgname):
 def savedf2(df, basename):
     savename = basename + ".csv"
     savepath = os.path.join(pencsrc2, savename)
-    df.to_csv(savepath)
+    # df.to_csv(savepath)
+    df.to_csv(savepath, index=False, escapechar="\\")
 
 
 # display bar chart in plotly
@@ -746,8 +821,8 @@ def display_search_df(searchdf):
     count_ls = df_org_count["count"].tolist()
     new_orgls, new_countls = count_by_province(org_ls, count_ls)
     new_orgls1 = fix_cityname(new_orgls, cityls)
-    map_data, map = print_map(new_orgls1, new_countls, "处罚地图", "处罚数量")
-    st_pyecharts(map_data, map=map, width=800, height=650)
+    map_data = print_map(new_orgls1, new_countls, "处罚地图")
+    # st_pyecharts(map_data, map=map, width=800, height=650)
     # display map
     # components.html(map.render_embed(), height=650)
 
@@ -785,156 +860,156 @@ def display_search_df(searchdf):
 
     # 图五解析：
     # penalty type count
-    penaltytype = searchdf.groupby("违规类型")["链接"].nunique().reset_index(name="数量统计")
-    # sort by count
-    penaltytype = penaltytype.sort_values(by="数量统计", ascending=False)
-    x_data2 = penaltytype["违规类型"].tolist()
-    y_data2 = penaltytype["数量统计"].tolist()
-    bar2, pentype_selected = print_bar(x_data2[:20], y_data2[:20], "处罚数量", "前20违规类型统计")
+    # penaltytype = searchdf.groupby("违规类型")["链接"].nunique().reset_index(name="数量统计")
+    # # sort by count
+    # penaltytype = penaltytype.sort_values(by="数量统计", ascending=False)
+    # x_data2 = penaltytype["违规类型"].tolist()
+    # y_data2 = penaltytype["数量统计"].tolist()
+    # bar2, pentype_selected = print_bar(x_data2[:20], y_data2[:20], "处罚数量", "前20违规类型统计")
 
-    result5 = ""
-    for i in range(5):
-        try:
-            result5 = (
-                result5
-                + str(penaltytype.iloc[i, 0])
-                + "("
-                + str(penaltytype.iloc[i, 1])
-                + "起),"
-            )
-        except Exception as e:
-            print(e)
-            break
-    image5_text = "图五解析：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result5[: len(result5) - 1]
-    st.markdown("##### " + image5_text)
+    # result5 = ""
+    # for i in range(5):
+    #     try:
+    #         result5 = (
+    #             result5
+    #             + str(penaltytype.iloc[i, 0])
+    #             + "("
+    #             + str(penaltytype.iloc[i, 1])
+    #             + "起),"
+    #         )
+    #     except Exception as e:
+    #         print(e)
+    #         break
+    # image5_text = "图五解析：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result5[: len(result5) - 1]
+    # st.markdown("##### " + image5_text)
 
     # 图六解析：
     # get url list from searchdf
-    urllist = searchdf["链接"].tolist()
-    # get lawdetail
-    lawdf = get_lawdetail2()
-    # search lawdetail by selected_rows_id
-    selected_lawdetail = lawdf[lawdf["链接"].isin(urllist)]
+    # urllist = searchdf["链接"].tolist()
+    # # get lawdetail
+    # lawdf = get_lawdetail2()
+    # # search lawdetail by selected_rows_id
+    # selected_lawdetail = lawdf[lawdf["链接"].isin(urllist)]
 
-    # law type count
-    lawtype = (
-        selected_lawdetail.groupby("法律法规")["链接"].nunique().reset_index(name="数量统计")
-    )
-    # sort by count
-    lawtype = lawtype.sort_values(by="数量统计", ascending=False)
+    # # law type count
+    # lawtype = (
+    #     selected_lawdetail.groupby("法律法规")["链接"].nunique().reset_index(name="数量统计")
+    # )
+    # # sort by count
+    # lawtype = lawtype.sort_values(by="数量统计", ascending=False)
 
-    x_data3 = lawtype["法律法规"].tolist()
-    y_data3 = lawtype["数量统计"].tolist()
-    bar3, lawtype_selected = print_bar(x_data3[:20], y_data3[:20], "处罚数量", "前20法律法规统计")
+    # x_data3 = lawtype["法律法规"].tolist()
+    # y_data3 = lawtype["数量统计"].tolist()
+    # bar3, lawtype_selected = print_bar(x_data3[:20], y_data3[:20], "处罚数量", "前20法律法规统计")
 
     # 图六解析开始
-    lawtype_count = lawtype[["法律法规", "数量统计"]]  # 把法律法规的数量进行统计
-    # pandas数据排序
-    lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
-    result6a = ""
-    for i in range(5):
-        try:
-            result6a = (
-                result6a
-                + str(lawtype_count.iloc[i, 0])
-                + "("
-                + str(lawtype_count.iloc[i, 1])
-                + "起),"
-            )
-        except Exception as e:
-            print(e)
-            break
-    # st.markdown(
-    #     "##### 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
-    #     + result5[: len(result5) - 1]
+    # lawtype_count = lawtype[["法律法规", "数量统计"]]  # 把法律法规的数量进行统计
+    # # pandas数据排序
+    # lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
+    # result6a = ""
+    # for i in range(5):
+    #     try:
+    #         result6a = (
+    #             result6a
+    #             + str(lawtype_count.iloc[i, 0])
+    #             + "("
+    #             + str(lawtype_count.iloc[i, 1])
+    #             + "起),"
+    #         )
+    #     except Exception as e:
+    #         print(e)
+    #         break
+    # # st.markdown(
+    # #     "##### 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+    # #     + result5[: len(result5) - 1]
+    # # )
+    # # by具体条文
+    # # lawdf["数量统计"] = ""
+    # new_lawtype = (
+    #     selected_lawdetail.groupby(["法律法规", "条文"])["链接"]
+    #     .nunique()
+    #     .reset_index(name="数量统计")
     # )
-    # by具体条文
-    # lawdf["数量统计"] = ""
-    new_lawtype = (
-        selected_lawdetail.groupby(["法律法规", "条文"])["链接"]
-        .nunique()
-        .reset_index(name="数量统计")
-    )
-    # new_lawtype=lawdf.groupby(['法律法规','条文'])#%%%
-    new_lawtype["法律法规明细"] = new_lawtype["法律法规"] + "(" + new_lawtype["条文"] + ")"
+    # # new_lawtype=lawdf.groupby(['法律法规','条文'])#%%%
+    # new_lawtype["法律法规明细"] = new_lawtype["法律法规"] + "(" + new_lawtype["条文"] + ")"
 
-    lawtype_count = new_lawtype[["法律法规明细", "数量统计"]]  # 把法律法规的数量进行统计
-    # pandas数据排序
-    lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
-    result6b = ""
-    for i in range(5):
-        try:
-            result6b = (
-                result6b
-                + str(lawtype_count.iloc[i, 0])
-                + "("
-                + str(lawtype_count.iloc[i, 1])
-                + "起),"
-            )
-        except Exception as e:
-            print(e)
-            break
-    image6_text = (
-        " 图六解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
-        + result6a[: len(result6a) - 1]
-        + "\n"
-        + "法律法规统计-具体条文维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
-        + result6b[: len(result6b) - 1]
-    )
-    st.markdown("##### " + image6_text)
+    # lawtype_count = new_lawtype[["法律法规明细", "数量统计"]]  # 把法律法规的数量进行统计
+    # # pandas数据排序
+    # lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
+    # result6b = ""
+    # for i in range(5):
+    #     try:
+    #         result6b = (
+    #             result6b
+    #             + str(lawtype_count.iloc[i, 0])
+    #             + "("
+    #             + str(lawtype_count.iloc[i, 1])
+    #             + "起),"
+    #         )
+    #     except Exception as e:
+    #         print(e)
+    #         break
+    # image6_text = (
+    #     " 图六解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+    #     + result6a[: len(result6a) - 1]
+    #     + "\n"
+    #     + "法律法规统计-具体条文维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+    #     + result6b[: len(result6b) - 1]
+    # )
+    # st.markdown("##### " + image6_text)
 
     # display summary
-    st.markdown("### 分析报告下载")
+    # st.markdown("### 分析报告下载")
 
-    if st.button("生成分析报告"):
-        # 建title
-        title = st.session_state["keywords_csrc2"]
-        title_str = ""
-        # st.write(str(title[1]))
-        title_str = "(分析范围：期间:" + str(title[1]) + "至" + str(title[2]) + ","
-        if len(title[0]) != 0:
-            title_str = title_str + "发文名称为:" + title[0] + "，"
-        # if len(str(title[1]))!=0:
-        #     title_str=title_str+'开始日期为:'+str(title[1])+'，'
-        # if len(str(title[2]))!=0:
-        #     title_str=title_str+'结束日期为:'+str(title[2])+'，'
-        if len(title[3]) != 0:
-            title_str = title_str + "文号为:" + title[3] + "，"
-        if len(title[4]) != 0:
-            title_str = title_str + "案件关键词为:" + title[4] + "，"
-        if len(title[5]) == 37:
-            title_str = title_str + "包括总局在内的37家机构，"
-        else:
-            title_str = title_str + "发文机构为:" + "、".join(title[5]) + "，"
-        title_str = title_str[: len(title_str) - 1] + ")"
-        title_str = "处罚事件分析报告\n" + title_str
-        # 建图表
-        t1 = time.localtime()
-        t1 = time.strftime("%Y-%m-%d %H%M%S", t1)
+    # if st.button("生成分析报告"):
+    #     # 建title
+    #     title = st.session_state["keywords_csrc2"]
+    #     title_str = ""
+    #     # st.write(str(title[1]))
+    #     title_str = "(分析范围：期间:" + str(title[1]) + "至" + str(title[2]) + ","
+    #     if len(title[0]) != 0:
+    #         title_str = title_str + "发文名称为:" + title[0] + "，"
+    #     # if len(str(title[1]))!=0:
+    #     #     title_str=title_str+'开始日期为:'+str(title[1])+'，'
+    #     # if len(str(title[2]))!=0:
+    #     #     title_str=title_str+'结束日期为:'+str(title[2])+'，'
+    #     if len(title[3]) != 0:
+    #         title_str = title_str + "文号为:" + title[3] + "，"
+    #     if len(title[4]) != 0:
+    #         title_str = title_str + "案件关键词为:" + title[4] + "，"
+    #     if len(title[5]) == 37:
+    #         title_str = title_str + "包括总局在内的37家机构，"
+    #     else:
+    #         title_str = title_str + "发文机构为:" + "、".join(title[5]) + "，"
+    #     title_str = title_str[: len(title_str) - 1] + ")"
+    #     title_str = "处罚事件分析报告\n" + title_str
+    #     # 建图表
+    #     t1 = time.localtime()
+    #     t1 = time.strftime("%Y-%m-%d %H%M%S", t1)
 
-        image3_text = "图三解析：处罚地图"
-        image1 = bar.render(path=os.path.join(pencsrc2, t1 + "image1.html"))
-        image2 = line.render(path=os.path.join(pencsrc2, t1 + "image2.html"))
-        image3 = pie.render(path=os.path.join(pencsrc2, t1 + "image3.html"))
-        image4 = map_data.render(path=os.path.join(pencsrc2, t1 + "image4.html"))
-        image5 = bar2.render(path=os.path.join(pencsrc2, t1 + "image5.html"))
-        image6 = bar3.render(path=os.path.join(pencsrc2, t1 + "image6.html"))
-        file_name = make_docx(
-            title_str,
-            [
-                image1_text,
-                image2_text,
-                image3_text,
-                image4_text,
-                image5_text,
-                image6_text,
-            ],
-            [image1, image2, image3, image4, image5, image6],
-        )
-        st.download_button(
-            "下载分析报告", data=file_name.read(), file_name="分析报告.docx"
-        )  # ,on_click=lambda: os.remove(file_name)
-        # "下载搜索结果", data=search_dfnew.to_csv().encode("utf_8_sig"), file_name="搜索结果.csv"
+    #     image3_text = "图三解析：处罚地图"
+    #     image1 = bar.render(path=os.path.join(pencsrc2, t1 + "image1.html"))
+    #     image2 = line.render(path=os.path.join(pencsrc2, t1 + "image2.html"))
+    #     image3 = pie.render(path=os.path.join(pencsrc2, t1 + "image3.html"))
+    #     image4 = map_data.render(path=os.path.join(pencsrc2, t1 + "image4.html"))
+    #     image5 = bar2.render(path=os.path.join(pencsrc2, t1 + "image5.html"))
+    #     image6 = bar3.render(path=os.path.join(pencsrc2, t1 + "image6.html"))
+    #     file_name = make_docx(
+    #         title_str,
+    #         [
+    #             image1_text,
+    #             image2_text,
+    #             image3_text,
+    #             image4_text,
+    #             image5_text,
+    #             image6_text,
+    #         ],
+    #         [image1, image2, image3, image4, image5, image6],
+    #     )
+    #     st.download_button(
+    #         "下载分析报告", data=file_name.read(), file_name="分析报告.docx"
+    #     )  # ,on_click=lambda: os.remove(file_name)
+    #     # "下载搜索结果", data=search_dfnew.to_csv().encode("utf_8_sig"), file_name="搜索结果.csv"
 
 
 # combine count by province
@@ -982,64 +1057,177 @@ def fix_cityname(orgls, cityls):
 
 
 # print pie charts
+# def print_pie(namels, valuels, title):
+#     pie = (
+#         Pie()
+#         .add(
+#             "",
+#             [list(z) for z in zip(namels, valuels)],
+#             radius=["30%", "60%"],
+#             # center=["35%", "50%"]
+#         )
+#         # set legend position
+#         .set_global_opts(
+#             title_opts=opts.TitleOpts(title=title)
+#             # set legend position to down
+#             ,
+#             legend_opts=opts.LegendOpts(pos_bottom="bottom"),
+#             visualmap_opts=opts.VisualMapOpts(max_=max(valuels)),
+#         )
+#         .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
+#     )
+#     events = {
+#         "click": "function(params) { console.log(params.name); return params.name }",
+#         # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
+#     }
+#     clickevent = st_pyecharts(pie, events=events, height=650)  # width=800)
+#     return pie, clickevent
+
+
 def print_pie(namels, valuels, title):
-    pie = (
-        Pie()
-        .add(
-            "",
-            [list(z) for z in zip(namels, valuels)],
-            radius=["30%", "60%"],
-            # center=["35%", "50%"]
-        )
-        # set legend position
-        .set_global_opts(
-            title_opts=opts.TitleOpts(title=title)
-            # set legend position to down
-            ,
-            legend_opts=opts.LegendOpts(pos_bottom="bottom"),
-            visualmap_opts=opts.VisualMapOpts(max_=max(valuels)),
-        )
-        .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
+    data = pd.DataFrame({"names": namels, "values": valuels})
+
+    fig = px.pie(
+        data,
+        names="names",
+        values="values",
+        title=title,
+        labels={"names": "名称", "values": "数量"},
     )
-    events = {
-        "click": "function(params) { console.log(params.name); return params.name }",
-        # "dblclick":"function(params) { return [params.type, params.name, params.value] }"
-    }
-    clickevent = st_pyecharts(pie, events=events, height=650)  # width=800)
-    return pie, clickevent
+    fig.update_traces(textinfo="label+percent", insidetextorientation="radial")
+    # Display the chart
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
+
+    monthselected = event["selection"]["point_indices"]
+
+    if monthselected == []:
+        clickevent = None
+    else:
+        clickevent = namels[monthselected[0]]
+
+    return fig, clickevent
+
+
+def print_bar(x_data, y_data, y_axis_name, title):
+    # Create a DataFrame from the input data
+    data = pd.DataFrame({"月份": x_data, y_axis_name: y_data})
+    # Create the bar chart
+    fig = px.bar(
+        data,
+        x="月份",
+        y=y_axis_name,
+        title=title,
+        color=y_axis_name,
+        text=y_axis_name,
+        color_continuous_scale=px.colors.sequential.Viridis,
+    )
+
+    # Display the chart
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
+
+    monthselected = event["selection"]["point_indices"]
+
+    if monthselected == []:
+        clickevent = None
+    else:
+        clickevent = x_data[monthselected[0]]
+
+    return fig, clickevent
+
+
+def print_line(x_data, y_data, y_axis_name, title):
+    # Create a DataFrame from the input data
+    data = pd.DataFrame({"月份": x_data, y_axis_name: y_data})
+    # Create the line chart
+    fig = px.line(data, x="月份", y=y_axis_name, title=title, text=y_axis_name)
+
+    # Display the chart
+    event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
+
+    monthselected = event["selection"]["point_indices"]
+
+    if monthselected == []:
+        clickevent = None
+    else:
+        clickevent = x_data[monthselected[0]]
+
+    return fig, clickevent
 
 
 # province_name为省份名称列表；province_values为各省份对应值；title_name为标题,dataname为值标签（如：处罚案例数量）
-def print_map(province_name, province_values, title_name, dataname):
-    with open(mappath, "r", encoding="utf-8-sig") as f:
-        map = st_Map(
-            "china",
-            json.loads(f.read()),
-        )
+# def print_map(province_name, province_values, title_name, dataname):
+#     with open(mappath, "r", encoding="utf-8-sig") as f:
+#         map = st_Map(
+#             "china",
+#             json.loads(f.read()),
+#         )
 
-    map_data = (
-        Map()
-        .add(
-            dataname,
-            [list(z) for z in zip(province_name, province_values)],
-            "china",
-            is_roam=False,
-            is_map_symbol_show=False,
-        )
-        .set_series_opts(label_opts=opts.LabelOpts(is_show=True))
-        .set_global_opts(
-            title_opts=opts.TitleOpts(title=title_name),
-            visualmap_opts=opts.VisualMapOpts(
-                max_=max(province_values)  # , range_color=["#F3F781", "#D04A02"]
-            ),
-        )
+#     map_data = (
+#         Map()
+#         .add(
+#             dataname,
+#             [list(z) for z in zip(province_name, province_values)],
+#             "china",
+#             is_roam=False,
+#             is_map_symbol_show=False,
+#         )
+#         .set_series_opts(label_opts=opts.LabelOpts(is_show=True))
+#         .set_global_opts(
+#             title_opts=opts.TitleOpts(title=title_name),
+#             visualmap_opts=opts.VisualMapOpts(
+#                 max_=max(province_values)  # , range_color=["#F3F781", "#D04A02"]
+#             ),
+#         )
+#     )
+#     # st_pyecharts(map_data, map=map, height=700)  # ,width=800 )
+#     return map_data, map
+
+
+def print_map(province_name, province_values, title_name):
+    # load the GeoJSON file
+    china_geojson = json.load(open(mappath, "r", encoding="utf-8-sig"))
+
+    # st.write(china_geojson)
+
+    # Create a DataFrame from the provided data
+    data = pd.DataFrame({"省份": province_name, "处罚数量": province_values})
+    # Create the choropleth map
+    # fig = px.choropleth(
+    fig = px.choropleth_mapbox(
+        data,
+        geojson=china_geojson,
+        featureidkey="properties.name",
+        locations="省份",
+        color="处罚数量",
+        color_continuous_scale="Viridis",
+        mapbox_style="carto-positron",
+        zoom=2,
+        center={"lat": 35, "lon": 105},
+        # scope='asia',
+        title=title_name,
     )
-    # st_pyecharts(map_data, map=map, height=700)  # ,width=800 )
-    return map_data, map
+
+    # Add text labels
+    fig.update_traces(
+        text=data["处罚数量"],
+    )
+
+    # Update geos
+    fig.update_geos(
+        visible=False,
+        fitbounds="locations",
+    )
+
+    # Update layout
+    fig.update_layout(title_text=title_name, title_x=0.5)
+
+    # Display the chart in Streamlit
+    st.plotly_chart(fig, use_container_width=True)
+    return fig
 
 
 # content length analysis by length
-def content_length_analysis(length):
+def content_length_analysis(length, download_filter):
     # eventdf = get_csrc2detail()
     eventdf = get_csrc2analysis()
     eventdf["内容"] = eventdf["内容"].str.replace(
@@ -1047,6 +1235,11 @@ def content_length_analysis(length):
     )
     eventdf["len"] = eventdf["内容"].astype(str).apply(len)
     misdf = eventdf[eventdf["len"] <= length]
+
+    # filter out name by download_filter
+    if download_filter:
+        misdf = misdf[~misdf["名称"].str.contains(download_filter, case=False)]
+
     # get df by column name
     misdf1 = misdf[["发文日期", "名称", "链接", "内容", "len", "filename"]]
     # sort by 发文日期
@@ -1072,24 +1265,51 @@ def download_attachment(down_list):
     resultls = []
     errorls = []
     count = 0
+
+    driver = get_chrome_driver()
+
     for i, url in enumerate(submisls):
         st.info("id: " + str(i))
         st.info(str(count) + "begin")
         st.info("url:" + url)
         try:
-            dd = requests.get(url, verify=False)
-            sd = BeautifulSoup(dd.content, "html.parser")
+            # response = requests.get(url, verify=False)
+            # for _ in range(5):  # Retry mechanism to ensure page loads completely
+            #     if response.status_code == 200:
+            #         break
+            #     time.sleep(10)
+            #     response = requests.get(url, verify=False)
+
+            # if response.status_code != 200:
+            #     raise Exception(f"Failed to load page {url}")
+            # sd = BeautifulSoup(response.content, "html.parser")
+
+            driver.get(url)
+            # Wait for the page to load and the specific element to be present
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "detail-news"))
+            )
+
+            page_source = driver.page_source
+            sd = BeautifulSoup(page_source, "html.parser")  # Parse the page's HTML
+
             dirpath = url.rsplit("/", 1)[0]
             try:
                 filepath = sd.find_all("div", class_="detail-news")[0].a["href"]
                 datapath = dirpath + "/" + filepath
                 st.info(datapath)
-                response = requests.get(datapath, stream=True)
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "Referer": url,
+                }
+                file_response = requests.get(datapath, headers=headers, stream=True)
+                file_response.raise_for_status()
                 savename = get_now() + os.path.basename(datapath)
                 filename = os.path.join(tempdir, savename)
                 with open(filename, "wb") as f:
-                    for chunk in response.iter_content(1024 * 1024 * 2):
-                        f.write(chunk)
+                    for chunk in file_response.iter_content(1024 * 1024 * 2):
+                        if chunk:
+                            f.write(chunk)
                 text = ""
             except Exception as e:
                 st.error(str(e))
@@ -1113,6 +1333,8 @@ def download_attachment(down_list):
         time.sleep(wait)
         st.info("finish: " + str(count))
         count += 1
+
+    driver.quit()
 
     misdf = pd.concat(resultls)
     savecsv = "csrcmiscontent" + get_now()
@@ -1152,6 +1374,7 @@ def update_csrc2text():
         }
         headers = {}
         res = requests.post(url, headers=headers, params=payload)
+        st.write(res)
         result = res.json()
         resls = result["resls"]
         st.success("文件转换成功")
@@ -1167,12 +1390,38 @@ def update_csrc2text():
 def combine_csrc2text():
     olddf = get_csrc2analysis()
     newdf = get_csrc2textupdate()
+    downdf = get_csrcdownload()
+
+    # combine downdf with newdf merge the text column
+    toupdf = pd.merge(downdf, newdf, on="url", suffixes=("_x", "_y"))
+    # combine text columns
+    toupdf["text"] = toupdf["text_x"] + toupdf["text_y"]
+    # drop text_x and text_y
+    toupdf.drop(columns=["text_x", "text_y"], inplace=True)
+    # drop filename_x
+    toupdf.drop(columns=["filename_x"], inplace=True)
+    # rename filename_y to filename
+    toupdf.rename(columns={"filename_y": "filename"}, inplace=True)
+    st.markdown("#### 合并后数据")
+    st.write(toupdf)
+
     # update text column match with url
-    updf = pd.merge(olddf, newdf, left_on="链接", right_on="url", how="left")
+    updf = pd.merge(olddf, toupdf, left_on="链接", right_on="url", how="left")
     updf.loc[updf["text"].notnull(), "内容"] = updf["text"]
     updf.loc[updf["text"].notnull(), "filename_x"] = updf["filename_y"]
     updf1 = updf[
-        ["名称", "文号", "发文日期", "序列号", "链接", "内容", "机构", "org", "cat", "filename_x"]
+        [
+            "名称",
+            "文号",
+            "发文日期",
+            "序列号",
+            "链接",
+            "内容",
+            "机构",
+            "org",
+            "cat",
+            "filename_x",
+        ]
     ]
     updf1.columns = [
         "名称",
@@ -1224,13 +1473,13 @@ def update_csrc2analysis():
 def update_label():
     newdf = get_csrc2analysis()
     newurlls = newdf["链接"].tolist()
-    labeldf = get_csrc2label()
-    amtdf = get_csrc2amt()
+    # labeldf = get_csrc2label()
+    amtdf = get_csrc2cat()
     # if labeldf is not empty
-    if labeldf.empty:
-        oldlabells = []
-    else:
-        oldlabells = labeldf["id"].tolist()
+    # if labeldf.empty:
+    #     oldlabells = []
+    # else:
+    #     oldlabells = labeldf["id"].tolist()
 
     if amtdf.empty:
         oldamtls = []
@@ -1238,20 +1487,20 @@ def update_label():
         oldamtls = amtdf["id"].tolist()
 
     # get new urlls not in oldlabells
-    newlabells = [x for x in newurlls if x not in oldlabells]
-    labelupddf = newdf[newdf["链接"].isin(newlabells)]
-    # if newdf is not empty, save it
-    if labelupddf.empty is False:
-        labelupdlen = len(labelupddf)
-        st.info("待更新标签" + str(labelupdlen) + "条数据")
-        savename = "csrc2_tolabel" + get_nowdate() + ".csv"
-        # savedf2(upddf, savename)
-        # download detail data
-        st.download_button(
-            "下载案例数据", data=labelupddf.to_csv().encode("utf_8_sig"), file_name=savename
-        )
-    else:
-        st.info("标签数据已更新")
+    # newlabells = [x for x in newurlls if x not in oldlabells]
+    # labelupddf = newdf[newdf["链接"].isin(newlabells)]
+    # # if newdf is not empty, save it
+    # if labelupddf.empty is False:
+    #     labelupdlen = len(labelupddf)
+    #     st.info("待更新标签" + str(labelupdlen) + "条数据")
+    #     savename = "csrc2_tolabel" + get_nowdate() + ".csv"
+    #     # savedf2(upddf, savename)
+    #     # download detail data
+    #     st.download_button(
+    #         "下载案例数据", data=labelupddf.to_csv().encode("utf_8_sig"), file_name=savename
+    #     )
+    # else:
+    #     st.info("标签数据已更新")
 
     # get new urlls not in oldamtls
     newamtls = [x for x in newurlls if x not in oldamtls]
@@ -1259,12 +1508,14 @@ def update_label():
     # if newdf is not empty, save it
     if amtupddf.empty is False:
         amtupdlen = len(amtupddf)
-        st.info("待更新金额" + str(amtupdlen) + "条数据")
-        savename = "csrc2_toamt" + get_nowdate() + ".csv"
+        st.info("待更新分类" + str(amtupdlen) + "条数据")
+        savename = "csrc2_tocat" + get_nowdate() + ".csv"
         # savedf2(upddf, savename)
         # download detail data
         st.download_button(
-            "下载案例数据", data=amtupddf.to_csv().encode("utf_8_sig"), file_name=savename
+            "下载案例数据",
+            data=amtupddf.to_csv().encode("utf_8_sig"),
+            file_name=savename,
         )
     else:
         st.info("金额数据已更新")
@@ -1292,35 +1543,35 @@ def download_csrcsum():
     )
 
     # download lawdf data
-    lawdf = get_lawdetail2()
-    # get lengh
-    lawlen = len(lawdf)
-    st.write("法律数据量：" + str(lawlen))
-    # get id nunique
-    lawidn = lawdf["链接"].nunique()
-    st.write("法律数据id数：" + str(lawidn))
+    # lawdf = get_lawdetail2()
+    # # get lengh
+    # lawlen = len(lawdf)
+    # st.write("法律数据量：" + str(lawlen))
+    # # get id nunique
+    # lawidn = lawdf["链接"].nunique()
+    # st.write("法律数据id数：" + str(lawidn))
 
-    # lawname
-    lawname = "csrc2lawdf" + get_nowdate() + ".csv"
-    st.download_button(
-        "下载法律数据", data=lawdf.to_csv().encode("utf_8_sig"), file_name=lawname
-    )
+    # # lawname
+    # lawname = "csrc2lawdf" + get_nowdate() + ".csv"
+    # st.download_button(
+    #     "下载法律数据", data=lawdf.to_csv().encode("utf_8_sig"), file_name=lawname
+    # )
 
     # download label data
-    labeldf = get_csrc2label()
-    # get lengh
-    labellen = len(labeldf)
-    st.write("标签数据量：" + str(labellen))
-    # get id nunique
-    labelidn = labeldf["id"].nunique()
-    st.write("标签数据id数：" + str(labelidn))
-    # drop duplicate by id
-    labeldf.drop_duplicates(subset=["id"], inplace=True)
+    # labeldf = get_csrc2label()
+    # # get lengh
+    # labellen = len(labeldf)
+    # st.write("标签数据量：" + str(labellen))
+    # # get id nunique
+    # labelidn = labeldf["id"].nunique()
+    # st.write("标签数据id数：" + str(labelidn))
+    # # drop duplicate by id
+    # labeldf.drop_duplicates(subset=["id"], inplace=True)
 
-    labelname = "csrc2label" + get_nowdate() + ".csv"
-    st.download_button(
-        "下载标签数据", data=labeldf.to_csv().encode("utf_8_sig"), file_name=labelname
-    )
+    # labelname = "csrc2label" + get_nowdate() + ".csv"
+    # st.download_button(
+    #     "下载标签数据", data=labeldf.to_csv().encode("utf_8_sig"), file_name=labelname
+    # )
 
     # download analysis data
     analysisdf = get_csrc2analysis()
@@ -1341,38 +1592,56 @@ def download_csrcsum():
     )
 
     # download amount data
-    amountdf = get_csrc2amt()
+    amountdf = get_csrc2cat()
     # get lengh
     amountlen = len(amountdf)
-    st.write("金额数据量：" + str(amountlen))
+    st.write("分类数据量：" + str(amountlen))
     # get id nunique
     amountidn = amountdf["id"].nunique()
-    st.write("金额数据id数：" + str(amountidn))
+    st.write("分类数据id数：" + str(amountidn))
     # drop duplicate by id
     amountdf.drop_duplicates(subset=["id"], inplace=True)
 
-    amountname = "csrc2amt" + get_nowdate() + ".csv"
+    amountname = "csrc2cat" + get_nowdate() + ".csv"
     st.download_button(
-        "下载金额数据", data=amountdf.to_csv().encode("utf_8_sig"), file_name=amountname
+        "下载分类数据", data=amountdf.to_csv().encode("utf_8_sig"), file_name=amountname
+    )
+
+    # download split data
+    splitdf = get_csrc2split()
+    # get lengh
+    splitlen = len(splitdf)
+    st.write("拆分数据量：" + str(splitlen))
+    # get id nunique
+    splitidn = splitdf["id"].nunique()
+    st.write("拆分数据id数：" + str(splitidn))
+    # drop duplicate by id
+    splitdf.drop_duplicates(subset=["id"], inplace=True)
+
+    splitname = "csrc2split" + get_nowdate() + ".csv"
+    st.download_button(
+        "下载拆分数据", data=splitdf.to_csv().encode("utf_8_sig"), file_name=splitname
     )
 
 
-def get_csrc2amt():
-    amtdf = get_csvdf(pencsrc2, "csrc2amt")
+def get_csrc2cat():
+    amtdf = get_csvdf(pencsrc2, "csrccat")
     # process amount
     amtdf["amount"] = amtdf["amount"].astype(float)
-    cols = ["id", "amount"]
-    amtdf = amtdf[cols]
+    # rename columns law to lawlist
+    amtdf.rename(columns={"law": "lawlist"}, inplace=True)
+
     return amtdf
 
     # sum amount column of df by month
 
 
 def sum_amount_by_month(df):
-    amtdf = get_csrc2amt()
-    df1 = pd.merge(
-        df, amtdf.drop_duplicates("id"), left_on="链接", right_on="id", how="left"
-    )
+    # amtdf = get_csrc2amt()
+    # df1 = pd.merge(
+    #     df, amtdf.drop_duplicates("id"), left_on="链接", right_on="id", how="left"
+    # )
+    df1 = df
     df1["发文日期"] = pd.to_datetime(df1["发文日期"]).dt.date
     # df=df[df['发文日期']>=pd.to_datetime('2020-01-01')]
     df1["month"] = df1["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
@@ -1396,46 +1665,32 @@ def uplink_csrcsum():
     oldsum2.drop_duplicates(subset=["链接"], inplace=True)
 
     # detailname
-    detailname = "csrcdtlall" + get_nowdate() + ".csv"
+    # detailname = "csrcdtlall" + get_nowdate() + ".csv"
 
     # download lawdf data
-    lawdf = get_lawdetail2()
-    # get lengh
-    lawlen = len(lawdf)
-    st.write("法律数据量：" + str(lawlen))
-    # get id nunique
-    lawidn = lawdf["链接"].nunique()
-    st.write("法律数据id数：" + str(lawidn))
+    # lawdf = get_lawdetail2()
+    # # get lengh
+    # lawlen = len(lawdf)
+    # st.write("法律数据量：" + str(lawlen))
+    # # get id nunique
+    # lawidn = lawdf["链接"].nunique()
+    # st.write("法律数据id数：" + str(lawidn))
 
-    # lawname
-    lawname = "csrc2lawdf" + get_nowdate() + ".csv"
+    # # lawname
+    # lawname = "csrc2lawdf" + get_nowdate() + ".csv"
 
     # download label data
-    labeldf = get_csrc2label()
-    # get lengh
-    labellen = len(labeldf)
-    st.write("标签数据量：" + str(labellen))
-    # get id nunique
-    labelidn = labeldf["id"].nunique()
-    st.write("标签数据id数：" + str(labelidn))
-    # drop duplicate by id
-    labeldf.drop_duplicates(subset=["id"], inplace=True)
+    # labeldf = get_csrc2label()
+    # # get lengh
+    # labellen = len(labeldf)
+    # st.write("标签数据量：" + str(labellen))
+    # # get id nunique
+    # labelidn = labeldf["id"].nunique()
+    # st.write("标签数据id数：" + str(labelidn))
+    # # drop duplicate by id
+    # labeldf.drop_duplicates(subset=["id"], inplace=True)
 
-    labelname = "csrc2label" + get_nowdate() + ".csv"
-
-    # download amount data
-    amountdf = get_csrc2amt()
-    # get lengh
-    amountlen = len(amountdf)
-    st.write("金额数据量：" + str(amountlen))
-    # get id nunique
-    amountidn = amountdf["id"].nunique()
-    st.write("金额数据id数：" + str(amountidn))
-    # drop duplicate by id
-    amountdf.drop_duplicates(subset=["id"], inplace=True)
-
-    amountname = "csrc2amt" + get_nowdate() + ".csv"
-
+    # labelname = "csrc2label" + get_nowdate() + ".csv"
     # download analysis data
     analysisdf = get_csrc2analysis()
     # get lengh
@@ -1446,6 +1701,30 @@ def uplink_csrcsum():
     st.write("分析数据id数：" + str(analysisidn))
     # drop duplicate by id
     analysisdf.drop_duplicates(subset=["链接"], inplace=True)
+
+    # download amount data
+    amountdf = get_csrc2cat()
+    # get lengh
+    amountlen = len(amountdf)
+    st.write("分类数据量：" + str(amountlen))
+    # get id nunique
+    amountidn = amountdf["id"].nunique()
+    st.write("分类数据id数：" + str(amountidn))
+    # drop duplicate by id
+    amountdf.drop_duplicates(subset=["id"], inplace=True)
+
+    # amountname = "csrc2amt" + get_nowdate() + ".csv"
+
+    # download split data
+    splitdf = get_csrc2split()
+    # get lengh
+    splitlen = len(splitdf)
+    st.write("拆分数据量：" + str(splitlen))
+    # get id nunique
+    splitidn = splitdf["id"].nunique()
+    st.write("拆分数据id数：" + str(splitidn))
+    # drop duplicate by id
+    splitdf.drop_duplicates(subset=["id"], inplace=True)
 
     # st.write(analysisdf.head())
     # convert date to datetime
@@ -1496,3 +1775,12 @@ def uplink_csrcsum():
     # if st.button("更新上线案例数据"):
     #     insert_data(diff_data, collection)
     #     st.success("更新案例数据上线成功！")
+
+
+def get_csrc2split():
+    pendf = get_csvdf(pencsrc2, "csrcsplit")
+    # format date
+    # pendf["发文日期"] = pd.to_datetime(pendf["发文日期"]).dt.date
+    # # fillna
+    # pendf = pendf.fillna("")
+    return pendf

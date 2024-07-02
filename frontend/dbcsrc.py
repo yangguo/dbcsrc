@@ -17,12 +17,11 @@ import streamlit as st
 from bs4 import BeautifulSoup
 from checkrule import get_lawdtlbyid, get_rulelist_byname
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_PARAGRAPH_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.shared import Cm, Inches, Pt
+from docx.shared import Pt
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Line
-from pyecharts.commons.utils import JsCode
 from pyecharts.render import make_snapshot
 
 # from snapshot_phantomjs import snapshot as driver
@@ -234,7 +233,18 @@ def searchpeople(
 
 # convert eventdf to lawdf
 def generate_lawdf(eventdf):
-    law1 = eventdf[["id", "文件名称", "文号", "发文日期", "文书类型", "发文单位", "原文链接", "处理依据"]]
+    law1 = eventdf[
+        [
+            "id",
+            "文件名称",
+            "文号",
+            "发文日期",
+            "文书类型",
+            "发文单位",
+            "原文链接",
+            "处理依据",
+        ]
+    ]
 
     law1["处理依据"] = law1["处理依据"].apply(literal_eval)
 
@@ -248,7 +258,19 @@ def generate_lawdf(eventdf):
 
     law6 = law5.drop(["处理依据"], axis=1)
 
-    lawdf = law6[["id", "文件名称", "文号", "发文日期", "文书类型", "发文单位", "原文链接", "法律法规", "条文"]]
+    lawdf = law6[
+        [
+            "id",
+            "文件名称",
+            "文号",
+            "发文日期",
+            "文书类型",
+            "发文单位",
+            "原文链接",
+            "法律法规",
+            "条文",
+        ]
+    ]
 
     # reset index
     lawdf.reset_index(drop=True, inplace=True)
@@ -258,7 +280,18 @@ def generate_lawdf(eventdf):
 
 # convert eventdf to peopledf
 def generate_peopledf(eventdf):
-    peopledf = eventdf[["id", "文件名称", "文号", "发文日期", "文书类型", "发文单位", "原文链接", "当事人信息"]]
+    peopledf = eventdf[
+        [
+            "id",
+            "文件名称",
+            "文号",
+            "发文日期",
+            "文书类型",
+            "发文单位",
+            "原文链接",
+            "当事人信息",
+        ]
+    ]
 
     peopledf["当事人信息"] = peopledf["当事人信息"].apply(literal_eval)
 
@@ -594,7 +627,8 @@ def display_dfmonth(search_df):
                     + str(peopletype_count.iloc[i, 1])
                     + "起),"
                 )
-            except:
+            except Exception as e:
+                print(e)
                 break
         image3_text = "图三解析：处罚事件中，各当事人身份中被处罚数量排名前五分别为:" + result3
         st.markdown("##### " + image3_text)
@@ -656,7 +690,8 @@ def display_dfmonth(search_df):
                     + str(penaltytype_count.iloc[i, 1])
                     + "起),"
                 )
-            except:
+            except Exception as e:
+                print(e)
                 break
         image4_text = "图四解析：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result4[: len(result4) - 1]
         st.markdown("##### " + image4_text)
@@ -707,7 +742,8 @@ def display_dfmonth(search_df):
                     + str(lawtype_count.iloc[i, 1])
                     + "起),"
                 )
-            except:
+            except Exception as e:
+                print(e)
                 break
         # st.markdown(
         #     "##### 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
@@ -736,7 +772,8 @@ def display_dfmonth(search_df):
                     + str(lawtype_count.iloc[i, 1])
                     + "起),"
                 )
-            except:
+            except Exception as e:
+                print(e)
                 break
         image5_text = (
             " 图五解析:法律法规统计-不同法规维度：处罚事件中，各违规类型中处罚数量排名前五分别为:"
@@ -865,7 +902,7 @@ def update_sumeventdf(currentsum):
     # newidls=list(set(currentidls)-set(oldidls))
     newdf = currentsum[currentsum["id"].isin(newidls)]
     # if newdf is not empty, save it
-    if newdf.empty == False:
+    if not newdf.empty:
         newdf.reset_index(drop=True, inplace=True)
         nowstr = get_now()
         savename = "sumevent" + nowstr
@@ -970,7 +1007,7 @@ def get_eventdetail(eventsum):
 
     alldf = pd.DataFrame.from_dict(sdresultls)
     # if alldf is not empty, save it
-    if alldf.empty == False:
+    if not alldf.empty:
         nowstr = get_now()
         savename = "sdresult" + nowstr
         savedf(alldf, savename)
@@ -996,7 +1033,9 @@ def display_eventdetail(search_df):
     st.markdown("### 搜索结果" + "(" + str(total) + "条)")
     # display download button
     st.download_button(
-        "下载搜索结果", data=downloaddf.to_csv().encode("utf_8_sig"), file_name="搜索结果.csv"
+        "下载搜索结果",
+        data=downloaddf.to_csv().encode("utf_8_sig"),
+        file_name="搜索结果.csv",
     )
     # display columns
     discols = ["发文日期", "文件名称", "发文单位", "id"]

@@ -1,5 +1,4 @@
 import pandas as pd
-import streamlit as st
 from utils import get_csvdf, get_rulefolder, split_words
 
 rulefolder = "../data/rules"
@@ -46,7 +45,15 @@ def get_lawdtlbyid(ids):
     metadf = metadf[metacols]
     # fillna to empty
     metadf = metadf.fillna("")
-    metadf.columns = ["文件名称", "文件名称注解", "法律条文名称", "法律条文版本", "文号", "正文", "正文注解"]
+    metadf.columns = [
+        "文件名称",
+        "文件名称注解",
+        "法律条文名称",
+        "法律条文版本",
+        "文号",
+        "正文",
+        "正文注解",
+    ]
     metadf = metadf.reset_index(drop=True)
     dtldf = pd.read_csv(dtlpath)
     dtldf = dtldf[dtldf["id"].isin(ids)]

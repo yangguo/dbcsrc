@@ -1,14 +1,10 @@
-import io
 from typing import List, Union
 
-import pandas as pd
-
 # from classifier import df2label, get_class
-from doc2text import convert_uploadfiles, docxconvertion
+from doc2text import convert_uploadfiles, docxconvertion, ofdconvertion
 
 # from extractamount import df2amount
-from fastapi import FastAPI, File, Query, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Query
 
 # from locationanalysis import df2location
 # from peopleanalysis import df2people
@@ -88,3 +84,9 @@ async def docxconvert():
 async def convertuploadfiles(txtls: List[str] = Query(default=[]), dirpath: str = ""):
     resls = convert_uploadfiles(txtls, dirpath)
     return {"resls": resls}
+
+
+@app.get("/ofdconvert")
+async def ofdconvert():
+    ofdconvertion(tempdir)
+    return {"dirpath": tempdir}
