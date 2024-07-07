@@ -1476,35 +1476,19 @@ def update_label():
     # labeldf = get_csrc2label()
     amtdf = get_csrc2cat()
     # if labeldf is not empty
-    # if labeldf.empty:
-    #     oldlabells = []
-    # else:
-    #     oldlabells = labeldf["id"].tolist()
-
     if amtdf.empty:
         oldamtls = []
     else:
         oldamtls = amtdf["id"].tolist()
 
-    # get new urlls not in oldlabells
-    # newlabells = [x for x in newurlls if x not in oldlabells]
-    # labelupddf = newdf[newdf["链接"].isin(newlabells)]
-    # # if newdf is not empty, save it
-    # if labelupddf.empty is False:
-    #     labelupdlen = len(labelupddf)
-    #     st.info("待更新标签" + str(labelupdlen) + "条数据")
-    #     savename = "csrc2_tolabel" + get_nowdate() + ".csv"
-    #     # savedf2(upddf, savename)
-    #     # download detail data
-    #     st.download_button(
-    #         "下载案例数据", data=labelupddf.to_csv().encode("utf_8_sig"), file_name=savename
-    #     )
-    # else:
-    #     st.info("标签数据已更新")
-
     # get new urlls not in oldamtls
     newamtls = [x for x in newurlls if x not in oldamtls]
     amtupddf = newdf[newdf["链接"].isin(newamtls)]
+    # reset index
+    amtupddf.reset_index(drop=True, inplace=True)
+    # display update data
+    st.markdown("#### 待更新分类数据")
+    st.write(amtupddf)
     # if newdf is not empty, save it
     if amtupddf.empty is False:
         amtupdlen = len(amtupddf)
@@ -1518,7 +1502,37 @@ def update_label():
             file_name=savename,
         )
     else:
-        st.info("金额数据已更新")
+        st.info("分类数据已更新")
+
+    splitdf = get_csrc2split()
+    # if labeldf is not empty
+    if splitdf.empty:
+        oldsplitls = []
+    else:
+        oldsplitls = splitdf["id"].tolist()
+
+    # get new urlls not in oldsplitls
+    newsplitls = [x for x in newurlls if x not in oldsplitls]
+    splitupddf = newdf[newdf["链接"].isin(newsplitls)]
+    # reset index
+    splitupddf.reset_index(drop=True, inplace=True)
+    # display update data
+    st.markdown("#### 待更新拆分数据")
+    st.write(splitupddf)
+    # if newdf is not empty, save it
+    if splitupddf.empty is False:
+        splitupdlen = len(splitupddf)
+        st.info("待更新拆分" + str(splitupdlen) + "条数据")
+        savename = "csrc2_tosplit" + get_nowdate() + ".csv"
+        # savedf2(upddf, savename)
+        # download detail data
+        st.download_button(
+            "下载案例数据",
+            data=splitupddf.to_csv().encode("utf_8_sig"),
+            file_name=savename,
+        )
+    else:
+        st.info("拆分数据已更新")
 
 
 def download_csrcsum():
@@ -1602,7 +1616,7 @@ def download_csrcsum():
     # drop duplicate by id
     amountdf.drop_duplicates(subset=["id"], inplace=True)
 
-    amountname = "csrc2cat" + get_nowdate() + ".csv"
+    amountname = "csrccat" + get_nowdate() + ".csv"
     st.download_button(
         "下载分类数据", data=amountdf.to_csv().encode("utf_8_sig"), file_name=amountname
     )
@@ -1618,7 +1632,7 @@ def download_csrcsum():
     # drop duplicate by id
     splitdf.drop_duplicates(subset=["id"], inplace=True)
 
-    splitname = "csrc2split" + get_nowdate() + ".csv"
+    splitname = "csrcsplit" + get_nowdate() + ".csv"
     st.download_button(
         "下载拆分数据", data=splitdf.to_csv().encode("utf_8_sig"), file_name=splitname
     )
