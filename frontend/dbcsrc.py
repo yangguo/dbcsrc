@@ -413,7 +413,9 @@ def display_dfmonth(search_df):
         bar, yearmonth = print_bar(x_data, y_data, "处罚数量", "案例数量统计")
         # st.write(yearmonth)
         if yearmonth is not None:
-            search_df["month"] = search_df["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
+            search_df["month"] = search_df["发文日期"].apply(
+                lambda x: x.strftime("%Y-%m")
+            )
             searchdfnew = search_df[search_df["month"] == yearmonth]
             # drop month column
             searchdfnew.drop(columns=["month"], inplace=True)
@@ -458,7 +460,9 @@ def display_dfmonth(search_df):
         line, yearmonthline = print_line(x_data, sum_data, "处罚金额", "案例金额统计")
         # st.write(yearmonth)
         if yearmonthline is not None:
-            search_df["month"] = search_df["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
+            search_df["month"] = search_df["发文日期"].apply(
+                lambda x: x.strftime("%Y-%m")
+            )
             searchdfnew = search_df[search_df["month"] == yearmonthline]
             # drop month column
             searchdfnew.drop(columns=["month"], inplace=True)
@@ -513,19 +517,25 @@ def display_dfmonth(search_df):
 
     # people type count
     peopletype = (
-        selected_peopledetail.groupby("当事人身份")["id"].nunique().reset_index(name="数量统计")
+        selected_peopledetail.groupby("当事人身份")["id"]
+        .nunique()
+        .reset_index(name="数量统计")
     )
     # sort by count
     peopletype = peopletype.sort_values(by="数量统计", ascending=False)
     # penalty type count
     penaltytype = (
-        selected_peopledetail.groupby("违规类型")["id"].nunique().reset_index(name="数量统计")
+        selected_peopledetail.groupby("违规类型")["id"]
+        .nunique()
+        .reset_index(name="数量统计")
     )
     # sort by count
     penaltytype = penaltytype.sort_values(by="数量统计", ascending=False)
     # law type count
     lawtype = (
-        selected_lawdetail.groupby("法律法规")["id"].nunique().reset_index(name="数量统计")
+        selected_lawdetail.groupby("法律法规")["id"]
+        .nunique()
+        .reset_index(name="数量统计")
     )
     # sort by count
     lawtype = lawtype.sort_values(by="数量统计", ascending=False)
@@ -599,7 +609,9 @@ def display_dfmonth(search_df):
         # }
         # display bar chart
         # peopletype_selected = st_pyecharts(bar1, width=800, height=400, events=events)
-        bar1, peopletype_selected = print_bar(x_data1, y_data1, "处罚数量", "当事人身份统计")
+        bar1, peopletype_selected = print_bar(
+            x_data1, y_data1, "处罚数量", "当事人身份统计"
+        )
         # get selected people type
         if peopletype_selected is not None:
             # get selected people type id
@@ -630,7 +642,9 @@ def display_dfmonth(search_df):
             except Exception as e:
                 print(e)
                 break
-        image3_text = "图三解析：处罚事件中，各当事人身份中被处罚数量排名前五分别为:" + result3
+        image3_text = (
+            "图三解析：处罚事件中，各当事人身份中被处罚数量排名前五分别为:" + result3
+        )
         st.markdown("##### " + image3_text)
     # showgraph3 = st.sidebar.checkbox("违规类型统计", key="showgraph3")
     showgraph3 = True
@@ -677,7 +691,9 @@ def display_dfmonth(search_df):
             st.session_state["search_result_csrc"] = subsearchdf
 
         # 图四解析开始
-        penaltytype_count = penaltytype[["违规类型", "数量统计"]]  # 把违规类型的数量进行统计
+        penaltytype_count = penaltytype[
+            ["违规类型", "数量统计"]
+        ]  # 把违规类型的数量进行统计
         # pandas数据排序
         penaltytype_count = penaltytype_count.sort_values("数量统计", ascending=False)
         result4 = ""
@@ -693,7 +709,10 @@ def display_dfmonth(search_df):
             except Exception as e:
                 print(e)
                 break
-        image4_text = "图四解析：处罚事件中，各违规类型中处罚数量排名前五分别为:" + result4[: len(result4) - 1]
+        image4_text = (
+            "图四解析：处罚事件中，各违规类型中处罚数量排名前五分别为:"
+            + result4[: len(result4) - 1]
+        )
         st.markdown("##### " + image4_text)
 
     # showgraph4 = st.sidebar.checkbox("法律法规统计", key="showgraph4")
@@ -757,9 +776,13 @@ def display_dfmonth(search_df):
             .reset_index(name="数量统计")
         )
         # new_lawtype=lawdf.groupby(['法律法规','条文'])#%%%
-        new_lawtype["法律法规明细"] = new_lawtype["法律法规"] + "(" + new_lawtype["条文"] + ")"
+        new_lawtype["法律法规明细"] = (
+            new_lawtype["法律法规"] + "(" + new_lawtype["条文"] + ")"
+        )
 
-        lawtype_count = new_lawtype[["法律法规明细", "数量统计"]]  # 把法律法规的数量进行统计
+        lawtype_count = new_lawtype[
+            ["法律法规明细", "数量统计"]
+        ]  # 把法律法规的数量进行统计
         # pandas数据排序
         lawtype_count = lawtype_count.sort_values("数量统计", ascending=False)
         result6 = ""
@@ -1177,7 +1200,9 @@ def print_line(x_data, y_data, y_axis_name, title):
     return line, clickevent
 
 
-def make_docx(title, text, image):  # 制作docx的函数，title以str形式传入，其他以list的形式传入，输出为字符串的形式
+def make_docx(
+    title, text, image
+):  # 制作docx的函数，title以str形式传入，其他以list的形式传入，输出为字符串的形式
     document = Document()
 
     # st.write(title_str)
@@ -1203,7 +1228,9 @@ def make_docx(title, text, image):  # 制作docx的函数，title以str形式传
         document.styles["Normal"]._element.rPr.rFonts.set(
             qn("w:eastAsia"), "FangSong"
         )  # 设置中文字体使用字体2->宋体
-        document.add_picture(t + ".png", width=docx.shared.Inches(5.4))  # 6英尺是最大宽度
+        document.add_picture(
+            t + ".png", width=docx.shared.Inches(5.4)
+        )  # 6英尺是最大宽度
         # print('当前图像高度', str(document.inline_shapes[0].height)+'当前图像宽度'+str(document.inline_shapes[0].width)) # 打印当前图片大小
         last_paragraph = document.paragraphs[-1]
         last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER

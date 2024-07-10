@@ -17,6 +17,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from snapshot import get_chrome_driver
+from collections import defaultdict
 
 # from streamlit_tags import st_tags
 from utils import split_words
@@ -75,42 +76,82 @@ org2id = {
     "青海": "1747a405d9a6437e8688f25c48c6205a",
 }
 
-cityls = [
-    "北京市",
-    "天津市",
-    "河北省",
-    "山西省",
-    "内蒙古自治区",
-    "辽宁省",
-    "吉林省",
-    "黑龙江省",
-    "上海市",
-    "江苏省",
-    "浙江省",
-    "安徽省",
-    "福建省",
-    "江西省",
-    "山东省",
-    "河南省",
-    "湖北省",
-    "湖南省",
-    "广东省",
-    "广西壮族自治区",
-    "海南省",
-    "重庆市",
-    "四川省",
-    "贵州省",
-    "云南省",
-    "西藏自治区",
-    "陕西省",
-    "甘肃省",
-    "青海省",
-    "宁夏回族自治区",
-    "新疆维吾尔自治区",
-    "台湾省",
-    "香港特别行政区",
-    "澳门特别行政区",
-]
+# cityls = [
+#     "北京市",
+#     "天津市",
+#     "河北省",
+#     "山西省",
+#     "内蒙古自治区",
+#     "辽宁省",
+#     "吉林省",
+#     "黑龙江省",
+#     "上海市",
+#     "江苏省",
+#     "浙江省",
+#     "安徽省",
+#     "福建省",
+#     "江西省",
+#     "山东省",
+#     "河南省",
+#     "湖北省",
+#     "湖南省",
+#     "广东省",
+#     "广西壮族自治区",
+#     "海南省",
+#     "重庆市",
+#     "四川省",
+#     "贵州省",
+#     "云南省",
+#     "西藏自治区",
+#     "陕西省",
+#     "甘肃省",
+#     "青海省",
+#     "宁夏回族自治区",
+#     "新疆维吾尔自治区",
+#     "台湾省",
+#     "香港特别行政区",
+#     "澳门特别行政区",
+# ]
+
+city2province = {
+    "山西": "山西省",
+    "四川": "四川省",
+    "新疆": "新疆维吾尔自治区",
+    "山东": "山东省",
+    "大连": "辽宁省",
+    "湖北": "湖北省",
+    "湖南": "湖南省",
+    "陕西": "陕西省",
+    "天津": "天津市",
+    "宁夏": "宁夏回族自治区",
+    "安徽": "安徽省",
+    "总部": "北京市",
+    "北京": "北京市",
+    "江苏": "江苏省",
+    "黑龙江": "黑龙江省",
+    "甘肃": "甘肃省",
+    "宁波": "浙江省",
+    "深圳": "广东省",
+    "河北": "河北省",
+    "广东": "广东省",
+    "厦门": "福建省",
+    "福建": "福建省",
+    "西藏": "西藏自治区",
+    "青岛": "山东省",
+    "贵州": "贵州省",
+    "河南": "河南省",
+    "广西": "广西壮族自治区",
+    "内蒙古": "内蒙古自治区",
+    "海南": "海南省",
+    "浙江": "浙江省",
+    "云南": "云南省",
+    "辽宁": "辽宁省",
+    "吉林": "吉林省",
+    "江西": "江西省",
+    "重庆": "重庆市",
+    "上海": "上海市",
+    "青海": "青海省",
+}
 
 
 # @st.cache(allow_output_mutation=True)
@@ -246,7 +287,9 @@ def generate_lawdf2(d1):
     d22.loc[d22["abbdict"].notnull(), "fix"] = d22[d22["abbdict"].notnull()].apply(
         lambda row: fix_abb(row["处理依据"], row["abbdict"]), axis=1
     )
-    d22.loc[d22["abbdict"].notnull(), "处理依据"] = d22.loc[d22["abbdict"].notnull(), "fix"]
+    d22.loc[d22["abbdict"].notnull(), "处理依据"] = d22.loc[
+        d22["abbdict"].notnull(), "fix"
+    ]
 
     d2 = d22[["链接", "处理依据"]]
     d3 = d2.explode("处理依据")
@@ -276,7 +319,9 @@ def display_summary2():
         st.metric("案例日期范围", f"{min_date2} - {max_date2}")
 
     # sum max,min date and size by org
-    sumdf2 = oldsum2.groupby("机构")["发文日期"].agg(["max", "min", "count"]).reset_index()
+    sumdf2 = (
+        oldsum2.groupby("机构")["发文日期"].agg(["max", "min", "count"]).reset_index()
+    )
     sumdf2.columns = ["机构", "最近发文日期", "最早发文日期", "案例总数"]
     # sort by date
     sumdf2.sort_values(by=["最近发文日期"], ascending=False, inplace=True)
@@ -328,12 +373,12 @@ def searchcsrc2(
     # searchdf.columns = ["名称", "发文日期", "文号", "内容", "链接", "机构", "处罚金额", "违规类型"]
 
     # sort by date desc
-    searchdf.sort_values(by=["发文日期"], ascending=False, inplace=True)
+    sorteddf = searchdf.sort_values(by=["发文日期"], ascending=False)
     # drop duplicates
-    searchdf.drop_duplicates(subset=["链接"], inplace=True)
+    unidf = sorteddf.drop_duplicates(subset=["链接"])
     # reset index
-    searchdf.reset_index(drop=True, inplace=True)
-    return searchdf
+    resultdf = unidf.reset_index(drop=True)
+    return resultdf
 
 
 # display event detail
@@ -820,8 +865,8 @@ def display_search_df(searchdf):
     org_ls = df_org_count["机构"].tolist()
     count_ls = df_org_count["count"].tolist()
     new_orgls, new_countls = count_by_province(org_ls, count_ls)
-    new_orgls1 = fix_cityname(new_orgls, cityls)
-    map_data = print_map(new_orgls1, new_countls, "处罚地图")
+    # new_orgls1 = fix_cityname(new_orgls, cityls)
+    map_data = print_map(new_orgls, new_countls, "处罚地图")
     # st_pyecharts(map_data, map=map, width=800, height=650)
     # display map
     # components.html(map.render_embed(), height=650)
@@ -838,8 +883,8 @@ def display_search_df(searchdf):
         # st.experimental_rerun()
 
     # 图四解析开始
-    orgls = pd.value_counts(df_month["机构"]).keys().tolist()
-    countls = pd.value_counts(df_month["机构"]).tolist()
+    orgls = df_month["机构"].value_counts().keys().tolist()
+    countls = df_month["机构"].value_counts().tolist()
     result = ""
 
     for org, count in zip(orgls[:3], countls[:3]):
@@ -1013,47 +1058,68 @@ def display_search_df(searchdf):
 
 
 # combine count by province
-def count_by_province(orgls, countls):
-    result = dict()
-    for org in orgls:
-        if org == "总部":
-            result["北京"] = result.get("北京", 0) + countls[orgls.index(org)]
-        elif org == "深圳":
-            result["广东"] = result.get("广东", 0) + countls[orgls.index(org)]
-        elif org == "大连":
-            result["辽宁"] = result.get("辽宁", 0) + countls[orgls.index(org)]
-        elif org == "宁波":
-            result["浙江"] = result.get("浙江", 0) + countls[orgls.index(org)]
-        elif org == "厦门":
-            result["福建"] = result.get("福建", 0) + countls[orgls.index(org)]
-        elif org == "青岛":
-            result["山东"] = result.get("山东", 0) + countls[orgls.index(org)]
-        else:
-            result[org] = result.get(org, 0) + countls[orgls.index(org)]
-    new_orgls = result.keys()
-    new_countls = result.values()
-    return new_orgls, new_countls
+# def count_by_province(orgls, countls):
+#     result = dict()
+#     for org in orgls:
+#         if org == "总部":
+#             result["北京"] = result.get("北京", 0) + countls[orgls.index(org)]
+#         elif org == "深圳":
+#             result["广东"] = result.get("广东", 0) + countls[orgls.index(org)]
+#         elif org == "大连":
+#             result["辽宁"] = result.get("辽宁", 0) + countls[orgls.index(org)]
+#         elif org == "宁波":
+#             result["浙江"] = result.get("浙江", 0) + countls[orgls.index(org)]
+#         elif org == "厦门":
+#             result["福建"] = result.get("福建", 0) + countls[orgls.index(org)]
+#         elif org == "青岛":
+#             result["山东"] = result.get("山东", 0) + countls[orgls.index(org)]
+#         else:
+#             result[org] = result.get(org, 0) + countls[orgls.index(org)]
+#     new_orgls = result.keys()
+#     new_countls = result.values()
+#     return new_orgls, new_countls
 
 
-def fix_cityname(orgls, cityls):
-    result_ls = []
-    for org in orgls:
-        if org == "总部":
-            result_ls.append("北京市")
-        elif org == "深圳":
-            result_ls.append("广东省")
-        elif org == "大连":
-            result_ls.append("辽宁省")
-        elif org == "宁波":
-            result_ls.append("浙江省")
-        elif org == "厦门":
-            result_ls.append("福建省")
-        elif org == "青岛":
-            result_ls.append("山东省")
-        else:
-            res = [s for s in cityls if org in s]
-            result_ls.append(res[0])
-    return result_ls
+# def fix_cityname(orgls, cityls):
+#     result_ls = []
+#     for org in orgls:
+#         if org == "总部":
+#             result_ls.append("北京市")
+#         elif org == "深圳":
+#             result_ls.append("广东省")
+#         elif org == "大连":
+#             result_ls.append("辽宁省")
+#         elif org == "宁波":
+#             result_ls.append("浙江省")
+#         elif org == "厦门":
+#             result_ls.append("福建省")
+#         elif org == "青岛":
+#             result_ls.append("山东省")
+#         else:
+#             res = [s for s in cityls if org in s]
+#             result_ls.append(res[0])
+#     return result_ls
+
+
+def count_by_province(city_ls, count_ls):
+    if len(city_ls) != len(count_ls):
+        raise ValueError("城市列表和计数列表的长度必须相同")
+
+    province_counts = defaultdict(int)
+
+    for city, count in zip(city_ls, count_ls):
+        # province = get_chinese_province_nominatim(city)
+        province = city2province[city]
+        province_counts[province] += count
+        time.sleep(1)  # Be nice to the Nominatim server
+
+    # Sort provinces by count in descending order
+    sorted_provinces = sorted(province_counts.items(), key=lambda x: x[1], reverse=True)
+
+    provinces = [item[0] for item in sorted_provinces]
+    counts = [item[1] for item in sorted_provinces]
+
+    return provinces, counts
 
 
 # print pie charts

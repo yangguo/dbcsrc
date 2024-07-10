@@ -158,7 +158,9 @@ def wash_data(data):
     temp = rexp.findall(new_df_str)
     for i in temp:
         new_df_str = new_df_str.replace(i, i.replace("、", "&"))
-    new_df_str = new_df_str.replace("人民币", "").replace("美元", "").replace("罚金", "罚款")
+    new_df_str = (
+        new_df_str.replace("人民币", "").replace("美元", "").replace("罚金", "罚款")
+    )
     # 下面开始微调以增强paddle的识别性,在数字后面加0
     num = get_position_and_str(r"[1-9]\d*\.?\d*", new_df_str)
     # 根据num每个元素第1个元素,对num元素进行倒序排序
@@ -217,7 +219,9 @@ def wash_data(data):
         return new_df_str
 
 
-def get_position_and_str(str1, str2, expander=0):  # str1为要搜的东西，str2为要搜的地方，expander为扩展值
+def get_position_and_str(
+    str1, str2, expander=0
+):  # str1为要搜的东西，str2为要搜的地方，expander为扩展值
     result = []
     f = re.finditer(str1, str2)
     for i in f:
@@ -1160,7 +1164,9 @@ def calculate_顿号(list1, list2, list3, method1, method2):  # 专门用来求�
     return result
 
 
-def calculate_similar(key, string, keep=0):  # key为关键词，string为要输入的字符串,keep为要保留的位数
+def calculate_similar(
+    key, string, keep=0
+):  # key为关键词，string为要输入的字符串,keep为要保留的位数
     import math
     import re
 
@@ -1226,7 +1232,9 @@ def calculate_similar(key, string, keep=0):  # key为关键词，string为要输
     return db_outcome
 
 
-def calculate_similar_batch(key, string_list):  # key为关键词，string_list为要输入的字符串数组
+def calculate_similar_batch(
+    key, string_list
+):  # key为关键词，string_list为要输入的字符串数组
     import math
     import re
 
@@ -1428,7 +1436,9 @@ def extract_money(
                         # print(count)
                         # 如果左边的金额个数大于0,则删除其中
                         if count > 0:
-                            temp = cut_string([temp], ["其中", "(作为", "（作为"], o=1)[0]
+                            temp = cut_string([temp], ["其中", "(作为", "（作为"], o=1)[
+                                0
+                            ]
                             result_带金额句子_包含综上_包含合计_剔除其中.append(temp)
                         else:
                             result_带金额句子_包含综上_包含合计_剔除其中.append(temp)
@@ -1440,7 +1450,9 @@ def extract_money(
                 # 1先进一步分句
                 # result_句子 = get_position_and_str(r'[\s\S]*?[：:；;。，,]', string1)
                 # print(result_句子)
-                result_带金额句子_包含综上_包含合计_剔除其中_分句 = result_带金额句子_包含综上_包含合计_剔除其中
+                result_带金额句子_包含综上_包含合计_剔除其中_分句 = (
+                    result_带金额句子_包含综上_包含合计_剔除其中
+                )
                 sums = 0
                 for temp in result_带金额句子_包含综上_包含合计_剔除其中_分句:
                     # 先提取出金额

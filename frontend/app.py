@@ -624,7 +624,9 @@ def main():
                     org_text = st.text_input("发文机构")
                     end_date = st.date_input("结束日期", value=max_date)
                     # get people position
-                    people_position_text = st.multiselect("当事人身份", people_position_list)
+                    people_position_text = st.multiselect(
+                        "当事人身份", people_position_list
+                    )
                     # get penalty type
                     penalty_type_text = st.multiselect("违规类型", penalty_type_list)
                     # get type
