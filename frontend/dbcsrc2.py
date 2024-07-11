@@ -17,7 +17,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from snapshot import get_chrome_driver
-from collections import defaultdict
+from collections import Counter
 
 # from streamlit_tags import st_tags
 from utils import split_words
@@ -1105,21 +1105,21 @@ def count_by_province(city_ls, count_ls):
     if len(city_ls) != len(count_ls):
         raise ValueError("城市列表和计数列表的长度必须相同")
 
-    province_counts = defaultdict(int)
+    # Use Counter for efficient counting
+    province_counts = Counter()
 
-    for city, count in zip(city_ls, count_ls):
-        # province = get_chinese_province_nominatim(city)
-        province = city2province[city]
-        province_counts[province] += count
-        time.sleep(1)  # Be nice to the Nominatim server
+    # Use list comprehension for faster iteration
+    province_counts.update(
+        {city2province[loc]: count for loc, count in zip(city_ls, count_ls)}
+    )
 
-    # Sort provinces by count in descending order
-    sorted_provinces = sorted(province_counts.items(), key=lambda x: x[1], reverse=True)
+    # Use sorted with key function for efficient sorting
+    sorted_provinces = sorted(province_counts.items(), key=lambda x: (-x[1], x[0]))
 
-    provinces = [item[0] for item in sorted_provinces]
-    counts = [item[1] for item in sorted_provinces]
+    # Use zip for efficient unpacking
+    provinces, counts = zip(*sorted_provinces)
 
-    return provinces, counts
+    return list(provinces), list(counts)
 
 
 # print pie charts
