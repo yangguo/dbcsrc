@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: white;
+}
+
+/* Custom styles for Chinese text */
+@font-face {
+  font-family: 'NotoSansSC';
+  src: url('/fonts/NotoSansSC-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.chinese-text {
+  font-family: 'NotoSansSC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Ant Design overrides */
+.ant-layout {
+  background: white;
+}
+
+.ant-layout-sider {
+  background: #f0f2f5;
+}
+
+.ant-menu-item-selected {
+  background-color: #e6f7ff !important;
+}
