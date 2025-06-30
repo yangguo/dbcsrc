@@ -1,6 +1,16 @@
-import addressparser
-import jionlp as jio
 import pandas as pd
+import openai
+import os
+import json
+
+# Initialize OpenAI client
+client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+)
+
+# Get model name from environment or use default
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
 
 def short_to_province(short):
@@ -51,6 +61,40 @@ def short_to_province(short):
     return S_TO_P_DICT.get(short)
 
 
+def llm_parse_location(text):
+    """Use LLM to parse location information from text"""
+    try:
+        prompt = f"""
+        Extract location information from the following Chinese text and return a JSON object with province, city, and county fields.
+        If any field cannot be determined, set it to null.
+        
+        Text: {text}
+        
+        Return format:
+        {{
+            "province": "province name or null",
+            "city": "city name or null", 
+            "county": "county/district name or null"
+        }}
+        
+        Only return the JSON object, no other text.
+        """
+        
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a location extraction expert for Chinese addresses. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        return result
+    except Exception as e:
+        # Error in LLM location parsing
+        return {"province": None, "city": None, "county": None}
+
 def df2part1loc(df, idcol, contentcol):
     txtls = []
     idls = []
@@ -59,7 +103,7 @@ def df2part1loc(df, idcol, contentcol):
     for i in range(start, end):
         id = df.iloc[i][idcol]
         content = df.iloc[i][contentcol]
-        res = jio.parse_location(str(content), change2new=True, town_village=True)
+        res = llm_parse_location(str(content))
         txtls.append(res)
         idls.append(id)
     tempdf = pd.DataFrame({"result": txtls, "id": idls})
@@ -70,9 +114,47 @@ def df2part1loc(df, idcol, contentcol):
     return tempdf
 
 
+def llm_transform_addresses(address_list):
+    """Use LLM to transform a list of addresses into structured location data"""
+    try:
+        addresses_text = "\n".join([f"{i+1}. {addr}" for i, addr in enumerate(address_list)])
+        
+        prompt = f"""
+        Parse the following Chinese addresses and extract province (省), city (市), and district/county (区) information.
+        Return a JSON array where each object corresponds to the address at the same index.
+        If any field cannot be determined, set it to empty string "".
+        
+        Addresses:
+        {addresses_text}
+        
+        Return format (JSON array):
+        [
+            {{"省": "province name or empty", "市": "city name or empty", "区": "district name or empty"}},
+            {{"省": "province name or empty", "市": "city name or empty", "区": "district name or empty"}}
+        ]
+        
+        Only return the JSON array, no other text.
+        """
+        
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are an address parsing expert for Chinese addresses. Return only valid JSON arrays."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        return pd.DataFrame(result)
+    except Exception as e:
+        # Error in LLM address transformation
+        # Return empty dataframe with expected columns
+        return pd.DataFrame([{"省": "", "市": "", "区": ""} for _ in address_list])
+
 def df2part2loc(df, idcol, contentcol):
     titls = df[contentcol].tolist()
-    dfloc = addressparser.transform(titls, cut=False)
+    dfloc = llm_transform_addresses(titls)
     df2 = pd.concat([df, dfloc], axis=1)
     d2 = df2[[idcol, "省", "市", "区"]]
     return d2

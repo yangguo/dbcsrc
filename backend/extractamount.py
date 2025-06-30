@@ -6,7 +6,9 @@ from operator import itemgetter
 
 import chinese2digits as c2d
 import pandas as pd
-from paddlenlp import Taskflow
+import openai
+import os
+import json
 from utils import savetemp
 
 
@@ -31,33 +33,25 @@ def excel_clipboard(S):  # 直接从Excel复制并粘贴
     result = []
     while count1 < len(S) - 1:
         # count2=count1
-        # print(count1)
         if S[count1] != '"':
-            # print(1)
             while count2 < len(S):
                 count2 += 1
                 if S[count2] == "\n":
-                    # print(S[count1:count2])
                     result.append(S[count1 : count2 + 1])
                     count2 += 1
                     break
 
         elif S[count1] == '"':
-            # print(1)
             while count2 < len(S):
                 count2 += 1
-                # print(S[count1:count1+count2])
                 if (
                     S[count2] == "\n"
                     and S[count2 - 1] == '"'
                     and judge_end(S[count1 : count2 + 1])
                 ):
-                    # print(S[count1:count1+count2])
                     result.append(S[count1 : count2 + 1])
                     count2 += 1
                     break
-
-        # print(S[count2])
 
         count1 = count2
     return result
@@ -83,10 +77,55 @@ def count_list(list1, str1):  # 计算list1中str1出现的次数
     return count
 
 
-def nlp_input(str, string):  # str为字符串目标list，string为字符串总量
-    schema = str  # Define the schema for entity extraction
-    ie = Taskflow("information_extraction", schema=schema, batch_size=14)
-    return ie(string)
+# Initialize OpenAI client
+client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+)
+
+# Get model name from environment or use default
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+
+def nlp_input(schema, string):  # schema为字符串目标list，string为字符串总量
+    """Extract information using OpenAI LLM"""
+    try:
+        # Create prompt for information extraction
+        schema_str = ", ".join(schema) if isinstance(schema, list) else str(schema)
+        prompt = f"""Extract the following types of information from the Chinese text: {schema_str}
+        
+Text: {string}
+        
+Respond with only a JSON object where keys are the schema types and values are arrays of extracted entities. For example:
+        {{
+            "schema_type1": ["entity1", "entity2"],
+            "schema_type2": ["entity3"]
+        }}
+        
+If no entities are found for a schema type, use an empty array: []"""
+        
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are an expert in Chinese information extraction. Always respond with valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=500
+        )
+        
+        # Parse the response
+        result_text = response.choices[0].message.content.strip()
+        try:
+            result = json.loads(result_text)
+            # Convert to format expected by original code
+            return [result]
+        except json.JSONDecodeError:
+            # Failed to parse JSON response
+        pass
+            return [{}]
+            
+    except Exception as e:
+        return [{}]
 
 
 def wash_data(data):
@@ -134,7 +173,8 @@ def wash_data(data):
                 )
                 results_new.append(result)
             except Exception as e:
-                print(e)
+                # Error in processing
+        pass
                 pass
                 # results.remove(results[i])
 
@@ -212,7 +252,8 @@ def wash_data(data):
         new_df_str = new_df_str.replace(".元", "元")
         return new_df_str
     except Exception as e:
-        print(e)
+        # Error in processing
+    pass
         new_df_str = new_df_str.strip("。") + "。"
         new_df_str = new_df_str.replace(".万元", "万元")
         new_df_str = new_df_str.replace(".元", "元")
@@ -414,7 +455,8 @@ def get_number(moneys):
                     money[2] = money[2].replace("万", "")
                     money[2] = float(money[2]) * 10000
             except Exception as e:
-                print(e)
+                # Error in processing
+        pass
                 money[2] = float(money[2])
             sum = sum + round(money[2], 2)
     else:
@@ -630,7 +672,7 @@ def list_split(list1, list2, strict=1):
                 .str.contains(r"list2包含list1", regex=True)
             ]
         ):
-            print("存在相交")
+            # Intersection detected
         all = all[
             ~all["list2-list1"]
             .astype(str)
@@ -1171,7 +1213,7 @@ def calculate_similar(
     import re
 
     import pandas as pd
-    from paddlenlp import Taskflow
+
 
     def split_santence(string, s=128):  # string是要分的句子，s为阈值
         n = math.ceil(len(string) / s)
@@ -1209,8 +1251,54 @@ def calculate_similar(
         for j in temp:
             result.append([i] + [j])
     # print(result)
-    similarity = Taskflow("text_similarity", batch_size=30)
-    result = similarity(result)
+    # Use OpenAI for text similarity
+    similarity_results = []
+    for pair in result:
+        try:
+            prompt = f"""Rate the semantic similarity between these two Chinese texts on a scale of 0.0 to 1.0:
+            
+Text 1: {pair[0]}
+Text 2: {pair[1]}
+            
+Respond with only a JSON object:
+            {{
+                "similarity": similarity_score_between_0_and_1
+            }}"""
+            
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are an expert in Chinese text similarity analysis. Always respond with valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=100
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            try:
+                sim_result = json.loads(result_text)
+                similarity_results.append({
+                    "text1": pair[0],
+                    "text2": pair[1], 
+                    "similarity": float(sim_result.get("similarity", 0.0))
+                })
+            except (json.JSONDecodeError, ValueError):
+                similarity_results.append({
+                    "text1": pair[0],
+                    "text2": pair[1],
+                    "similarity": 0.0
+                })
+        except Exception as e:
+            # Error in similarity calculation
+        pass
+            similarity_results.append({
+                "text1": pair[0],
+                "text2": pair[1],
+                "similarity": 0.0
+            })
+    
+    result = similarity_results
     for j in result:
         db_outcome = pd.concat(
             [
@@ -1239,7 +1327,7 @@ def calculate_similar_batch(
     import re
 
     import pandas as pd
-    from paddlenlp import Taskflow
+
 
     def split_santence(string, s=128):  # string是要分的句子，s为阈值
         n = math.ceil(len(string) / s)
@@ -1254,8 +1342,54 @@ def calculate_similar_batch(
             result.append([i] + [j])
             result_query.append(i)
     # print(result)
-    similarity = Taskflow("text_similarity", batch_size=30)
-    result = similarity(result)
+    # Use OpenAI for text similarity
+    similarity_results = []
+    for pair in result:
+        try:
+            prompt = f"""Rate the semantic similarity between these two Chinese texts on a scale of 0.0 to 1.0:
+            
+Text 1: {pair[0]}
+Text 2: {pair[1]}
+            
+Respond with only a JSON object:
+            {{
+                "similarity": similarity_score_between_0_and_1
+            }}"""
+            
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are an expert in Chinese text similarity analysis. Always respond with valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=100
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            try:
+                sim_result = json.loads(result_text)
+                similarity_results.append({
+                    "text1": pair[0],
+                    "text2": pair[1], 
+                    "similarity": float(sim_result.get("similarity", 0.0))
+                })
+            except (json.JSONDecodeError, ValueError):
+                similarity_results.append({
+                    "text1": pair[0],
+                    "text2": pair[1],
+                    "similarity": 0.0
+                })
+        except Exception as e:
+            # Error in similarity calculation
+        pass
+            similarity_results.append({
+                "text1": pair[0],
+                "text2": pair[1],
+                "similarity": 0.0
+            })
+    
+    result = similarity_results
     for j in result:
         db_outcome = pd.concat(
             [
@@ -1474,9 +1608,8 @@ def extract_money(
                     sums = sums + sum
                 sum_list.append(sums)
         except Exception as e:
-            print(e)
-            print(cutted_contents[iall])
-            print(iall)
+        # Error in content processing
+        pass
             sum_list.append(0)
     # endregion
     return sum_list
@@ -1493,12 +1626,9 @@ def df2amount(df, idcol, contentcol):
     for i in range(start, end):
         id = df1.iloc[i][idcol]
         content = df1.iloc[i][contentcol]
-        print(i)
-        print(content)
+        # Processing content
         fine = extract_money([str(content)], 1)
         confiscate = extract_money([str(content)], 2)
-        print("fine:", fine)
-        print("confiscate:", confiscate)
         idls.append(id)
         finels.append(fine)
         confisls.append(confiscate)

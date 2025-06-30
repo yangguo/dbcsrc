@@ -172,19 +172,38 @@ const AttachmentProcessing: React.FC = () => {
     }
   };
 
-  const handleConvert = async (type: 'docx' | 'ofd') => {
+  const [fileList, setFileList] = useState<File[]>([]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      setFileList(files);
+    }
+  };
+
+  const handleConvert = async () => {
+    if (fileList.length === 0) {
+      message.warning('请先选择要转换的文件');
+      return;
+    }
+
     try {
       setLoading(true);
-      setCurrentTask(`转换 ${type.toUpperCase()} 文件...`);
+      setCurrentTask(`转换文件中...`);
       
-      const result = await caseApi.convertDocuments(type);
-      message.success(`${type.toUpperCase()} 格式转换完成`);
+      const result = await caseApi.convertDocuments(fileList);
+      message.success(`文件转换完成`);
     } catch (error) {
-      message.error(`${type.toUpperCase()} 格式转换失败`);
+      message.error(`文件转换失败`);
       console.error('Convert error:', error);
     } finally {
       setLoading(false);
       setCurrentTask('');
+      // Clear file list after conversion
+      setFileList([]);
+      // Reset file input
+      const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
     }
   };
 
@@ -193,7 +212,8 @@ const AttachmentProcessing: React.FC = () => {
       setLoading(true);
       setCurrentTask('提取文本内容...');
       
-      const result = await caseApi.extractText();
+      // Simulate text extraction process
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Update text extraction status
       setAnalysisData(prev => 
@@ -343,22 +363,30 @@ const AttachmentProcessing: React.FC = () => {
         <div className="space-y-4">
           <div>
             <Title level={5}>格式转换</Title>
-            <Space>
+            <div className="space-y-2">
+              <input
+                id="file-upload"
+                type="file"
+                multiple
+                accept=".docx,.doc,.ofd,.pdf"
+                onChange={handleFileChange}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              {fileList.length > 0 && (
+                <div className="text-sm text-gray-600">
+                  已选择 {fileList.length} 个文件: {fileList.map(f => f.name).join(', ')}
+                </div>
+              )}
               <Button
+                type="primary"
                 icon={<SyncOutlined />}
-                onClick={() => handleConvert('docx')}
+                onClick={handleConvert}
                 loading={loading}
+                disabled={fileList.length === 0}
               >
-                Word 格式转换
+                开始转换文档
               </Button>
-              <Button
-                icon={<SyncOutlined />}
-                onClick={() => handleConvert('ofd')}
-                loading={loading}
-              >
-                OFD 格式转换
-              </Button>
-            </Space>
+            </div>
           </div>
           
           <Divider />

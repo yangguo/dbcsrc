@@ -109,20 +109,17 @@ export const caseApi = {
   },
 
   // Convert documents
-  convertDocuments: async (type: 'docx' | 'ofd'): Promise<any> => {
-    const response = await apiClient.get(`/${type}convert`);
-    return response.data;
-  },
-
-  // Extract text
-  extractText: async (): Promise<any> => {
-    const response = await apiClient.post('/extract-text');
-    return response.data;
-  },
-
-  // Generate labels
-  generateLabels: async (): Promise<any> => {
-    const response = await apiClient.post('/generate-labels');
+  convertDocuments: async (files: File[]): Promise<any> => {
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append('files', file);
+    });
+    
+    const response = await apiClient.post('/convert-documents', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return response.data;
   },
 
@@ -162,7 +159,43 @@ export const caseApi = {
     formData.append('idcol', params.idCol);
     formData.append('contentcol', params.contentCol);
     
-    const response = await apiClient.post('/amtanalysis', formData, {
+    const response = await apiClient.post('/amount-analysis', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  // Analyze locations
+  analyzeLocations: async (file: File, params: {
+    idCol: string;
+    contentCol: string;
+  }): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('idcol', params.idCol);
+    formData.append('contentcol', params.contentCol);
+    
+    const response = await apiClient.post('/location-analysis', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  // Analyze people
+  analyzePeople: async (file: File, params: {
+    idCol: string;
+    contentCol: string;
+  }): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('idcol', params.idCol);
+    formData.append('contentcol', params.contentCol);
+    
+    const response = await apiClient.post('/people-analysis', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

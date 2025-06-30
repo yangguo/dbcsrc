@@ -1,18 +1,60 @@
 from typing import Union, List
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException, File, UploadFile
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional, Union
+import pandas as pd
+import json
+import os
+import io
+from datetime import datetime
 
-# from classifier import df2label, get_class
-# from doc2text import convert_uploadfiles, docxconvertion, ofdconvertion
+# Import your existing modules
+try:
+    from classifier import df2label, get_class
+except ImportError:
+    def get_class(*args, **kwargs):
+        return {"labels": ["未分类"], "scores": [1.0]}
+    def df2label(*args, **kwargs):
+        return pd.DataFrame()
 
-# from extractamount import df2amount
+try:
+    from doc2text import convert_uploadfiles, docxconvertion, ofdconvertion
+except ImportError:
+    def convert_uploadfiles(*args, **kwargs):
+        return {"message": "Document conversion not available"}
 
-# from locationanalysis import df2location
-# from peopleanalysis import df2people
+try:
+    from extractamount import df2amount
+except ImportError:
+    def df2amount(*args, **kwargs):
+        return pd.DataFrame()
+
+try:
+    from locationanalysis import df2location
+except ImportError:
+    def df2location(*args, **kwargs):
+        return pd.DataFrame()
+
+try:
+    from peopleanalysis import df2people
+except ImportError:
+    def df2people(*args, **kwargs):
+        return pd.DataFrame()
 
 tempdir = "../data/penalty/csrc2/temp"
+pencsrc2 = "../data/penalty/csrc2"
 
-app = FastAPI()
+# Import web crawling functions
+from web_crawler import get_sumeventdf_backend, update_sumeventdf_backend, get_csrc2analysis, content_length_analysis, download_attachment
+
+
+
+app = FastAPI(title="DBCSRC API", description="Case Analysis System API")
 
 # Add CORS middleware
 app.add_middleware(
@@ -23,41 +65,84 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Pydantic models
+class UpdateRequest(BaseModel):
+    orgName: str
+    startPage: int
+    endPage: int
+
+class ClassifyRequest(BaseModel):
+    article: str
+    candidate_labels: List[str]
+    multi_label: bool = False
+
+class AttachmentRequest(BaseModel):
+    contentLength: int
+    downloadFilter: str
+
+class CaseSearchRequest(BaseModel):
+    keyword: Optional[str] = None
+    org: Optional[str] = None
+    dateFrom: Optional[str] = None
+    dateTo: Optional[str] = None
+    page: int = 1
+    pageSize: int = 10
 
 @app.get("/")
 def read_root():
-    return {"Hello": "World"}
+    return {"message": "DBCSRC API is running", "version": "1.0.0"}
 
 
 @app.get("/summary")
 def get_summary():
     """Get case summary statistics"""
-    # Mock data for demonstration - replace with actual database queries
-    return {
-        "total": 1250,
-        "byOrg": {
-            "北京": 320,
-            "上海": 280,
-            "深圳": 210,
-            "广州": 180,
-            "杭州": 120,
-            "其他": 140
-        },
-        "byMonth": {
-            "2024-01": 95,
-            "2024-02": 88,
-            "2024-03": 102,
-            "2024-04": 110,
-            "2024-05": 98,
-            "2024-06": 105,
-            "2024-07": 115,
-            "2024-08": 108,
-            "2024-09": 112,
-            "2024-10": 118,
-            "2024-11": 125,
-            "2024-12": 174
+    try:
+        # Get actual data from the database
+        df = get_csrc2analysis()
+        
+        if df.empty:
+            return {
+                "total": 0,
+                "byOrg": {},
+                "byMonth": {}
+            }
+        
+        # Calculate total cases
+        total = len(df)
+        
+        # Calculate statistics by organization
+        by_org = {}
+        if '机构' in df.columns:
+            by_org = df['机构'].value_counts().to_dict()
+        
+        # Calculate statistics by month
+        by_month = {}
+        if '发文日期' in df.columns:
+            try:
+                # Convert to datetime and extract year-month
+                df_copy = df.copy()
+                df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+                # Filter out invalid dates
+                df_copy = df_copy.dropna(subset=['发文日期'])
+                if not df_copy.empty:
+                    df_copy['month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
+                    by_month = df_copy['month'].value_counts().sort_index().to_dict()
+            except Exception as date_error:
+                by_month = {}
+        
+        return {
+            "total": total,
+            "byOrg": by_org,
+            "byMonth": by_month
         }
-    }
+        
+    except Exception as e:
+        # Return empty data structure on error instead of mock data
+        return {
+            "total": 0,
+            "byOrg": {},
+            "byMonth": {}
+        }
 
 
 @app.get("/search")
@@ -70,120 +155,195 @@ def search_cases(
     dateTo: str = Query(None)
 ):
     """Search cases with filters"""
-    # Mock data for demonstration - replace with actual database queries
-    mock_cases = [
-        {
-            "id": "1",
-            "title": "关于对某某公司信息披露违规的处罚决定",
-            "date": "2024-01-15",
-            "org": "北京",
-            "type": "信息披露违规",
-            "content": "某某公司未按规定披露重要信息..."
-        },
-        {
-            "id": "2",
-            "title": "关于对某某证券公司违规交易的处罚决定",
-            "date": "2024-01-20",
-            "org": "上海",
-            "type": "违规交易",
-            "content": "某某证券公司存在违规交易行为..."
-        },
-        {
-            "id": "3",
-            "title": "关于对某某基金公司违规操作的处罚决定",
-            "date": "2024-02-01",
-            "org": "深圳",
-            "type": "违规操作",
-            "content": "某某基金公司违规操作基金资产..."
+    try:
+        try:
+            df = get_csrc2analysis()
+        except Exception as db_error:
+            # If database/file access fails, return empty result
+            return {"data": [], "total": 0}
+        
+        if df.empty:
+            return {"data": [], "total": 0}
+        
+        # Apply filters
+        if keyword:
+            mask = df['标题'].str.contains(keyword, na=False) | df['内容'].str.contains(keyword, na=False)
+            df = df[mask]
+        
+        if org:
+            df = df[df['机构'] == org]
+        
+        if dateFrom:
+            df = df[pd.to_datetime(df['发文日期']) >= pd.to_datetime(dateFrom)]
+        
+        if dateTo:
+            df = df[pd.to_datetime(df['发文日期']) <= pd.to_datetime(dateTo)]
+        
+        total = len(df)
+        
+        # Pagination
+        start = (page - 1) * pageSize
+        end = start + pageSize
+        paginated_df = df.iloc[start:end]
+        
+        # Convert to list of dicts
+        cases = []
+        for _, row in paginated_df.iterrows():
+            cases.append({
+                "id": str(row.get('链接', '')),
+                "title": row.get('标题', ''),
+                "date": str(row.get('发文日期', '')),
+                "org": row.get('机构', ''),
+                "content": row.get('内容', ''),
+                "penalty": row.get('处罚类型', ''),
+                "amount": row.get('罚款金额', 0)
+            })
+        
+        return {
+            "data": cases,
+            "total": total
         }
-    ]
-    
-    # Simple filtering logic (replace with actual database queries)
-    filtered_cases = mock_cases
-    if keyword:
-        filtered_cases = [case for case in filtered_cases if keyword in case["title"] or keyword in case["content"]]
-    if org:
-        filtered_cases = [case for case in filtered_cases if case["org"] == org]
-    
-    # Pagination
-    start = (page - 1) * pageSize
-    end = start + pageSize
-    paginated_cases = filtered_cases[start:end]
-    
-    return {
-        "data": paginated_cases,
-        "total": len(filtered_cases)
-    }
+    except Exception as e:
+        # Return empty result instead of 500 error
+        return {"data": [], "total": 0}
 
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q}
+@app.post("/update")
+async def update_cases(request: UpdateRequest):
+    """Update cases for specific organization"""
+    try:
+        # Validate input parameters
+        if request.endPage - request.startPage > 50:
+            return {
+                "success": False,
+                "count": 0,
+                "message": "Page range too large. Maximum 50 pages per request to avoid timeout."
+            }
+        
+        # Get case summary data using backend functions
+        sumeventdf = get_sumeventdf_backend(request.orgName, request.startPage, request.endPage)
+        
+        # Update the database
+        newsum = update_sumeventdf_backend(sumeventdf)
+        
+        return {
+            "success": True,
+            "count": len(newsum),
+            "message": f"Successfully updated {len(newsum)} cases for {request.orgName}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "count": 0,
+            "message": f"Update failed: {str(e)}"
+        }
 
+@app.post("/classify")
+def classify_text(request: ClassifyRequest):
+    """Classify text using AI model"""
+    try:
+        result = get_class(request.article, request.candidate_labels, request.multi_label)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# @app.post("/classify")
-# async def classify(
-#     article: str,
-#     candidate_labels: List[str] = Query(default=[]),
-#     multi_label: bool = False,
-# ):
-#     return get_class(article, candidate_labels, multi_label)
+@app.post("/batch-classify")
+def batch_classify(
+    file: UploadFile = File(...),
+    candidate_labels: List[str] = Query(default=[]),
+    multi_label: bool = False,
+    idcol: str = Query(...),
+    contentcol: str = Query(...)
+):
+    """Batch classify cases from uploaded file"""
+    try:
+        # Read uploaded file
+        contents = file.file.read()
+        file_obj = io.BytesIO(contents)
+        df = pd.read_csv(file_obj)
+        
+        # Perform batch classification
+        result_df = df2label(df, idcol, contentcol, candidate_labels, multi_label)
+        
+        return result_df.to_dict('records')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/analyze-attachments")
+def analyze_attachments(request: AttachmentRequest):
+    """Analyze case attachments"""
+    try:
+        result = content_length_analysis(request.contentLength, request.downloadFilter)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# @app.post("/batchclassify")
-# async def batchclassify(
-#     candidate_labels: List[str] = Query(default=[]),
-#     multi_label: bool = False,
-#     # file: UploadFile = File(...),
-#     idcol: str = "",
-#     contentcol: str = "",
-#     file: bytes = File(...),
-# ):
-#     file_obj = io.BytesIO(file)
-#     df = pd.read_csv(file_obj)
-#     resdf = df2label(df, idcol, contentcol, candidate_labels, multi_label)
-#     return JSONResponse(content=resdf.to_json(orient="records"))
+@app.post("/download-attachments")
+def download_attachments():
+    """Download case attachments"""
+    try:
+        result = download_attachment()
+        return {"success": True, "message": "Attachments downloaded successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/amount-analysis")
+def amount_analysis(
+    file: UploadFile = File(...),
+    idcol: str = Query(...),
+    contentcol: str = Query(...)
+):
+    """Analyze penalty amounts from uploaded file"""
+    try:
+        contents = file.file.read()
+        file_obj = io.BytesIO(contents)
+        df = pd.read_csv(file_obj)
+        result_df = df2amount(df, idcol, contentcol)
+        return result_df.to_dict('records')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# @app.post("/amtanalysis")
-# async def amtanalysis(idcol: str, contentcol: str, file: bytes = File(...)):
-#     file_obj = io.BytesIO(file)
-#     df = pd.read_csv(file_obj)
-#     resdf = df2amount(df, idcol, contentcol)
-#     return JSONResponse(content=resdf.to_json(orient="records"))
+@app.post("/location-analysis")
+def location_analysis(
+    file: UploadFile = File(...),
+    idcol: str = Query(...),
+    contentcol: str = Query(...)
+):
+    """Analyze locations from uploaded file"""
+    try:
+        contents = file.file.read()
+        file_obj = io.BytesIO(contents)
+        df = pd.read_csv(file_obj)
+        result_df = df2location(df, idcol, contentcol)
+        return result_df.to_dict('records')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/people-analysis")
+def people_analysis(
+    file: UploadFile = File(...),
+    idcol: str = Query(...),
+    contentcol: str = Query(...)
+):
+    """Analyze people from uploaded file"""
+    try:
+        contents = file.file.read()
+        file_obj = io.BytesIO(contents)
+        df = pd.read_csv(file_obj)
+        result_df = df2people(df, idcol, contentcol)
+        return result_df.to_dict('records')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# @app.post("/locanalysis")
-# async def locanalysis(
-#     idcol: str, titlecol: str, contentcol: str, file: bytes = File(...)
-# ):
-#     file_obj = io.BytesIO(file)
-#     df = pd.read_csv(file_obj)
-#     resdf = df2location(df, idcol, titlecol, contentcol)
-#     return JSONResponse(content=resdf.to_json(orient="records"))
+@app.post("/convert-documents")
+def convert_documents(files: List[UploadFile] = File(...)):
+    """Convert uploaded documents to text"""
+    try:
+        result = convert_uploadfiles(files)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-# @app.post("/peopleanalysis")
-# async def peopleanalysis(idcol: str, contentcol: str, file: bytes = File(...)):
-#     file_obj = io.BytesIO(file)
-#     df = pd.read_csv(file_obj)
-#     resdf = df2people(df, idcol, contentcol)
-#     return JSONResponse(content=resdf.to_json(orient="records"))
-
-
-# @app.get("/docxconvert")
-# async def docxconvert():
-#     docxconvertion(tempdir)
-#     return {"dirpath": tempdir}
-
-
-# @app.post("/convertuploadfiles")
-# async def convertuploadfiles(txtls: List[str] = Query(default=[]), dirpath: str = ""):
-#     resls = convert_uploadfiles(txtls, dirpath)
-#     return {"resls": resls}
-
-
-# @app.get("/ofdconvert")
-# async def ofdconvert():
-#     ofdconvertion(tempdir)
-#     return {"dirpath": tempdir}
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

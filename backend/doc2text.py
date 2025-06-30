@@ -9,12 +9,11 @@ from pathlib import Path
 
 import docx
 import pdfplumber
-import pytesseract
+import base64
+import openai
 
 # import streamlit as st
 from easyofd import OFD
-
-# from paddleocr import PaddleOCR
 from pdf2image import convert_from_path
 from PIL import Image
 from reportlab.pdfbase import pdfmetrics
@@ -24,7 +23,7 @@ Image.MAX_IMAGE_PIXELS = None
 
 # uploadpath = "uploads/"
 
-# ocr = PaddleOCR(use_angle_cls=True, lang="ch")
+
 
 
 def docxurl2txt(url):
@@ -36,7 +35,8 @@ def docxurl2txt(url):
             fullText.append(para.text)
             text = "\n".join(fullText)
     except Exception as e:
-        print(str(e))
+        # Error in docx processing
+        pass
 
     return text
 
@@ -53,23 +53,60 @@ def pdfurl2txt(url):
                 if txt != "":
                     result += txt
     except Exception as e:
-        print(str(e))
+        # Error in PDF processing
+        pass
     return result
 
 
-# def paddleocr2text(image_file):
-#     result = ocr.ocr(image_file, cls=True)
-#     text = ""
-#     for idx in range(len(result)):
-#         res = result[idx]
-#         txts = [line[1][0] for line in res]
-#         text += "\n".join(txts)
-#     return text
+# Initialize OpenAI client
+client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+)
 
+# Get model name from environment or use default
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4-vision-preview")
 
-def pytesseract2text(image_file):
-    text = pytesseract.image_to_string(Image.open(image_file), lang="chi_sim")
-    return text
+def encode_image(image_path):
+    """Encode image to base64 string"""
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+
+def llm_ocr_text(image_file):
+    """Extract text from image using OpenAI Vision model"""
+    try:
+        # Get the base64 string
+        base64_image = encode_image(image_file)
+        
+        response = client.chat.completions.create(
+            model=OPENAI_VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Please extract all text from this image. Return only the extracted text without any additional commentary or formatting. If the text is in Chinese, preserve the Chinese characters."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1000
+        )
+        
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        # Error in OCR processing
+        pass
+        return ""
 
 
 def pdfurl2ocr(url, uploadpath):
@@ -92,8 +129,7 @@ def pdfurl2ocr(url, uploadpath):
 
     # Iterate from 1 to total number of pages
     for image_file in image_file_list:
-        # text += paddleocr2text(image_file)
-        text += pytesseract2text(image_file)
+        text += llm_ocr_text(image_file)
         # delete image file
         os.remove(image_file)
 
@@ -124,8 +160,7 @@ def docxurl2ocr(url, uploadpath):
 
     # Iterate from 1 to total number of pages
     for image_file in image_file_list:
-        # text += paddleocr2text(image_file)
-        text += pytesseract2text(image_file)
+        text += llm_ocr_text(image_file)
         # delete image file
         os.remove(image_file)
 
@@ -134,8 +169,7 @@ def docxurl2ocr(url, uploadpath):
 
 def picurl2ocr(url):
     text = ""
-    # text += paddleocr2text(url)
-    text += pytesseract2text(url)
+    text += llm_ocr_text(url)
     return text
 
 
@@ -153,7 +187,8 @@ def find_files(path: str, glob_pat: str, ignore_case: bool = False):
 def save_uploadedfile(uploadedfile, uploadpath):
     with open(os.path.join(uploadpath, uploadedfile.name), "wb") as f:
         f.write(uploadedfile.getbuffer())
-    return print("上传文件:{} 成功。".format(uploadedfile.name))
+    # File upload successful
+    pass
 
 
 def docxconvertion(uploadpath):
@@ -167,7 +202,7 @@ def docxconvertion(uploadpath):
     docxfiles = find_files(uploadpath, "*.docx", True)
 
     for filepath in docfiles:
-        print(filepath)
+        # Processing file path
         # filename = os.path.basename(filepath)
         #     print(filename)
         #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
@@ -184,7 +219,7 @@ def docxconvertion(uploadpath):
         )
 
     for filepath in wpsfiles:
-        print(filepath)
+        # Processing file path
         # filename = os.path.basename(filepath)
         #     print(filename)
         #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
@@ -208,7 +243,7 @@ def docxconvertion(uploadpath):
     #     subprocess.call(['soffice', '--headless', '--convert-to', 'docx', filepath,"--outdir",doccdest])
 
     for filepath in docxfiles:
-        print(filepath)
+        # Processing file path
         # filename = os.path.basename(filepath)
         #     print(filename)
         #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
@@ -240,7 +275,8 @@ def remove_uploadfiles(uploadpath):
         try:
             os.remove(f)
         except OSError as e:
-            print("Error: %s : %s" % (f, e.strerror))
+            # Error processing file
+        pass
 
 
 # convert all files in uploadfolder to text
@@ -257,7 +293,7 @@ def convert_uploadfiles(txtls, uploadpath):
             if ext.lower() == ".doc":
                 # datapath = uploadpath + "doc/" + base + ".docx"
                 datapath = os.path.join(uploadpath, "doc", base + ".docx")
-                print(datapath)
+                # Processing data path
                 text = docxurl2txt(datapath)
                 text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
                 if text1 == "":
@@ -266,7 +302,7 @@ def convert_uploadfiles(txtls, uploadpath):
             elif ext.lower() == ".wps":
                 # datapath = uploadpath + "wps/" + base + ".docx"
                 datapath = os.path.join(uploadpath, "wps", base + ".docx")
-                print(datapath)
+                # Processing data path
                 text = docxurl2txt(datapath)
                 text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
                 if text1 == "":
@@ -274,10 +310,10 @@ def convert_uploadfiles(txtls, uploadpath):
 
             #         elif ext.lower()=='doc.docx':
             #             datapath=os.path.join(filepath,'docc',file)
-            #             print(datapath)
+            #             # Processing data path
             #             text=docxurl2txt(datapath)
             elif ext.lower() == ".docx":
-                print(datapath)
+                # Processing data path
                 text = docxurl2txt(datapath)
                 text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
                 if text1 == "":
@@ -314,7 +350,8 @@ def convert_uploadfiles(txtls, uploadpath):
             else:
                 text = ""
         except Exception as e:
-            print(str(e))
+            # Error in file processing
+        pass
             text = ""
         resls.append(text)
     return resls
@@ -334,7 +371,7 @@ def ofdconvertion(uploadpath):
     ofdfiles = find_files(uploadpath, "*.ofd", True)
 
     for filepath in ofdfiles:
-        print(filepath)
+        # Processing file path
         file_prefix = os.path.splitext(os.path.basename(filepath))[0]  # Get file prefix
         with open(filepath, "rb") as f:
             ofdb64 = str(base64.b64encode(f.read()), "utf-8")
@@ -374,12 +411,12 @@ def register_fonts():
 
     if os.path.exists(simhei_font_path):
         pdfmetrics.registerFont(TTFont("SimHei", simhei_font_path))
-        print(f"Registered font SimHei from {simhei_font_path}")
+        # SimHei font registered
     else:
-        print(f"SimHei font not found at {simhei_font_path}")
+        # SimHei font not found
 
     if os.path.exists(simsun_font_path):
         pdfmetrics.registerFont(TTFont("SimSun", simsun_font_path))
-        print(f"Registered font SimSun from {simsun_font_path}")
+        # SimSun font registered
     else:
-        print(f"SimSun font not found at {simsun_font_path}")
+        # SimSun font not found

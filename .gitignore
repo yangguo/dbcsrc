@@ -239,6 +239,27 @@ temp/
 data/
 *.zip
 
+# Test files and debug code
+test_*.py
+*_test.py
+tests/
+__tests__/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+debug.py
+debug_*.py
+*_debug.py
+
+# Temporary and backup files
+*.tmp
+*.bak
+*.backup
+*~
+.#*
+#*#
+
 # Docker
 .dockerignore
 

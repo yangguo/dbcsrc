@@ -1,20 +1,66 @@
 import pandas as pd
-from paddlenlp import Taskflow
-from transformers import pipeline
+import openai
+import os
+import json
 from utils import savetemp
 
-classifier = pipeline(
-    "zero-shot-classification", model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
+# Initialize OpenAI client
+client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 )
 
+# Get model name from environment or use default
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
 def get_class(article, candidate_labels, multi_label=False):
-    # results = classifier(article, candidate_labels, multi_label=multi_label)
-    my_cls = Taskflow("zero_shot_text_classification", schema=candidate_labels)
-    results = my_cls(article)
-    print(results)
-    print(results[0]["predictions"][0])
-    return results[0]["predictions"][0]
+    """Classify text using OpenAI LLM"""
+    try:
+        # Create prompt for classification
+        labels_str = ", ".join(candidate_labels)
+        prompt = f"""Please classify the following text into one of these categories: {labels_str}
+        
+Text to classify: {article}
+        
+Respond with only a JSON object in this format:
+        {{
+            "label": "selected_category",
+            "score": confidence_score_between_0_and_1
+        }}
+        
+Choose the most appropriate category from the provided list."""
+        
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a text classification assistant. Always respond with valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=150
+        )
+        
+        # Parse the response
+        result_text = response.choices[0].message.content.strip()
+        try:
+            result = json.loads(result_text)
+            return {
+                "label": result.get("label", candidate_labels[0]),
+                "score": float(result.get("score", 0.5))
+            }
+        except json.JSONDecodeError:
+            # Fallback if JSON parsing fails
+            return {
+                "label": candidate_labels[0],
+                "score": 0.5
+            }
+            
+    except Exception as e:
+        # Return default result on error
+        return {
+            "label": candidate_labels[0] if candidate_labels else "unknown",
+            "score": 0.0
+        }
 
 
 def df2label(df, idcol, contentcol, candidate_labels, multi_label=False):

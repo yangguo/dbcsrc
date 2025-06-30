@@ -4,10 +4,8 @@ FROM python:3.9
 
 #RUN apt-get update -y
 
-RUN apt-get update && apt-get install -y python3-opencv
-
 # install protobuf-compiler
-RUN apt-get install -y protobuf-compiler
+RUN apt-get update && apt-get install -y protobuf-compiler
 
 # install libreoffice
 RUN apt-get install -y libreoffice

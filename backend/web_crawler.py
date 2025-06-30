@@ -1,0 +1,567 @@
+"""Web crawling module for CSRC case data extraction."""
+
+import json
+import os
+import glob
+import random
+import time
+import requests
+import pandas as pd
+from datetime import datetime
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+
+# Directory paths
+pencsrc2 = "../data/penalty/csrc2"
+
+# Organization ID mapping
+org2id = {
+    "山西": "94bf3c5d8e5b4265a7916f19fb8b65ef",
+    "四川": "88a03b16f60e4d16a62bd494d6530495",
+    "新疆": "baa8f6e40657486bb0d7cc8525c857e6",
+    "山东": "4bd2094f91c14fcc84ffc4df0cd29d2b",
+    "大连": "d5247fa1384f4a46b17f2d33f025bdca",
+    "湖北": "a4478a6efb074823959f782bf7ad23c2",
+    "湖南": "53d1eac8c4c145db8ca62c99bda5c058",
+    "陕西": "00d7790e259b4d3dbaefe2935b1ec05f",
+    "天津": "882ff9eb82b346999ab45e9a597bc461",
+    "宁夏": "9e622bf25828428996182a74dea32057",
+    "安徽": "1d14687d160f4fe09642c86fc33501bd",
+}
+
+
+def get_now():
+    """Get current timestamp string."""
+    now = datetime.now()
+    now_str = now.strftime("%Y%m%d%H%M%S")
+    return now_str
+
+
+def get_csvdf(penfolder, beginwith):
+    """Get concatenated dataframe from CSV files."""
+    files2 = glob.glob(penfolder + "**/" + beginwith + "*.csv", recursive=True)
+    dflist = []
+    for filepath in files2:
+        try:
+            pendf = pd.read_csv(filepath)
+            dflist.append(pendf)
+        except Exception as e:
+            # Error reading file
+    
+    if len(dflist) > 0:
+        df = pd.concat(dflist)
+        df.reset_index(drop=True, inplace=True)
+    else:
+        df = pd.DataFrame()
+    return df
+
+
+def get_csrc2detail():
+    """Get CSRC detail data."""
+    pendf = get_csvdf(pencsrc2, "csrcdtlall")
+    if not pendf.empty:
+        # Format date with error handling
+        try:
+            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], format='mixed', errors='coerce').dt.date
+        except Exception as e:
+            # Date formatting warning
+            # Try alternative format
+            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
+        # Fill na
+        pendf = pendf.fillna("")
+    return pendf
+
+
+def get_url_backend(orgname):
+    """Get URL for organization."""
+    if orgname not in org2id:
+        raise ValueError(f"Organization '{orgname}' not found in org2id mapping")
+    
+    id = org2id[orgname]
+    url = (
+        "http://www.csrc.gov.cn/searchList/"
+        + id
+        + "?_isAgg=true&_isJson=true&_pageSize=10&_template=index&_rangeTimeGte=&_channelName=&page="
+    )
+    return url
+
+
+def savedf_backend(df, basename):
+    """Save dataframe to CSV."""
+    savename = basename + ".csv"
+    savepath = os.path.join(pencsrc2, savename)
+    os.makedirs(os.path.dirname(savepath), exist_ok=True)
+    df.to_csv(savepath, index=False, escapechar="\\")
+
+
+def get_sumeventdf_backend(orgname, start, end):
+    """Backend implementation of get_sumeventdf2.
+    
+    Args:
+        orgname (str): Organization name
+        start (int): Start page number
+        end (int): End page number
+        
+    Returns:
+        pd.DataFrame: Scraped case data
+    """
+    if not isinstance(start, int) or not isinstance(end, int):
+        raise ValueError("Start and end must be integers")
+    
+    if start > end:
+        raise ValueError("Start page must be less than or equal to end page")
+    
+    if start < 1:
+        raise ValueError("Start page must be greater than 0")
+    
+    # Calculate estimated time
+    total_pages = end - start + 1
+    estimated_time = total_pages * 3  # Rough estimate: 3 seconds per page
+    # Starting to scrape pages for organization
+    
+    resultls = []
+    errorls = []
+    count = 0
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    for pageno in range(start, end + 1):
+        progress = ((pageno - start) / total_pages) * 100
+        # Processing page
+        url = get_url_backend(orgname) + str(pageno)
+        
+        # Retry logic for network requests
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                # Increase timeout and add retry logic
+                dd = requests.get(url, headers=headers, verify=False, timeout=60)
+                dd.raise_for_status()
+                break  # Success, exit retry loop
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                retry_count += 1
+                if retry_count >= max_retries:
+                    # Max retries reached for page
+                    errorls.append(url)
+                    break
+                else:
+                    # Retry for page
+                    time.sleep(2)  # Wait before retry
+                    continue
+            except Exception as e:
+                # Non-retryable error for page
+                errorls.append(url)
+                break
+        
+        if retry_count >= max_retries:
+            continue  # Skip this page and move to next
+            
+        try:
+            sd = BeautifulSoup(dd.content, "html.parser")
+            json_text = str(sd.text).strip()
+            json_data = json.loads(json_text, strict=False)
+            
+            if "data" not in json_data or "results" not in json_data["data"]:
+                # No data found for page
+                continue
+                
+            itemls = json_data["data"]["results"]
+
+            titlels = []
+            wenhaols = []
+            datels = []
+            snls = []
+            urlls = []
+            docls = []
+
+            for idx, item in enumerate(itemls):
+                try:
+                    if "domainMetaList" not in item or not item["domainMetaList"]:
+                        # Missing domainMetaList for item
+                        continue
+                        
+                    headerls = item["domainMetaList"][0]["resultList"]
+                    headerdf = pd.DataFrame(headerls)
+                    
+                    # Extract fields with error handling
+                    wenhao_rows = headerdf[headerdf["key"] == "wh"]
+                    wenhao = wenhao_rows["value"].iloc[0] if not wenhao_rows.empty else ""
+                    
+                    sn_rows = headerdf[headerdf["key"] == "syh"]
+                    sn = sn_rows["value"].iloc[0] if not sn_rows.empty else ""
+                    
+                    title = item.get("subTitle", "")
+                    url_item = item.get("url", "")
+                    date = item.get("publishedTimeStr", "")
+                    
+                    try:
+                        doc = (
+                            item.get("contentHtml", "")
+                            .replace("\r", "")
+                            .replace("\n", "")
+                            .replace("\u2002", "")
+                            .replace("\u3000", "")
+                        )
+                    except Exception as e:
+                        # Error processing contentHtml for item
+                        doc = (
+                            item.get("content", "")
+                            .replace("\r", "")
+                            .replace("\n", "")
+                            .replace("\u2002", "")
+                            .replace("\u3000", "")
+                        )
+
+                    titlels.append(title)
+                    wenhaols.append(wenhao)
+                    datels.append(date)
+                    snls.append(sn)
+                    urlls.append(url_item)
+                    docls.append(doc)
+                except Exception as e:
+                    # Error processing item
+                    continue
+
+            if titlels:  # Only create DataFrame if we have data
+                csrceventdf = pd.DataFrame({
+                    "名称": titlels,
+                    "文号": wenhaols,
+                    "发文日期": datels,
+                    "序列号": snls,
+                    "链接": urlls,
+                    "内容": docls,
+                })
+                csrceventdf["机构"] = orgname
+                resultls.append(csrceventdf)
+
+        except requests.exceptions.HTTPError as e:
+            if hasattr(dd, 'status_code') and dd.status_code == 403:
+                # 403 Forbidden error - authentication or IP blocking issue
+                pass
+            errorls.append(url)
+        except json.JSONDecodeError as e:
+            # JSON decode error
+            errorls.append(url)
+        except Exception as e:
+            # General error occurred
+            errorls.append(url)
+
+        # Save temporary results every 5 pages
+        mod = (count + 1) % 5
+        if mod == 0 and count > 0 and resultls:
+            tempdf = pd.concat(resultls)
+            savename = "temp-" + orgname + "-0-" + str(count + 1)
+            savedf_backend(tempdf, savename)
+
+        # Reduced wait time to improve performance
+        wait = random.randint(1, 5)
+        time.sleep(wait)
+        count += 1
+
+    if resultls:
+        resultsum = pd.concat(resultls).reset_index(drop=True)
+        savedf_backend(resultsum, "tempall-" + orgname)
+        # Scraping completed
+        return resultsum
+    else:
+        # Scraping completed
+        return pd.DataFrame()
+
+
+def get_csrc2analysis():
+    """Get CSRC analysis data"""
+    pendf = get_csvdf(pencsrc2, "csrc2analysis")
+    if not pendf.empty:
+        # Format date with error handling
+        try:
+            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], format='mixed', errors='coerce').dt.date
+        except Exception as e:
+            # Date formatting warning
+            # Try alternative format
+            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
+        # Fill na
+        pendf = pendf.fillna("")
+    return pendf
+
+def savetemp(df, basename):
+    """Save dataframe to temp directory"""
+    tempdir = "../data/penalty/csrc2/temp"
+    savename = basename + ".csv"
+    savepath = os.path.join(tempdir, savename)
+    os.makedirs(os.path.dirname(savepath), exist_ok=True)
+    df.to_csv(savepath, index=False)
+
+def content_length_analysis(length, download_filter):
+    """Analyze content length and filter data"""
+    eventdf = get_csrc2analysis()
+    
+    if eventdf.empty:
+        return pd.DataFrame()
+    
+    # Ensure required columns exist
+    if "内容" not in eventdf.columns:
+        eventdf["内容"] = ""
+    if "名称" not in eventdf.columns:
+        eventdf["名称"] = ""
+    if "filename" not in eventdf.columns:
+        eventdf["filename"] = ""
+    
+    eventdf["内容"] = eventdf["内容"].str.replace(
+        r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "", regex=True
+    )
+    eventdf["len"] = eventdf["内容"].astype(str).apply(len)
+    misdf = eventdf[eventdf["len"] <= length]
+
+    # filter out name by download_filter
+    if download_filter and "名称" in misdf.columns:
+        misdf = misdf[~misdf["名称"].str.contains(download_filter, case=False, na=False)]
+
+    # get df by column name - only include columns that exist
+    available_cols = ["发文日期", "名称", "链接", "内容", "len", "filename"]
+    select_cols = [col for col in available_cols if col in misdf.columns]
+    misdf1 = misdf[select_cols]
+    
+    # sort by 发文日期 if column exists
+    if "发文日期" in misdf1.columns:
+        misdf1 = misdf1.sort_values(by="发文日期", ascending=False)
+    
+    # reset index
+    misdf1.reset_index(drop=True, inplace=True)
+    
+    # Convert numpy data types to native Python types for JSON serialization
+    for col in misdf1.columns:
+        if misdf1[col].dtype == 'int64':
+            misdf1[col] = misdf1[col].astype(int)
+        elif misdf1[col].dtype == 'float64':
+            misdf1[col] = misdf1[col].astype(float)
+        elif misdf1[col].dtype == 'object':
+            misdf1[col] = misdf1[col].astype(str)
+    
+    # savename
+    savename = "csrclenanalysis"
+    # save misdf
+    savetemp(misdf1, savename)
+    
+    # Convert DataFrame to dict for JSON serialization
+    return misdf1.to_dict('records')
+
+
+def update_sumeventdf_backend(currentsum):
+    """Backend implementation of update_sumeventdf2.
+    
+    Args:
+        currentsum (pd.DataFrame): Current scraped data
+        
+    Returns:
+        pd.DataFrame: New records not in existing data
+    """
+    if currentsum.empty:
+        # No current data to update
+        return pd.DataFrame()
+        
+    oldsum2 = get_csrc2detail()
+    if oldsum2.empty:
+        oldidls = []
+    else:
+        oldidls = oldsum2["链接"].tolist()
+    
+    currentidls = currentsum["链接"].tolist()
+    newidls = [x for x in currentidls if x not in oldidls]
+    newdf = currentsum[currentsum["链接"].isin(newidls)]
+    
+    if not newdf.empty:
+        newdf.reset_index(drop=True, inplace=True)
+        nowstr = get_now()
+        savename = "csrcdtlall" + nowstr
+        savedf_backend(newdf, savename)
+        # Saved new records to csrcdtlall
+        
+        # Also update csrc2analysis files
+        update_csrc2analysis_backend()
+        
+    else:
+        # No new records to save
+        pass
+    
+    # Convert DataFrame to dict for JSON serialization
+    if not newdf.empty:
+        # Convert numpy data types to native Python types
+        for col in newdf.columns:
+            if newdf[col].dtype == 'int64':
+                newdf[col] = newdf[col].astype(int)
+            elif newdf[col].dtype == 'float64':
+                newdf[col] = newdf[col].astype(float)
+            elif newdf[col].dtype == 'object':
+                newdf[col] = newdf[col].astype(str)
+        return newdf.to_dict('records')
+    else:
+        return []
+
+
+def update_csrc2analysis_backend():
+    """Backend implementation to create/update csrc2analysis files.
+    
+    This function reads from csrcdtlall files and creates csrc2analysis files
+    by combining new data with existing analysis data.
+    """
+    try:
+        # Get new detailed data from csrcdtlall files
+        newdf = get_csrc2detail()
+        if newdf.empty:
+            # No detail data found for analysis update
+            return
+            
+        newurlls = newdf["链接"].tolist()
+        
+        # Get existing analysis data
+        olddf = get_csrc2analysis()
+        if olddf.empty:
+            oldurlls = []
+        else:
+            oldurlls = olddf["链接"].tolist()
+        
+        # Find new URLs not in existing analysis data
+        newidls = [x for x in newurlls if x not in oldurlls]
+        upddf = newdf[newdf["链接"].isin(newidls)]
+        
+        # If there are new records, update the analysis file
+        if not upddf.empty:
+            # Combine new data with existing analysis data
+            if not olddf.empty:
+                upddf1 = pd.concat([upddf, olddf])
+            else:
+                upddf1 = upddf.copy()
+                
+            upddf1.reset_index(drop=True, inplace=True)
+            
+            # Save as csrc2analysis file
+            savename = "csrc2analysis"
+            savedf_backend(upddf1, savename)
+            # Updated csrc2analysis with new records
+        else:
+            # No new records to add to csrc2analysis
+            pass
+            
+    except Exception as e:
+        # Error updating csrc2analysis
+        pass
+
+
+def get_chrome_driver():
+    """Get Chrome WebDriver with headless configuration."""
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    
+    service = ChromeService(executable_path=ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
+
+
+def get_csrclenanalysis():
+    """Get CSRC length analysis dataframe."""
+    pendf = get_csvdf(tempdir, "csrclenanalysis")
+    if not pendf.empty:
+        pendf = pendf.fillna("")
+    return pendf
+
+
+def download_attachment(down_list=None):
+    """Download attachments from CSRC URLs.
+    
+    Args:
+        down_list: List of indices to download. If None, downloads all.
+    """
+    if down_list is None:
+        down_list = []
+    
+    # get csrclenanalysis df
+    lendf = get_csrclenanalysis()
+    # get misls from url
+    misls = lendf["链接"].tolist()
+    # get submisls by index list
+    if down_list:
+        submisls = [misls[i] for i in down_list]
+    else:
+        submisls = misls
+
+    resultls = []
+    errorls = []
+    count = 0
+
+    driver = get_chrome_driver()
+
+    for i, url in enumerate(submisls):
+        # Processing download
+        try:
+            driver.get(url)
+            # Wait for the page to load and the specific element to be present
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "detail-news"))
+            )
+
+            page_source = driver.page_source
+            sd = BeautifulSoup(page_source, "html.parser")
+
+            dirpath = url.rsplit("/", 1)[0]
+            try:
+                filepath = sd.find_all("div", class_="detail-news")[0].a["href"]
+                datapath = dirpath + "/" + filepath
+                # Downloading file
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "Referer": url,
+                }
+                file_response = requests.get(datapath, headers=headers, stream=True)
+                file_response.raise_for_status()
+                savename = get_now() + os.path.basename(datapath)
+                filename = os.path.join(tempdir, savename)
+                with open(filename, "wb") as f:
+                    for chunk in file_response.iter_content(1024 * 1024 * 2):
+                        if chunk:
+                            f.write(chunk)
+                text = ""
+            except Exception as e:
+                # Error downloading file
+                savename = ""
+                text = sd.find_all("div", class_="detail-news")[0].text
+            datals = {"url": url, "filename": savename, "text": text}
+            df = pd.DataFrame(datals, index=[0])
+            resultls.append(df)
+        except Exception as e:
+            # Error processing URL
+            errorls.append(url)
+
+        mod = (count + 1) % 10
+        if mod == 0 and count > 0:
+            tempdf = pd.concat(resultls)
+            savename = "temp-" + str(count + 1)
+            savetemp(tempdf, savename)
+
+        wait = random.randint(2, 20)
+        time.sleep(wait)
+        # Download completed
+        count += 1
+
+    driver.quit()
+
+    if resultls:
+        misdf = pd.concat(resultls)
+        savecsv = "csrcmiscontent" + get_now()
+        # reset index
+        misdf.reset_index(drop=True, inplace=True)
+        savetemp(misdf, savecsv)
+        return misdf
+    else:
+        return pd.DataFrame()
