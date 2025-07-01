@@ -12,7 +12,7 @@ import {
   Alert,
   List,
   Typography,
-  message,
+  App,
   Divider,
 } from 'antd';
 import { SyncOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -37,6 +37,7 @@ interface UpdateResult {
 }
 
 const CaseUpdate: React.FC = () => {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);

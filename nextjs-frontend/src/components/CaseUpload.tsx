@@ -8,7 +8,7 @@ import {
   Space,
   Progress,
   Alert,
-  message,
+  App,
   Typography,
   Tag,
   Modal,
@@ -49,6 +49,7 @@ interface UploadConfig {
 }
 
 const CaseUpload: React.FC = () => {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);

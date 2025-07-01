@@ -121,7 +121,7 @@ If no entities are found for a schema type, use an empty array: []"""
             return [result]
         except json.JSONDecodeError:
             # Failed to parse JSON response
-        pass
+            pass
             return [{}]
             
     except Exception as e:
@@ -174,7 +174,6 @@ def wash_data(data):
                 results_new.append(result)
             except Exception as e:
                 # Error in processing
-        pass
                 pass
                 # results.remove(results[i])
 
@@ -253,7 +252,7 @@ def wash_data(data):
         return new_df_str
     except Exception as e:
         # Error in processing
-    pass
+        pass
         new_df_str = new_df_str.strip("。") + "。"
         new_df_str = new_df_str.replace(".万元", "万元")
         new_df_str = new_df_str.replace(".元", "元")
@@ -456,7 +455,7 @@ def get_number(moneys):
                     money[2] = float(money[2]) * 10000
             except Exception as e:
                 # Error in processing
-        pass
+                pass
                 money[2] = float(money[2])
             sum = sum + round(money[2], 2)
     else:
@@ -659,25 +658,9 @@ def list_split(list1, list2, strict=1):
             all["key"] = all["list1"].apply(lambda x: "".join(str(x)))
             all = all.drop_duplicates(subset=["key"], keep="first")
         # all=all[all['list2-list1'].astype(str).str.contains(r'list2包含list1', regex= True)]
-        if len(
-            all[
-                ~all["list2-list1"]
-                .astype(str)
-                .str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)
-            ]
-        ) != len(
-            all[
-                ~all["list2-list1"]
-                .astype(str)
-                .str.contains(r"list2包含list1", regex=True)
-            ]
-        ):
+        if len(all[~all["list2-list1"].astype(str).str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)]) != len(all[~all["list2-list1"].astype(str).str.contains(r"list2包含list1", regex=True)]):
             # Intersection detected
-        all = all[
-            ~all["list2-list1"]
-            .astype(str)
-            .str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)
-        ]
+            all = all[~all["list2-list1"].astype(str).str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)]
         # print(all)
         all = all["list1"].tolist()
         # print(all)
@@ -1291,7 +1274,7 @@ Respond with only a JSON object:
                 })
         except Exception as e:
             # Error in similarity calculation
-        pass
+            pass
             similarity_results.append({
                 "text1": pair[0],
                 "text2": pair[1],
@@ -1382,7 +1365,7 @@ Respond with only a JSON object:
                 })
         except Exception as e:
             # Error in similarity calculation
-        pass
+            pass
             similarity_results.append({
                 "text1": pair[0],
                 "text2": pair[1],
@@ -1608,8 +1591,8 @@ def extract_money(
                     sums = sums + sum
                 sum_list.append(sums)
         except Exception as e:
-        # Error in content processing
-        pass
+            # Error in content processing
+            pass
             sum_list.append(0)
     # endregion
     return sum_list

@@ -49,6 +49,8 @@ export interface CaseSummary {
 export interface CaseDetail {
   id: string;
   title: string;
+  name: string;
+  docNumber: string;
   date: string;
   org: string;
   content: string;
@@ -81,7 +83,7 @@ export const caseApi = {
   // Get case summary
   getSummary: async (): Promise<CaseSummary> => {
     const response = await apiClient.get('/summary');
-    return response.data;
+    return response.data.data;
   },
 
   // Search cases
@@ -129,7 +131,12 @@ export const caseApi = {
     candidateLabels: string[];
     multiLabel: boolean;
   }): Promise<any> => {
-    const response = await apiClient.post('/classify', params);
+    const requestParams = {
+      article: params.article,
+      candidate_labels: params.candidateLabels,
+      multi_label: params.multiLabel
+    };
+    const response = await apiClient.post('/classify', requestParams);
     return response.data;
   },
 

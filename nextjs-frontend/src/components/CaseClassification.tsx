@@ -11,7 +11,7 @@ import {
   Select,
   Checkbox,
   Table,
-  message,
+  App,
   Typography,
   Divider,
   Tag,
@@ -42,6 +42,7 @@ interface BatchResult {
 }
 
 const CaseClassification: React.FC = () => {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [batchForm] = Form.useForm();
   const [loading, setLoading] = useState(false);

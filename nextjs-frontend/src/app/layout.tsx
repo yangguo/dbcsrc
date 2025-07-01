@@ -1,9 +1,10 @@
 'use client';
 
+import '@ant-design/v5-patch-for-react-19';
 import React from 'react';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, App } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -28,7 +29,9 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <ConfigProvider theme={theme} locale={zhCN}>
-          {children}
+          <App>
+            {children}
+          </App>
         </ConfigProvider>
       </body>
     </html>

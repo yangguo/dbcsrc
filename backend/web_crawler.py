@@ -52,6 +52,7 @@ def get_csvdf(penfolder, beginwith):
             dflist.append(pendf)
         except Exception as e:
             # Error reading file
+            pass
     
     if len(dflist) > 0:
         df = pd.concat(dflist)
@@ -96,7 +97,7 @@ def savedf_backend(df, basename):
     savename = basename + ".csv"
     savepath = os.path.join(pencsrc2, savename)
     os.makedirs(os.path.dirname(savepath), exist_ok=True)
-    df.to_csv(savepath, index=False, escapechar="\\")
+    df.to_csv(savepath, index=False, escapechar="\\", encoding='utf-8-sig')
 
 
 def get_sumeventdf_backend(orgname, start, end):

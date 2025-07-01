@@ -12,7 +12,7 @@ import {
   Select,
   Progress,
   Alert,
-  message,
+  App,
   Divider,
   Typography,
   Tag,
@@ -39,6 +39,7 @@ interface AttachmentData {
 }
 
 const AttachmentProcessing: React.FC = () => {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [analysisData, setAnalysisData] = useState<AttachmentData[]>([]);

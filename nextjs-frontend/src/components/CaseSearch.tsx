@@ -13,7 +13,7 @@ import {
   Modal,
   Typography,
   Pagination,
-  message,
+  App,
 } from 'antd';
 import { SearchOutlined, EyeOutlined } from '@ant-design/icons';
 import { caseApi, CaseDetail, SearchParams } from '@/services/api';
@@ -32,6 +32,7 @@ const orgOptions = [
 ];
 
 const CaseSearch: React.FC = () => {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<CaseDetail[]>([]);
@@ -47,26 +48,40 @@ const CaseSearch: React.FC = () => {
       dataIndex: 'title',
       key: 'title',
       ellipsis: true,
-      width: '30%',
+      width: '20%',
+    },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      ellipsis: true,
+      width: '15%',
+    },
+    {
+      title: '文号',
+      dataIndex: 'docNumber',
+      key: 'docNumber',
+      ellipsis: true,
+      width: '12%',
     },
     {
       title: '发文日期',
       dataIndex: 'date',
       key: 'date',
-      width: '12%',
+      width: '10%',
       render: (date: string) => dayjs(date).format('YYYY-MM-DD'),
     },
     {
       title: '机构',
       dataIndex: 'org',
       key: 'org',
-      width: '10%',
+      width: '8%',
     },
     {
       title: '处罚金额',
       dataIndex: 'amount',
       key: 'amount',
-      width: '12%',
+      width: '10%',
       render: (amount: number) => amount ? `¥${amount.toLocaleString()}` : '-',
     },
     {
@@ -74,7 +89,7 @@ const CaseSearch: React.FC = () => {
       dataIndex: 'penalty',
       key: 'penalty',
       ellipsis: true,
-      width: '25%',
+      width: '15%',
     },
     {
       title: '操作',
@@ -256,6 +271,17 @@ const CaseSearch: React.FC = () => {
             <div>
               <Text strong>标题：</Text>
               <Paragraph>{selectedCase.title}</Paragraph>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Text strong>名称：</Text>
+                <Text>{selectedCase.name}</Text>
+              </div>
+              <div>
+                <Text strong>文号：</Text>
+                <Text>{selectedCase.docNumber}</Text>
+              </div>
             </div>
             
             <div className="grid grid-cols-2 gap-4">

@@ -8,7 +8,7 @@ import {
   Space,
   Progress,
   Alert,
-  message,
+  App,
   Typography,
   Tag,
   Modal,
@@ -36,6 +36,7 @@ interface DownloadItem {
 }
 
 const CaseDownload: React.FC = () => {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [downloadItems, setDownloadItems] = useState<DownloadItem[]>([]);
   const [selectedRows, setSelectedRows] = useState<string[]>([]);

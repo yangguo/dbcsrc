@@ -106,7 +106,7 @@ def llm_ocr_text(image_file):
     except Exception as e:
         # Error in OCR processing
         pass
-        return ""
+    return ""
 
 
 def pdfurl2ocr(url, uploadpath):
@@ -276,7 +276,7 @@ def remove_uploadfiles(uploadpath):
             os.remove(f)
         except OSError as e:
             # Error processing file
-        pass
+            pass
 
 
 # convert all files in uploadfolder to text
@@ -351,7 +351,7 @@ def convert_uploadfiles(txtls, uploadpath):
                 text = ""
         except Exception as e:
             # Error in file processing
-        pass
+            pass
             text = ""
         resls.append(text)
     return resls
@@ -414,9 +414,11 @@ def register_fonts():
         # SimHei font registered
     else:
         # SimHei font not found
+        pass
 
     if os.path.exists(simsun_font_path):
         pdfmetrics.registerFont(TTFont("SimSun", simsun_font_path))
         # SimSun font registered
     else:
         # SimSun font not found
+        pass

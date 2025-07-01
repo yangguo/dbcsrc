@@ -126,7 +126,9 @@ const CaseSummary: React.FC = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <Spin size="large" tip="加载中..." />
+        <Spin size="large" tip="加载中...">
+          <div className="h-32 w-32" />
+        </Spin>
       </div>
     );
   }
