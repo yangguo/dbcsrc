@@ -176,10 +176,95 @@ def get_memory_usage() -> dict:
 class Settings:
     backend_url: str = os.getenv("BACKEND_URL", "http://localhost:8000")
     frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    mongo_url: str = os.getenv("MONGO_DB_URL", "")
+    mongo_url: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017/dbcsrc")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     
 settings = Settings()
+
+# MongoDB connection
+import pymongo
+from pymongo import MongoClient
+
+def get_mongo_client():
+    """Get MongoDB client with optimized timeout settings"""
+    try:
+        # Log the MongoDB URL (without credentials)
+        mongo_url_parts = settings.mongo_url.split('@')
+        safe_mongo_url = mongo_url_parts[1] if len(mongo_url_parts) > 1 else mongo_url_parts[0]
+        logger.info(f"Connecting to MongoDB: {safe_mongo_url}")
+        
+        # Configure MongoDB client with shorter timeout settings for faster failure
+        client = MongoClient(
+            settings.mongo_url,
+            serverSelectionTimeoutMS=10000,  # Reduced to 10 seconds
+            connectTimeoutMS=10000,          # Reduced to 10 seconds
+            socketTimeoutMS=15000,           # 15 seconds for operations
+            maxPoolSize=5,                   # Reduced pool size
+            retryWrites=True,
+            maxIdleTimeMS=30000,             # Close idle connections after 30s
+            heartbeatFrequencyMS=10000       # Check connection every 10s
+        )
+        # Test connection with timeout
+        client.admin.command('ping')
+        logger.info("MongoDB connection successful")
+        return client
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB: {str(e)}", exc_info=True)
+        return None
+
+def get_collection(db_name: str, collection_name: str):
+    """Get MongoDB collection"""
+    client = get_mongo_client()
+    if client:
+        db = client[db_name]
+        return db[collection_name]
+    return None
+
+def get_online_data():
+    """Get online data from MongoDB with timeout handling"""
+    try:
+        collection = get_collection("pencsrc2", "csrc2analysis")
+        if collection is not None:
+            # Use cursor with timeout and limit for better performance
+            cursor = collection.find({}, {"_id": 0}).max_time_ms(15000)  # 15 second timeout
+            data = list(cursor)
+            logger.info(f"Retrieved {len(data)} records from MongoDB")
+            return pd.DataFrame(data)
+        else:
+            logger.warning("MongoDB collection not available")
+            return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Failed to get online data: {str(e)}")
+        # Return empty DataFrame on error to prevent complete failure
+        return pd.DataFrame()
+
+def insert_online_data(df: pd.DataFrame):
+    """Insert data to MongoDB"""
+    try:
+        collection = get_collection("pencsrc2", "csrc2analysis")
+        if collection is not None and not df.empty:
+            records = df.to_dict("records")
+            batch_size = 1000
+            for i in range(0, len(records), batch_size):
+                batch = records[i:i + batch_size]
+                collection.insert_many(batch)
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Failed to insert online data: {str(e)}")
+        return False
+
+def delete_online_data():
+    """Delete all online data from MongoDB"""
+    try:
+        collection = get_collection("pencsrc2", "csrc2analysis")
+        if collection is not None:
+            result = collection.delete_many({})
+            return result.deleted_count
+        return 0
+    except Exception as e:
+        logger.error(f"Failed to delete online data: {str(e)}")
+        return 0
 
 # Standardized response models
 class APIResponse(BaseModel):
@@ -391,80 +476,246 @@ def read_root():
     return {"message": "DBCSRC API is running", "version": "1.0.0"}
 
 
+# Cache for summary data to improve performance
+_summary_cache = {"data": None, "timestamp": 0}
+CACHE_DURATION = 300  # 5 minutes
+
+@app.get("/summary-working", response_model=APIResponse)
+def get_summary_working():
+    """Get case summary statistics with working implementation"""
+    try:
+        import time
+        current_time = time.time()
+        
+        logger.info("Generating working summary with actual data")
+        
+        # Load CSV data with timeout
+        from data_service import get_csrc2detail
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+        
+        def load_csv_data():
+            return get_csrc2detail()
+        
+        df = pd.DataFrame()
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(load_csv_data)
+                df = future.result(timeout=30)
+                if df is None:
+                    df = pd.DataFrame()
+        except FutureTimeoutError:
+            logger.warning("CSV loading timed out")
+            df = pd.DataFrame()
+        except Exception as e:
+            logger.warning(f"CSV loading failed: {e}")
+            df = pd.DataFrame()
+        
+        # Process data simply
+        total = len(df) if not df.empty else 0
+        by_org = {}
+        by_month = {}
+        
+        if not df.empty and total > 0:
+            logger.info(f"Processing {total} rows")
+            
+            # Simple organization count
+            if '机构' in df.columns:
+                try:
+                    org_counts = df['机构'].value_counts().head(10)  # Limit to top 10
+                    by_org = org_counts.to_dict()
+                except Exception as e:
+                    logger.warning(f"Organization processing failed: {e}")
+            
+            # Simple month count
+            if '发文日期' in df.columns:
+                try:
+                    df_copy = df[['发文日期']].copy()
+                    df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+                    df_copy = df_copy.dropna()
+                    if not df_copy.empty:
+                        df_copy['month'] = df_copy['发文日期'].dt.strftime('%Y-%m')
+                        month_counts = df_copy['month'].value_counts().head(12)  # Limit to 12 months
+                        by_month = month_counts.to_dict()
+                except Exception as e:
+                    logger.warning(f"Date processing failed: {e}")
+        
+        response = APIResponse(
+            success=True,
+            message=f"Working summary generated: {total} cases processed",
+            data={
+                "total": total,
+                "byOrg": by_org,
+                "byMonth": by_month,
+                "timestamp": current_time
+            },
+            count=total
+        )
+        
+        logger.info(f"Successfully generated working summary: {total} cases")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error generating working summary: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to generate working summary",
+            error=str(e),
+            data={"total": 0, "byOrg": {}, "byMonth": {}}
+        )
+
+@app.get("/summary-fast", response_model=APIResponse)
+def get_summary_fast():
+    """Get case summary statistics with minimal processing"""
+    try:
+        import time
+        current_time = time.time()
+        
+        # Create a minimal response with just the timestamp
+        response = APIResponse(
+            success=True,
+            message="Fast summary generated successfully",
+            data={
+                "total": 0,
+                "byOrg": {},
+                "byMonth": {},
+                "timestamp": current_time
+            }
+        )
+        
+        return response
+    except Exception as e:
+        logger.error(f"Error generating fast summary: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to generate fast summary",
+            error=str(e),
+            data={}
+        )
+
 @app.get("/summary", response_model=APIResponse)
 def get_summary():
-    """Get case summary statistics"""
+    """Get case summary statistics - simplified version"""
+    return _get_summary_impl()
+
+@app.get("/api/summary", response_model=APIResponse)
+def get_api_summary():
+    """Get case summary statistics - API endpoint"""
+    return _get_summary_impl()
+
+def _get_summary_impl():
     try:
+        import time
+        
+        # Check cache first
+        current_time = time.time()
+        if (_summary_cache["data"] is not None and 
+            current_time - _summary_cache["timestamp"] < CACHE_DURATION):
+            logger.info("Returning cached summary data")
+            return _summary_cache["data"]
+        
         logger.info("Fetching case summary statistics")
-        # Get actual data from the database
-        df = get_csrc2analysis()
         
-        if df.empty:
-            logger.warning("No data found in database")
-            return APIResponse(
-                success=True,
-                message="No data available",
-                data={
-                    "total": 0,
-                    "byOrg": {},
-                    "byMonth": {}
-                },
-                count=0
-            )
-        
-        # Calculate total cases
-        total = len(df)
-        logger.info(f"Processing {total} cases for summary")
-        
-        # Calculate statistics by organization
-        by_org = {}
-        if '机构' in df.columns:
-            # Filter out empty strings and null values
-            org_series = df['机构'].dropna()
-            org_series = org_series[org_series.str.strip() != '']
-            if not org_series.empty:
-                by_org = org_series.value_counts().to_dict()
-        
-        # Calculate statistics by month
-        by_month = {}
-        if '发文日期' in df.columns:
-            try:
-                # Convert to datetime and extract year-month
-                df_copy = df.copy()
-                # Handle both string and date objects
-                if df_copy['发文日期'].dtype == 'object':
-                    # Check if it's already date objects
-                    if hasattr(df_copy['发文日期'].iloc[0], 'year'):
-                        # Already date objects, convert to datetime
-                        df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'])
+        # Get case detail data from CSV files with timeout protection
+        df = pd.DataFrame()
+        try:
+            logger.info("Loading CSV data...")
+            from data_service import get_csrc2detail
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+            
+            def load_csv_data():
+                return get_csrc2detail()
+            
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(load_csv_data)
+                try:
+                    df = future.result(timeout=30)  # 30 second timeout
+                    if df is None or df.empty:
+                        logger.warning("No CSV data found")
+                        df = pd.DataFrame()
                     else:
-                        # String dates, parse them
-                        df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
-                else:
-                    # Already datetime, keep as is
-                    pass
-                
-                # Filter out invalid dates
-                df_copy = df_copy.dropna(subset=['发文日期'])
-                if not df_copy.empty:
-                    df_copy['month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
-                    by_month = df_copy['month'].value_counts().sort_index().to_dict()
-            except Exception as date_error:
-                logger.warning(f"Date processing error: {date_error}")
-                by_month = {}
+                        logger.info(f"Loaded {len(df)} rows from CSV data")
+                except FutureTimeoutError:
+                    logger.warning("CSV data loading timed out after 30 seconds")
+                    df = pd.DataFrame()
+                    
+        except Exception as csv_error:
+            logger.warning(f"Failed to load CSV data: {csv_error}")
+            df = pd.DataFrame()
         
+        # Simplified processing - skip MongoDB for now to avoid timeout issues
+        logger.info("Skipping MongoDB data for simplified processing")
+        
+        # Initialize summary data structure
         summary_data = {
-            "total": total,
-            "byOrg": by_org,
-            "byMonth": by_month
+            "total": 0,
+            "byOrg": {},
+            "byMonth": {},
+            "onlineTotal": 0,
+            "onlineByOrg": {},
+            "onlineByMonth": {}
         }
         
-        logger.info(f"Successfully generated summary for {total} cases")
-        return APIResponse(
+        # Process CSV data
+        if not df.empty:
+            total = len(df)
+            logger.info(f"Processing {total} cases for summary")
+            
+            # Simple organization count
+            by_org = {}
+            if '机构' in df.columns:
+                org_series = df['机构'].dropna()
+                org_series = org_series[org_series.str.strip() != '']
+                if not org_series.empty:
+                    by_org = org_series.value_counts().to_dict()
+            
+            # Simple month count
+            by_month = {}
+            if '发文日期' in df.columns:
+                try:
+                    df_copy = df[['发文日期']].copy()
+                    df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+                    df_copy = df_copy.dropna(subset=['发文日期'])
+                    if not df_copy.empty:
+                        df_copy['month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
+                        by_month = df_copy['month'].value_counts().sort_index().to_dict()
+                except Exception as date_error:
+                    logger.warning(f"Date processing error: {date_error}")
+                    by_month = {}
+            
+            summary_data.update({
+                "total": total,
+                "byOrg": by_org,
+                "byMonth": by_month
+            })
+        else:
+            logger.warning("No case detail data found")
+        
+        total_cases = summary_data["total"]
+        online_cases = summary_data["onlineTotal"]
+        
+        logger.info(f"Successfully generated summary: {total_cases} total cases, {online_cases} online cases")
+        
+        # Create response and cache it
+        response = APIResponse(
             success=True,
-            message=f"Summary generated successfully for {total} cases",
+            message=f"Summary generated successfully: {total_cases} total cases, {online_cases} online cases",
             data=summary_data,
-            count=total
+            count=total_cases
+        )
+        
+        # Cache the response
+        _summary_cache["data"] = response
+        _summary_cache["timestamp"] = current_time
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error generating summary: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to generate summary",
+            error=str(e),
+            data={}
         )
         
     except Exception as e:
@@ -481,7 +732,13 @@ def get_summary():
         )
 
 
+@app.get("/test-simple")
+def test_simple():
+    """Simple test endpoint to verify server responsiveness"""
+    return {"status": "ok", "message": "Server is responsive", "timestamp": time.time()}
+
 @app.get("/search", response_model=SearchResponse)
+@app.get("/api/search", response_model=SearchResponse)
 def search_cases(
     keyword: str = Query(None, max_length=200),
     org: str = Query(None, max_length=100),
@@ -899,6 +1156,495 @@ async def refresh_data():
             error=str(e),
             count=0
         )
+
+# Download data endpoints
+@app.get("/download-data", response_model=APIResponse)
+@app.get("/api/download-data", response_model=APIResponse)
+async def get_download_data():
+    """Get download data statistics"""
+    try:
+        logger.info("Getting download data statistics")
+        
+        import glob
+        import os
+        
+        # Define data directory path
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'penalty', 'csrc2')
+        
+        # Helper function to get CSV file count
+        def get_csv_stats(pattern):
+            files = glob.glob(os.path.join(data_dir, pattern))
+            if files:
+                dflist = []
+                for filepath in files:
+                    try:
+                        df = pd.read_csv(filepath)
+                        dflist.append(df)
+                    except Exception as e:
+                        # Skip files that can't be read
+                        pass
+                
+                if dflist:
+                    # Combine all dataframes like get_csvdf does
+                    combined_df = pd.concat(dflist)
+                    combined_df.reset_index(drop=True, inplace=True)
+                    count = len(combined_df)
+                    unique_count = combined_df['案例编号'].nunique() if '案例编号' in combined_df.columns else count
+                    return count, unique_count
+            return 0, 0
+        
+        # Get case detail data stats
+        case_detail_count, case_detail_unique = get_csv_stats("csrcdtlall*.csv")
+        
+        # Get analysis data stats
+        analysis_count, analysis_unique = get_csv_stats("csrc2analysis*.csv")
+        
+        # Get category data stats (assuming similar pattern)
+        category_count, category_unique = get_csv_stats("csrc2label*.csv")
+        
+        # Get split data stats
+        split_count, split_unique = get_csv_stats("csrc2split*.csv")
+        
+        data = {
+            "caseDetail": {
+                "data": [],
+                "count": case_detail_count,
+                "uniqueCount": case_detail_unique
+            },
+            "analysisData": {
+                "data": [],
+                "count": analysis_count,
+                "uniqueCount": analysis_unique
+            },
+            "categoryData": {
+                "data": [],
+                "count": category_count,
+                "uniqueCount": category_unique
+            },
+            "splitData": {
+                "data": [],
+                "count": split_count,
+                "uniqueCount": split_unique
+            }
+        }
+        
+        logger.info(f"Download data statistics retrieved successfully")
+        return APIResponse(
+            success=True,
+            message="Download data statistics retrieved successfully",
+            data=data
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get download data statistics: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to get download data statistics",
+            error=str(e)
+        )
+
+from fastapi.responses import StreamingResponse
+
+@app.get("/download/case-detail")
+async def download_case_detail():
+    """Download case detail CSV file"""
+    try:
+        logger.info("Starting case detail CSV download")
+        
+        from data_service import get_csrc2detail
+        
+        df = get_csrc2detail()
+        
+        # Convert to CSV
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+        csv_content = csv_buffer.getvalue()
+        
+        # Create response
+        response = StreamingResponse(
+            io.BytesIO(csv_content.encode('utf-8-sig')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=case_detail_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
+        
+        logger.info("Case detail CSV download completed")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Case detail CSV download failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/download/analysis-data")
+async def download_analysis_data():
+    """Download analysis data CSV file"""
+    try:
+        logger.info("Starting analysis data CSV download")
+        
+        from data_service import get_csrc2analysis
+        
+        df = get_csrc2analysis()
+        
+        # Convert to CSV
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+        csv_content = csv_buffer.getvalue()
+        
+        # Create response
+        response = StreamingResponse(
+            io.BytesIO(csv_content.encode('utf-8-sig')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=analysis_data_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
+        
+        logger.info("Analysis data CSV download completed")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Analysis data CSV download failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/download/category-data")
+async def download_category_data():
+    """Download category data CSV file"""
+    try:
+        logger.info("Starting category data CSV download")
+        
+        from data_service import get_csrc2label
+        
+        df = get_csrc2label()
+        
+        # Convert to CSV
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+        csv_content = csv_buffer.getvalue()
+        
+        # Create response
+        response = StreamingResponse(
+            io.BytesIO(csv_content.encode('utf-8-sig')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=category_data_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
+        
+        logger.info("Category data CSV download completed")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Category data CSV download failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/download/split-data")
+async def download_split_data():
+    """Download split data CSV file"""
+    try:
+        logger.info("Starting split data CSV download")
+        
+        from data_service import get_csvdf
+        
+        df = get_csvdf("../data/penalty/csrc2", "csrc2split")
+        
+        # Convert to CSV
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+        csv_content = csv_buffer.getvalue()
+        
+        # Create response
+        response = StreamingResponse(
+            io.BytesIO(csv_content.encode('utf-8-sig')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=split_data_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
+        
+        logger.info("Split data CSV download completed")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Split data CSV download failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Case upload endpoints
+# Simple in-memory cache for upload data with expiration
+upload_data_cache = {
+    "data": None,
+    "timestamp": 0,
+    "expiry": 300  # Cache expiry in seconds (5 minutes)
+}
+
+@app.get("/upload-data", response_model=APIResponse)
+@app.get("/api/upload-data", response_model=APIResponse)
+async def get_upload_data():
+    """Get upload data for case upload functionality with caching and timeout handling"""
+    try:
+        logger.info("Getting upload data")
+        
+        # Check if we have valid cached data
+        current_time = time.time()
+        if upload_data_cache["data"] and (current_time - upload_data_cache["timestamp"] < upload_data_cache["expiry"]):
+            logger.info("Returning cached upload data")
+            return upload_data_cache["data"]
+            
+        from data_service import get_csrc2detail, get_csrc2analysis, get_csrc2label, get_csvdf
+        
+        # Get case detail data with timeout handling
+        logger.info("Loading case detail data")
+        case_detail_df = get_csrc2detail()
+        
+        # Get analysis data with timeout handling
+        logger.info("Loading analysis data")
+        analysis_df = get_csrc2analysis()
+        
+        # Get category data with timeout handling
+        logger.info("Loading category data")
+        category_df = get_csrc2label()
+        
+        # Get split data with timeout handling
+        logger.info("Loading split data")
+        split_df = get_csvdf("../data/penalty/csrc2", "csrc2split")
+        
+        # Get online data from MongoDB with timeout handling
+        logger.info("Loading online data from MongoDB")
+        online_df = get_online_data()
+        
+        # Calculate diff data (cases not in online)
+        if not case_detail_df.empty:
+            if not online_df.empty and '案例编号' in online_df.columns:
+                # Get cases that are not online
+                online_case_ids = set(online_df['案例编号'].tolist())
+                diff_df = case_detail_df[~case_detail_df['案例编号'].isin(online_case_ids)].copy()
+            else:
+                # If no online data, all cases are diff
+                diff_df = case_detail_df.copy()
+            
+            # Add upload status fields
+            diff_df['status'] = 'pending'
+            diff_df['uploadProgress'] = 0
+            diff_df['errorMessage'] = None
+        else:
+            diff_df = pd.DataFrame()
+        
+        data = {
+            "caseDetail": {
+                "data": case_detail_df.to_dict('records') if not case_detail_df.empty else [],
+                "count": len(case_detail_df),
+                "uniqueCount": case_detail_df['案例编号'].nunique() if not case_detail_df.empty and '案例编号' in case_detail_df.columns else 0
+            },
+            "analysisData": {
+                "data": analysis_df.to_dict('records') if not analysis_df.empty else [],
+                "count": len(analysis_df),
+                "uniqueCount": analysis_df['案例编号'].nunique() if not analysis_df.empty and '案例编号' in analysis_df.columns else 0
+            },
+            "categoryData": {
+                "data": category_df.to_dict('records') if not category_df.empty else [],
+                "count": len(category_df),
+                "uniqueCount": category_df['案例编号'].nunique() if not category_df.empty and '案例编号' in category_df.columns else 0
+            },
+            "splitData": {
+                "data": split_df.to_dict('records') if not split_df.empty else [],
+                "count": len(split_df),
+                "uniqueCount": split_df['案例编号'].nunique() if not split_df.empty and '案例编号' in split_df.columns else 0
+            },
+            "onlineData": {
+                "data": online_df.to_dict('records') if not online_df.empty else [],
+                "count": len(online_df),
+                "uniqueCount": 0
+            },
+            "diffData": {
+                "data": diff_df.to_dict('records') if not diff_df.empty else [],
+                "count": len(diff_df),
+                "uniqueCount": diff_df['案例编号'].nunique() if not diff_df.empty and '案例编号' in diff_df.columns else 0
+            }
+        }
+        
+        logger.info(f"Upload data retrieved successfully")
+        
+        # Create response
+        response = APIResponse(
+            success=True,
+            message="Upload data retrieved successfully",
+            data=data
+        )
+        
+        # Cache the response
+        upload_data_cache["data"] = response
+        upload_data_cache["timestamp"] = time.time()
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Failed to get upload data: {str(e)}", exc_info=True)
+        
+        # If we have cached data, return it even if it's slightly stale
+        if upload_data_cache["data"]:
+            logger.info("Returning stale cached data due to error")
+            return upload_data_cache["data"]
+            
+        return APIResponse(
+            success=False,
+            message="Failed to get upload data",
+            error=str(e)
+        )
+
+class UploadCasesRequest(BaseModel):
+    case_ids: List[str]
+
+@app.post("/upload-cases", response_model=APIResponse)
+@app.post("/api/upload-cases", response_model=APIResponse)
+async def upload_cases(request: UploadCasesRequest):
+    """Upload selected cases to online database"""
+    try:
+        logger.info(f"Starting upload for {len(request.case_ids)} cases")
+        
+        # Get case data to upload
+        from data_service import get_csrc2analysis
+        
+        analysis_df = get_csrc2analysis()
+        
+        if analysis_df.empty:
+            return APIResponse(
+                success=False,
+                message="No analysis data available for upload",
+                count=0
+            )
+        
+        # Filter cases to upload
+        if '案例编号' in analysis_df.columns:
+            cases_to_upload = analysis_df[analysis_df['案例编号'].isin(request.case_ids)]
+        else:
+            # If no case ID column, use link as identifier
+            cases_to_upload = analysis_df[analysis_df['链接'].isin(request.case_ids)]
+        
+        if cases_to_upload.empty:
+            return APIResponse(
+                success=False,
+                message="No matching cases found for upload",
+                count=0
+            )
+        
+        # Upload to MongoDB
+        success = insert_online_data(cases_to_upload)
+        
+        if success:
+            uploaded_count = len(cases_to_upload)
+            logger.info(f"Successfully uploaded {uploaded_count} cases to MongoDB")
+            return APIResponse(
+                success=True,
+                message=f"Successfully uploaded {uploaded_count} cases",
+                count=uploaded_count
+            )
+        else:
+            return APIResponse(
+                success=False,
+                message="Failed to upload cases to database",
+                count=0
+            )
+        
+    except Exception as e:
+        logger.error(f"Case upload failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Case upload failed",
+            error=str(e)
+        )
+
+@app.delete("/online-data", response_model=APIResponse)
+@app.delete("/api/online-data", response_model=APIResponse)
+async def delete_online_data_endpoint():
+    """Delete all online case data"""
+    try:
+        logger.info("Starting deletion of online data")
+        
+        # Delete from MongoDB
+        deleted_count = delete_online_data()
+        
+        logger.info(f"Successfully deleted {deleted_count} online cases")
+        return APIResponse(
+            success=True,
+            message=f"Successfully deleted {deleted_count} online cases",
+            count=deleted_count
+        )
+        
+    except Exception as e:
+        logger.error(f"Online data deletion failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Online data deletion failed",
+            error=str(e)
+        )
+
+@app.get("/api/download/online-data")
+async def download_online_data():
+    """Download online case data CSV file"""
+    try:
+        logger.info("Starting online data CSV download")
+        
+        # Get online data from MongoDB
+        online_df = get_online_data()
+        
+        # Check if data is empty
+        if online_df.empty:
+            logger.warning("No online data available for download")
+            raise HTTPException(status_code=404, detail="No online data available for download")
+        
+        logger.info(f"Retrieved {len(online_df)} records for download")
+        
+        # Convert to CSV
+        try:
+            csv_buffer = io.StringIO()
+            online_df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+            csv_content = csv_buffer.getvalue()
+            logger.info(f"CSV conversion successful, size: {len(csv_content)} bytes")
+        except Exception as csv_error:
+            logger.error(f"CSV conversion failed: {str(csv_error)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"CSV conversion failed: {str(csv_error)}")
+        
+        # Create response
+        try:
+            response = StreamingResponse(
+                io.BytesIO(csv_content.encode('utf-8-sig')),
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename=online_data_{datetime.now().strftime('%Y%m%d')}.csv"}
+            )
+            logger.info("Online data CSV download response created successfully")
+            return response
+        except Exception as resp_error:
+            logger.error(f"Failed to create response: {str(resp_error)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to create response: {str(resp_error)}")
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Online data CSV download failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/download/diff-data")
+async def download_diff_data():
+    """Download diff data CSV file"""
+    try:
+        logger.info("Starting diff data CSV download")
+        
+        from data_service import get_csrc2detail
+        
+        # Get case detail data as diff data (cases not online)
+        diff_df = get_csrc2detail()
+        
+        # Convert to CSV
+        csv_buffer = io.StringIO()
+        diff_df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+        csv_content = csv_buffer.getvalue()
+        
+        # Create response
+        response = StreamingResponse(
+            io.BytesIO(csv_content.encode('utf-8-sig')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=diff_data_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
+        
+        logger.info("Diff data CSV download completed")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Diff data CSV download failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

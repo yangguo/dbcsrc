@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   Button,
@@ -17,6 +17,10 @@ import {
   Select,
   Descriptions,
   Steps,
+  Divider,
+  Statistic,
+  Row,
+  Col,
 } from 'antd';
 import {
   CloudUploadOutlined,
@@ -24,22 +28,34 @@ import {
   CheckCircleOutlined,
   SyncOutlined,
   FileTextOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  DiffOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
+import apiClient, { caseApi } from '../services/api';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
 const { Step } = Steps;
 
-interface UploadItem {
-  id: string;
-  title: string;
-  org: string;
-  date: string;
+interface CaseData {
+  链接: string;
+  标题: string;
+  机构: string;
+  发文日期: string;
+  文号?: string;
+  当事人?: string;
+  处罚金额?: number;
+  违规类型?: string;
+  内容?: string;
+}
+
+interface UploadItem extends CaseData {
   status: 'pending' | 'uploading' | 'completed' | 'failed';
   uploadProgress: number;
-  url?: string;
   errorMessage?: string;
-  category?: string;
+  isOnline?: boolean;
 }
 
 interface UploadConfig {
@@ -48,87 +64,145 @@ interface UploadConfig {
   retryCount: number;
 }
 
+interface UploadStats {
+  caseDetailCount: number;
+  caseDetailUniqueCount: number;
+  analysisDataCount: number;
+  analysisDataUniqueCount: number;
+  categoryDataCount: number;
+  categoryDataUniqueCount: number;
+  splitDataCount: number;
+  splitDataUniqueCount: number;
+  onlineDataCount: number;
+  diffDataCount: number;
+}
+
 const CaseUpload: React.FC = () => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  const [onlineData, setOnlineData] = useState<CaseData[]>([]);
+  const [diffData, setDiffData] = useState<UploadItem[]>([]);
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
   const [configVisible, setConfigVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<UploadItem | null>(null);
   const [overallProgress, setOverallProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
+  const [stats, setStats] = useState<UploadStats>({
+    caseDetailCount: 0,
+    caseDetailUniqueCount: 0,
+    analysisDataCount: 0,
+    analysisDataUniqueCount: 0,
+    categoryDataCount: 0,
+    categoryDataUniqueCount: 0,
+    splitDataCount: 0,
+    splitDataUniqueCount: 0,
+    onlineDataCount: 0,
+    diffDataCount: 0,
+  });
   const [uploadConfig, setUploadConfig] = useState<UploadConfig>({
     targetEnvironment: 'staging',
     batchSize: 10,
     retryCount: 3,
   });
 
-  // Mock data for demonstration
-  const mockData: UploadItem[] = [
-    {
-      id: '1',
-      title: '关于对某某公司信息披露违规的处罚决定',
-      org: '北京',
-      date: '2024-01-15',
-      status: 'completed',
-      uploadProgress: 100,
-      url: 'https://example.com/case/1',
-      category: '信息披露违规',
-    },
-    {
-      id: '2',
-      title: '关于对某某证券内幕交易的处罚决定',
-      org: '上海',
-      date: '2024-01-14',
-      status: 'pending',
-      uploadProgress: 0,
-      category: '内幕交易',
-    },
-    {
-      id: '3',
-      title: '关于对某某基金违规操作的处罚决定',
-      org: '深圳',
-      date: '2024-01-13',
-      status: 'failed',
-      uploadProgress: 75,
-      errorMessage: '服务器连接失败',
-      category: '违规操作',
-    },
-  ];
+  // Load upload data
+  const loadUploadData = async () => {
+    try {
+      setDataLoading(true);
+      
+      // Get upload data from backend API with extended timeout
+      const response = await apiClient.get('/api/upload-data', {
+        timeout: 180000, // 3 minutes timeout for this specific request
+      });
+      const data = response.data?.data || {};
+      
+      // Update stats
+      setStats({
+        caseDetailCount: data.caseDetail?.count || 0,
+        caseDetailUniqueCount: data.caseDetail?.uniqueCount || 0,
+        analysisDataCount: data.analysisData?.count || 0,
+        analysisDataUniqueCount: data.analysisData?.uniqueCount || 0,
+        categoryDataCount: data.categoryData?.count || 0,
+        categoryDataUniqueCount: data.categoryData?.uniqueCount || 0,
+        splitDataCount: data.splitData?.count || 0,
+        splitDataUniqueCount: data.splitData?.uniqueCount || 0,
+        onlineDataCount: data.onlineData?.count || 0,
+        diffDataCount: data.diffData?.length || 0,
+      });
+      
+      // Set online data
+      setOnlineData(data.onlineData?.data || []);
+      
+      // Set upload items (analysis data with upload status)
+      const analysisData = data.analysisData?.data || [];
+      const onlineUrls = new Set((data.onlineData?.data || []).map((item: CaseData) => item.链接));
+      
+      const uploadItems: UploadItem[] = analysisData.map((item: CaseData) => ({
+        ...item,
+        status: onlineUrls.has(item.链接) ? 'completed' as const : 'pending' as const,
+        uploadProgress: onlineUrls.has(item.链接) ? 100 : 0,
+        isOnline: onlineUrls.has(item.链接),
+      }));
+      
+      setUploadItems(uploadItems);
+      
+      // Set diff data (items not online)
+      const diffItems = uploadItems.filter(item => !item.isOnline);
+      setDiffData(diffItems);
+      
+    } catch (error: any) {
+      console.error('Failed to load upload data:', error);
+      
+      // Provide more specific error messages
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        message.error('加载数据超时，请检查网络连接或稍后重试');
+      } else if (error.response?.status === 500) {
+        message.error('服务器内部错误，请稍后重试');
+      } else if (error.response?.status === 404) {
+        message.error('数据接口不存在');
+      } else {
+        message.error(`加载上线数据失败: ${error.message || '未知错误'}`);
+      }
+    } finally {
+      setDataLoading(false);
+    }
+  };
 
-  React.useEffect(() => {
-    setUploadItems(mockData);
+  useEffect(() => {
+    loadUploadData();
   }, []);
 
   const columns = [
     {
       title: '案例标题',
-      dataIndex: 'title',
-      key: 'title',
+      dataIndex: '标题',
+      key: '标题',
       ellipsis: true,
       width: '30%',
     },
     {
       title: '机构',
-      dataIndex: 'org',
-      key: 'org',
+      dataIndex: '机构',
+      key: '机构',
       width: '10%',
     },
     {
-      title: '分类',
-      dataIndex: 'category',
-      key: 'category',
+      title: '违规类型',
+      dataIndex: '违规类型',
+      key: '违规类型',
       width: '12%',
       render: (category: string) => (
-        <Tag color="blue">{category}</Tag>
+        category ? <Tag color="blue">{category}</Tag> : '-'
       ),
     },
     {
-      title: '日期',
-      dataIndex: 'date',
-      key: 'date',
+      title: '发文日期',
+      dataIndex: '发文日期',
+      key: '发文日期',
       width: '12%',
     },
     {
@@ -163,7 +237,7 @@ const CaseUpload: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: '21%',
+      width: '15%',
       render: (_: any, record: UploadItem) => (
         <Space>
           <Button
@@ -173,15 +247,6 @@ const CaseUpload: React.FC = () => {
           >
             详情
           </Button>
-          {record.status === 'completed' && record.url && (
-            <Button
-              type="link"
-              icon={<CloudUploadOutlined />}
-              onClick={() => window.open(record.url, '_blank')}
-            >
-              访问
-            </Button>
-          )}
         </Space>
       ),
     },
@@ -204,66 +269,111 @@ const CaseUpload: React.FC = () => {
       setCurrentStep(0);
       
       const selectedItems = uploadItems.filter(item => 
-        selectedRows.includes(item.id) && item.status === 'pending'
+        selectedRows.includes(item.链接) && item.status === 'pending'
       );
+      
+      if (selectedItems.length === 0) {
+        message.warning('没有可上线的案例');
+        return;
+      }
       
       // Step 1: Validation
       setCurrentStep(1);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setOverallProgress(10);
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Step 2: Upload
+      // Step 2: Upload to database
       setCurrentStep(2);
+      setOverallProgress(30);
+      
+      // Update status to uploading for selected items
+      setUploadItems(prev => 
+        prev.map(prevItem => 
+          selectedRows.includes(prevItem.链接)
+            ? { ...prevItem, status: 'uploading' as const, uploadProgress: 0 }
+            : prevItem
+        )
+      );
+      
+      // Call backend API to upload data
+      const response = await apiClient.post('/api/upload-cases', {
+        cases: selectedItems.map(item => ({
+          链接: item.链接,
+          标题: item.标题,
+          机构: item.机构,
+          发文日期: item.发文日期,
+          文号: item.文号,
+          当事人: item.当事人,
+          处罚金额: item.处罚金额,
+          违规类型: item.违规类型,
+          内容: item.内容,
+        })),
+        config: uploadConfig,
+      });
+      
+      setOverallProgress(70);
+      
+      // Update progress for each item
       for (let i = 0; i < selectedItems.length; i++) {
         const item = selectedItems[i];
+        const progress = Math.round(((i + 1) / selectedItems.length) * 100);
         
-        // Update status to uploading
         setUploadItems(prev => 
           prev.map(prevItem => 
-            prevItem.id === item.id
-              ? { ...prevItem, status: 'uploading' as const, uploadProgress: 0 }
+            prevItem.链接 === item.链接
+              ? { ...prevItem, uploadProgress: progress }
               : prevItem
           )
         );
         
-        // Simulate upload progress
-        for (let progress = 0; progress <= 100; progress += 20) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-          setUploadItems(prev => 
-            prev.map(prevItem => 
-              prevItem.id === item.id
-                ? { ...prevItem, uploadProgress: progress }
-                : prevItem
-            )
-          );
-        }
-        
-        // Mark as completed
-        setUploadItems(prev => 
-          prev.map(prevItem => 
-            prevItem.id === item.id
-              ? {
-                  ...prevItem,
-                  status: 'completed' as const,
-                  uploadProgress: 100,
-                  url: `https://example.com/case/${item.id}`,
-                }
-              : prevItem
-          )
-        );
-        
-        setOverallProgress(Math.round(((i + 1) / selectedItems.length) * 100));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
       // Step 3: Verification
       setCurrentStep(3);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setOverallProgress(90);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Mark as completed
+      setUploadItems(prev => 
+        prev.map(prevItem => 
+          selectedRows.includes(prevItem.链接)
+            ? {
+                ...prevItem,
+                status: 'completed' as const,
+                uploadProgress: 100,
+                isOnline: true,
+              }
+            : prevItem
+        )
+      );
+      
+      setOverallProgress(100);
       
       message.success(`批量上线完成，共处理 ${selectedItems.length} 个案例`);
       setSelectedRows([]);
+      
+      // Reload data to get updated stats
+      setTimeout(() => {
+        loadUploadData();
+      }, 1000);
+      
     } catch (error) {
       message.error('批量上线失败');
       console.error('Batch upload error:', error);
+      
+      // Mark failed items
+      setUploadItems(prev => 
+        prev.map(prevItem => 
+          selectedRows.includes(prevItem.链接)
+            ? {
+                ...prevItem,
+                status: 'failed' as const,
+                errorMessage: '上线失败，请重试',
+              }
+            : prevItem
+        )
+      );
     } finally {
       setLoading(false);
       setOverallProgress(0);
@@ -291,6 +401,68 @@ const CaseUpload: React.FC = () => {
     message.success(`已重置 ${failedItems.length} 个失败任务`);
   };
 
+  const handleDeleteOnlineData = async () => {
+    try {
+      setLoading(true);
+      await apiClient.delete('/online-cases');
+      message.success('在线案例数据删除成功');
+      loadUploadData();
+    } catch (error) {
+      message.error('删除在线数据失败');
+      console.error('Delete error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadOnlineData = async () => {
+    try {
+      setLoading(true);
+      message.info('正在下载在线数据，请稍候...');
+      
+      const blob = await caseApi.downloadOnlineData();
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `online_csrc2analysis_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      message.success('在线数据下载成功');
+    } catch (error) {
+      message.error('下载在线数据失败');
+      console.error('Download error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadDiffData = async () => {
+    try {
+      const response = await apiClient.get('/api/download/diff-data', {
+        responseType: 'blob',
+      });
+      
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `diff_csrc2analysis_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      message.success('差异数据下载成功');
+    } catch (error) {
+      message.error('下载差异数据失败');
+      console.error('Download error:', error);
+    }
+  };
+
   const handleConfigSave = (values: UploadConfig) => {
     setUploadConfig(values);
     setConfigVisible(false);
@@ -307,18 +479,18 @@ const CaseUpload: React.FC = () => {
     }),
   };
 
-  const getStatusCounts = () => {
-    const counts = {
-      total: uploadItems.length,
-      pending: uploadItems.filter(item => item.status === 'pending').length,
-      uploading: uploadItems.filter(item => item.status === 'uploading').length,
-      completed: uploadItems.filter(item => item.status === 'completed').length,
-      failed: uploadItems.filter(item => item.status === 'failed').length,
-    };
-    return counts;
-  };
+  const pendingCount = uploadItems.filter(item => item.status === 'pending').length;
+  const uploadingCount = uploadItems.filter(item => item.status === 'uploading').length;
+  const completedCount = uploadItems.filter(item => item.status === 'completed').length;
+  const failedCount = uploadItems.filter(item => item.status === 'failed').length;
 
-  const statusCounts = getStatusCounts();
+  const statusCounts = {
+    total: uploadItems.length,
+    pending: pendingCount,
+    uploading: uploadingCount,
+    completed: completedCount,
+    failed: failedCount,
+  };
 
   const uploadSteps = [
     {
@@ -341,6 +513,75 @@ const CaseUpload: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Data Statistics */}
+      <Card title="数据统计" loading={dataLoading}>
+        <Row gutter={[16, 16]}>
+          <Col span={6}>
+            <Statistic
+              title="案例数据量"
+              value={stats.analysisDataCount}
+              suffix={`/ ${stats.analysisDataUniqueCount} 唯一`}
+              prefix={<DatabaseOutlined />}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="分类数据量"
+              value={stats.categoryDataCount}
+              suffix={`/ ${stats.categoryDataUniqueCount} 唯一`}
+              prefix={<FileTextOutlined />}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="在线数据量"
+              value={stats.onlineDataCount}
+              prefix={<CloudUploadOutlined />}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="差异数据量"
+              value={stats.diffDataCount}
+              prefix={<DiffOutlined />}
+            />
+          </Col>
+        </Row>
+        
+        <Divider />
+        
+        <Space>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={handleDownloadOnlineData}
+          >
+            下载在线数据
+          </Button>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={handleDownloadDiffData}
+            disabled={stats.diffDataCount === 0}
+          >
+            下载差异数据
+          </Button>
+          <Button
+            icon={<DeleteOutlined />}
+            danger
+            onClick={handleDeleteOnlineData}
+            disabled={stats.onlineDataCount === 0}
+          >
+            删除在线数据
+          </Button>
+          <Button
+            icon={<SyncOutlined />}
+            onClick={loadUploadData}
+            loading={dataLoading}
+          >
+            刷新数据
+          </Button>
+        </Space>
+      </Card>
+
       {/* Status Overview */}
       <Card title="上线状态概览">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -418,9 +659,9 @@ const CaseUpload: React.FC = () => {
         <Table
           columns={columns}
           dataSource={uploadItems}
-          rowKey="id"
+          rowKey="链接"
           rowSelection={rowSelection}
-          loading={loading}
+          loading={loading || dataLoading}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
@@ -493,16 +734,6 @@ const CaseUpload: React.FC = () => {
         open={detailVisible}
         onCancel={() => setDetailVisible(false)}
         footer={[
-          selectedItem?.status === 'completed' && selectedItem?.url && (
-            <Button
-              key="visit"
-              type="primary"
-              icon={<CloudUploadOutlined />}
-              onClick={() => selectedItem?.url && window.open(selectedItem.url, '_blank')}
-            >
-              访问链接
-            </Button>
-          ),
           <Button key="close" onClick={() => setDetailVisible(false)}>
             关闭
           </Button>,
@@ -512,16 +743,40 @@ const CaseUpload: React.FC = () => {
         {selectedItem && (
           <Descriptions column={1} bordered>
             <Descriptions.Item label="案例标题">
-              {selectedItem.title}
+              {selectedItem.标题}
             </Descriptions.Item>
             <Descriptions.Item label="机构">
-              {selectedItem.org}
+              {selectedItem.机构}
             </Descriptions.Item>
-            <Descriptions.Item label="分类">
-              <Tag color="blue">{selectedItem.category}</Tag>
+            <Descriptions.Item label="违规类型">
+              {selectedItem.违规类型 ? (
+                <Tag color="blue">{selectedItem.违规类型}</Tag>
+              ) : (
+                '-'
+              )}
             </Descriptions.Item>
-            <Descriptions.Item label="日期">
-              {selectedItem.date}
+            <Descriptions.Item label="发文日期">
+              {selectedItem.发文日期}
+            </Descriptions.Item>
+            {selectedItem.文号 && (
+              <Descriptions.Item label="文号">
+                {selectedItem.文号}
+              </Descriptions.Item>
+            )}
+            {selectedItem.当事人 && (
+              <Descriptions.Item label="当事人">
+                {selectedItem.当事人}
+              </Descriptions.Item>
+            )}
+            {selectedItem.处罚金额 && (
+              <Descriptions.Item label="处罚金额">
+                {selectedItem.处罚金额.toLocaleString()} 元
+              </Descriptions.Item>
+            )}
+            <Descriptions.Item label="链接">
+              <a href={selectedItem.链接} target="_blank" rel="noopener noreferrer">
+                {selectedItem.链接}
+              </a>
             </Descriptions.Item>
             <Descriptions.Item label="上线状态">
               <Tag color={
@@ -540,13 +795,6 @@ const CaseUpload: React.FC = () => {
             {selectedItem.status === 'uploading' && (
               <Descriptions.Item label="上线进度">
                 <Progress percent={selectedItem.uploadProgress} />
-              </Descriptions.Item>
-            )}
-            {selectedItem.url && (
-              <Descriptions.Item label="访问链接">
-                <a href={selectedItem.url} target="_blank" rel="noopener noreferrer">
-                  {selectedItem.url}
-                </a>
               </Descriptions.Item>
             )}
             {selectedItem.errorMessage && (

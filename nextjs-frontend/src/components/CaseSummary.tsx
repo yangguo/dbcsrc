@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Card, Row, Col, Statistic, Spin, Alert } from 'antd';
-import { FileTextOutlined, BankOutlined, CalendarOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Statistic, Spin, Alert, Button } from 'antd';
+import { FileTextOutlined, BankOutlined, CalendarOutlined, ReloadOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { caseApi, CaseSummary as CaseSummaryType } from '@/services/api';
 
@@ -21,12 +21,30 @@ const CaseSummary: React.FC = () => {
       setError(null);
       const summaryData = await caseApi.getSummary();
       setData(summaryData);
-    } catch (err) {
-      setError('获取数据失败，请稍后重试');
+    } catch (err: any) {
       console.error('Error fetching summary:', err);
+      
+      // Provide more specific error messages
+      let errorMessage = '获取数据失败，请稍后重试';
+      
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        errorMessage = '请求超时，数据加载时间较长，请稍后重试';
+      } else if (err.response?.status === 500) {
+        errorMessage = '服务器内部错误，请联系管理员';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'API接口未找到，请检查服务器配置';
+      } else if (!navigator.onLine) {
+        errorMessage = '网络连接异常，请检查网络设置';
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRetry = () => {
+    fetchSummary();
   };
 
   const getOrgChartOption = () => {
@@ -126,7 +144,7 @@ const CaseSummary: React.FC = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <Spin size="large" tip="加载中...">
+        <Spin size="large" tip="正在加载案例数据，请稍候...">
           <div className="h-32 w-32" />
         </Spin>
       </div>
@@ -136,17 +154,20 @@ const CaseSummary: React.FC = () => {
   if (error) {
     return (
       <Alert
-        message="错误"
+        message="数据加载失败"
         description={error}
         type="error"
         showIcon
         action={
-          <button
-            className="ant-btn ant-btn-primary ant-btn-sm"
-            onClick={fetchSummary}
+          <Button
+            type="primary"
+            size="small"
+            icon={<ReloadOutlined />}
+            onClick={handleRetry}
+            loading={loading}
           >
             重试
-          </button>
+          </Button>
         }
       />
     );

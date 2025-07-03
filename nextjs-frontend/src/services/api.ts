@@ -1,16 +1,34 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 120000, // Increased to 120 seconds for data-heavy operations
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor
+// Create a separate client for upload data with longer timeout
+const uploadDataClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 180000, // 3 minutes for upload data operations
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Create a separate client for download operations with longer timeout
+const downloadClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 300000, // 5 minutes for download operations
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor for apiClient
 apiClient.interceptors.request.use(
   (config) => {
     // Add auth token if available
@@ -25,8 +43,38 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// Response interceptor for apiClient
 apiClient.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    if (error.response?.status === 401) {
+      // Handle unauthorized access
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Request interceptor for downloadClient
+downloadClient.interceptors.request.use(
+  (config) => {
+    // Add auth token if available
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for downloadClient
+downloadClient.interceptors.response.use(
   (response) => {
     return response;
   },
@@ -80,21 +128,71 @@ export interface AttachmentAnalysis {
 
 // API functions
 export const caseApi = {
-  // Get case summary
-  getSummary: async (): Promise<CaseSummary> => {
-    const response = await apiClient.get('/summary');
-    return response.data.data;
+  // Get case summary with retry mechanism
+  getSummary: async (retries: number = 2): Promise<CaseSummary> => {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        console.log(`Fetching summary data (attempt ${attempt + 1}/${retries + 1})`);
+        const response = await apiClient.get('/api/summary');
+        return response.data.data;
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`Summary fetch attempt ${attempt + 1} failed:`, error.message);
+        
+        // Don't retry on client errors (4xx) or if it's the last attempt
+        if (error.response?.status >= 400 && error.response?.status < 500) {
+          break;
+        }
+        
+        if (attempt < retries) {
+          // Wait before retrying (exponential backoff)
+          const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw lastError;
   },
 
   // Search cases
   searchCases: async (params: SearchParams): Promise<{ data: CaseDetail[]; total: number }> => {
-    const response = await apiClient.get('/search', { params });
+    const response = await apiClient.get('/api/search', { params });
     return response.data;
   },
 
   // Update cases
   updateCases: async (params: UpdateParams): Promise<{ success: boolean; count: number }> => {
     const response = await apiClient.post('/update', params);
+    return response.data;
+  },
+
+  // 案例上线相关API
+  getUploadData: async (): Promise<any> => {
+    const response = await apiClient.get('/api/upload-data');
+    return response.data;
+  },
+
+  uploadCases: async (caseIds: string[]): Promise<{ message: string }> => {
+    const response = await apiClient.post('/api/upload-cases', { case_ids: caseIds });
+    return response.data;
+  },
+
+  deleteOnlineData: async (): Promise<{ message: string }> => {
+    const response = await apiClient.delete('/api/online-data');
+    return response.data;
+  },
+
+  downloadOnlineData: async (): Promise<Blob> => {
+    const response = await apiClient.get('/api/download/online-data', { responseType: 'blob' });
+    return response.data;
+  },
+
+  downloadDiffData: async (): Promise<Blob> => {
+    const response = await apiClient.get('/api/download/diff-data', { responseType: 'blob' });
     return response.data;
   },
 
@@ -206,6 +304,46 @@ export const caseApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+    });
+    return response.data;
+  },
+
+  // Download data functions
+  getDownloadData: async (): Promise<{
+    caseDetail: { data: any[]; count: number; uniqueCount: number };
+    analysisData: { data: any[]; count: number; uniqueCount: number };
+    categoryData: { data: any[]; count: number; uniqueCount: number };
+    splitData: { data: any[]; count: number; uniqueCount: number };
+  }> => {
+    const response = await apiClient.get('/api/download-data');
+    return response.data.data;
+  },
+
+  // Download CSV files
+  downloadCaseDetail: async (): Promise<Blob> => {
+    const response = await apiClient.get('/api/download/case-detail', {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  downloadAnalysisData: async (): Promise<Blob> => {
+    const response = await apiClient.get('/api/download/analysis-data', {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  downloadCategoryData: async (): Promise<Blob> => {
+    const response = await apiClient.get('/api/download/category-data', {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  downloadSplitData: async (): Promise<Blob> => {
+    const response = await apiClient.get('/api/download/split-data', {
+      responseType: 'blob',
     });
     return response.data;
   },
