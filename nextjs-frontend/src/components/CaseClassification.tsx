@@ -43,25 +43,15 @@ interface BatchResult {
 
 const CaseClassification: React.FC = () => {
   const { message } = App.useApp();
-  const [form] = Form.useForm();
-  const [batchForm] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-  const [singleResult, setSingleResult] = useState<ClassificationResult[] | null>(null);
-  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [resultModalVisible, setResultModalVisible] = useState(false);
 
-  const predefinedLabels = [
-    '信息披露违规',
-    '内幕交易',
-    '市场操纵',
-    '违规减持',
-    '资金占用',
-    '关联交易',
-    '财务造假',
-    '违规担保',
-    '其他违规行为',
-  ];
+  const [loading, setLoading] = useState(false);
+
+  const [penaltyResult, setPenaltyResult] = useState<any>(null);
+  const [penaltyBatchResults, setPenaltyBatchResults] = useState<any[]>([]);
+  const [penaltyFileList, setPenaltyFileList] = useState<UploadFile[]>([]);
+  const [penaltyResultModalVisible, setPenaltyResultModalVisible] = useState(false);
+
+
 
   const handleGenerateLabels = async () => {
     try {
@@ -76,109 +66,81 @@ const CaseClassification: React.FC = () => {
     }
   };
 
-  const handleSingleClassify = async (values: any) => {
+
+
+
+
+
+
+  const handleSinglePenaltyAnalysis = async (values: any) => {
     try {
       setLoading(true);
-      const labels = values.labels || predefinedLabels;
-      
-      const result = await caseApi.classifyCases({
-        article: values.text,
-        candidateLabels: labels,
-        multiLabel: values.multiLabel || false,
-      });
-      
-      setSingleResult(result.predictions || []);
-      message.success('分类完成');
+      const result = await caseApi.analyzePenalty(values.penaltyText);
+      setPenaltyResult(result.data?.result?.data || null);
+      message.success('行政处罚分析完成');
     } catch (error) {
-      message.error('分类失败');
-      console.error('Classification error:', error);
+      message.error('行政处罚分析失败');
+      console.error('Penalty analysis error:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBatchClassify = async (values: any) => {
-    if (fileList.length === 0) {
+  const handleBatchPenaltyAnalysis = async (values: any) => {
+    if (penaltyFileList.length === 0) {
       message.error('请上传文件');
       return;
     }
 
     try {
       setLoading(true);
-      const file = fileList[0].originFileObj as File;
-      const labels = values.batchLabels || predefinedLabels;
+      const file = penaltyFileList[0].originFileObj as File;
       
-      const result = await caseApi.batchClassify(file, {
-        idCol: values.idCol,
-        contentCol: values.contentCol,
-        candidateLabels: labels,
-        multiLabel: values.batchMultiLabel || false,
+      const result = await caseApi.batchAnalyzePenalty(file, {
+        idCol: values.penaltyIdCol,
+        contentCol: values.penaltyContentCol,
       });
       
-      setBatchResults(result.data || []);
-      setResultModalVisible(true);
-      message.success(`批量分类完成，处理了 ${result.data?.length || 0} 条记录`);
+      setPenaltyBatchResults(result.data?.result?.data || []);
+      setPenaltyResultModalVisible(true);
+      message.success(`批量行政处罚分析完成，处理了 ${result.data?.result?.data?.length || 0} 条记录`);
     } catch (error) {
-      message.error('批量分类失败');
-      console.error('Batch classification error:', error);
+      message.error('批量行政处罚分析失败');
+      console.error('Batch penalty analysis error:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const downloadBatchResults = () => {
-    if (batchResults.length === 0) return;
+  const downloadPenaltyBatchResults = () => {
+    if (penaltyBatchResults.length === 0) return;
     
     const csvContent = [
-      ['ID', '文本', '预测标签', '置信度'].join(','),
-      ...batchResults.map(result => [
-        result.id,
-        `"${result.text.replace(/"/g, '""')}"`,
-        result.predictions.map(p => p.label).join(';'),
-        result.predictions.map(p => p.score.toFixed(3)).join(';'),
+      ['ID', '行政处罚决定书文号', '被处罚当事人', '主要违法违规事实', '行政处罚依据', '行政处罚决定', '作出处罚决定的机关名称', '作出处罚决定的日期', '行业', '罚款总金额', '违规类型', '监管地区'].join(','),
+      ...penaltyBatchResults.map(result => [
+        result.id || '',
+        `"${(result['行政处罚决定书文号'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['被处罚当事人'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['主要违法违规事实'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['行政处罚依据'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['行政处罚决定'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['作出处罚决定的机关名称'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['作出处罚决定的日期'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['行业'] || '').toString().replace(/"/g, '""')}"`,
+        result['罚款总金额'] || '',
+        `"${(result['违规类型'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['监管地区'] || '').toString().replace(/"/g, '""')}"`,
       ].join(','))
     ].join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'classification_results.csv';
+    link.download = 'penalty_analysis_results.csv';
     link.click();
   };
 
-  const batchColumns = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: '15%',
-    },
-    {
-      title: '文本内容',
-      dataIndex: 'text',
-      key: 'text',
-      ellipsis: true,
-      width: '40%',
-    },
-    {
-      title: '预测结果',
-      dataIndex: 'predictions',
-      key: 'predictions',
-      width: '45%',
-      render: (predictions: ClassificationResult[]) => (
-        <Space direction="vertical" size="small">
-          {predictions.slice(0, 3).map((pred, index) => (
-            <Tag
-              key={index}
-              color={pred.score > 0.7 ? 'green' : pred.score > 0.4 ? 'orange' : 'red'}
-            >
-              {pred.label}: {(pred.score * 100).toFixed(1)}%
-            </Tag>
-          ))}
-        </Space>
-      ),
-    },
-  ];
+
 
   return (
     <div className="space-y-6">
@@ -199,82 +161,90 @@ const CaseClassification: React.FC = () => {
         </div>
       </Card>
 
-      {/* Single Text Classification */}
-      <Card title="单文本分类">
+
+
+
+
+      {/* Single Penalty Analysis */}
+      <Card title="单个行政处罚分析">
         <Form
-          form={form}
           layout="vertical"
-          onFinish={handleSingleClassify}
+          onFinish={handleSinglePenaltyAnalysis}
         >
           <Form.Item
-            label="输入文本"
-            name="text"
-            rules={[{ required: true, message: '请输入要分类的文本' }]}
+            label="行政处罚决定书文本"
+            name="penaltyText"
+            rules={[{ required: true, message: '请输入行政处罚决定书文本' }]}
           >
             <TextArea
-              rows={6}
-              placeholder="请输入要分类的案例文本..."
+              rows={8}
+              placeholder="请输入完整的行政处罚决定书文本..."
             />
-          </Form.Item>
-          
-          <Form.Item
-            label="候选标签"
-            name="labels"
-            tooltip="留空则使用预定义标签"
-          >
-            <Select
-              mode="tags"
-              placeholder="输入自定义标签或使用预定义标签"
-              allowClear
-            >
-              {predefinedLabels.map(label => (
-                <Option key={label} value={label}>{label}</Option>
-              ))}
-            </Select>
-          </Form.Item>
-          
-          <Form.Item name="multiLabel" valuePropName="checked">
-            <Checkbox>多标签分类</Checkbox>
           </Form.Item>
           
           <Form.Item>
             <Button
               type="primary"
               htmlType="submit"
-              icon={<TagsOutlined />}
+              icon={<FileTextOutlined />}
               loading={loading}
             >
-              开始分类
+              开始分析
             </Button>
           </Form.Item>
         </Form>
         
-        {/* Single Classification Results */}
-        {singleResult && (
+        {/* Single Penalty Analysis Results */}
+        {penaltyResult && (
           <div className="mt-6">
             <Divider />
-            <Title level={5}>分类结果</Title>
-            <Space direction="vertical" size="small">
-              {singleResult.map((result, index) => (
-                <Tag
-                  key={index}
-                  color={result.score > 0.7 ? 'green' : result.score > 0.4 ? 'orange' : 'red'}
-                  className="text-sm py-1 px-2"
-                >
-                  {result.label}: {(result.score * 100).toFixed(2)}%
-                </Tag>
-              ))}
-            </Space>
+            <Title level={5}>分析结果</Title>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Text strong>行政处罚决定书文号：</Text>
+                <div className="mb-2">{penaltyResult['行政处罚决定书文号'] || '未提取'}</div>
+                
+                <Text strong>被处罚当事人：</Text>
+                <div className="mb-2">{penaltyResult['被处罚当事人'] || '未提取'}</div>
+                
+                <Text strong>作出处罚决定的机关名称：</Text>
+                <div className="mb-2">{penaltyResult['作出处罚决定的机关名称'] || '未提取'}</div>
+                
+                <Text strong>作出处罚决定的日期：</Text>
+                <div className="mb-2">{penaltyResult['作出处罚决定的日期'] || '未提取'}</div>
+                
+                <Text strong>行业：</Text>
+                <div className="mb-2">{penaltyResult['行业'] || '未提取'}</div>
+                
+                <Text strong>罚款总金额：</Text>
+                <div className="mb-2">{penaltyResult['罚款总金额'] || '未提取'}</div>
+              </div>
+              <div>
+                <Text strong>违规类型：</Text>
+                <div className="mb-2">{penaltyResult['违规类型'] || '未提取'}</div>
+                
+                <Text strong>监管地区：</Text>
+                <div className="mb-2">{penaltyResult['监管地区'] || '未提取'}</div>
+                
+                <Text strong>主要违法违规事实：</Text>
+                <div className="mb-2 max-h-20 overflow-y-auto">{penaltyResult['主要违法违规事实'] || '未提取'}</div>
+                
+                <Text strong>行政处罚依据：</Text>
+                <div className="mb-2 max-h-20 overflow-y-auto">{penaltyResult['行政处罚依据'] || '未提取'}</div>
+                
+                <Text strong>行政处罚决定：</Text>
+                <div className="mb-2 max-h-20 overflow-y-auto">{penaltyResult['行政处罚决定'] || '未提取'}</div>
+              </div>
+            </div>
           </div>
         )}
       </Card>
 
-      {/* Batch Classification */}
-      <Card title="批量分类">
+      {/* Batch Penalty Analysis */}
+      <Card title="批量行政处罚分析">
         <Form
-          form={batchForm}
           layout="vertical"
-          onFinish={handleBatchClassify}
+          onFinish={handleBatchPenaltyAnalysis}
         >
           <Form.Item
             label="上传文件"
@@ -282,8 +252,8 @@ const CaseClassification: React.FC = () => {
             tooltip="支持 CSV 格式文件"
           >
             <Upload
-              fileList={fileList}
-              onChange={({ fileList }) => setFileList(fileList)}
+              fileList={penaltyFileList}
+              onChange={({ fileList }) => setPenaltyFileList(fileList)}
               beforeUpload={() => false}
               accept=".csv"
               maxCount={1}
@@ -295,7 +265,7 @@ const CaseClassification: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Form.Item
               label="ID 字段"
-              name="idCol"
+              name="penaltyIdCol"
               rules={[{ required: true, message: '请输入 ID 字段名' }]}
             >
               <Input placeholder="例如: id" />
@@ -303,32 +273,12 @@ const CaseClassification: React.FC = () => {
             
             <Form.Item
               label="内容字段"
-              name="contentCol"
+              name="penaltyContentCol"
               rules={[{ required: true, message: '请输入内容字段名' }]}
             >
               <Input placeholder="例如: content" />
             </Form.Item>
           </div>
-          
-          <Form.Item
-            label="候选标签"
-            name="batchLabels"
-            tooltip="留空则使用预定义标签"
-          >
-            <Select
-              mode="tags"
-              placeholder="输入自定义标签或使用预定义标签"
-              allowClear
-            >
-              {predefinedLabels.map(label => (
-                <Option key={label} value={label}>{label}</Option>
-              ))}
-            </Select>
-          </Form.Item>
-          
-          <Form.Item name="batchMultiLabel" valuePropName="checked">
-            <Checkbox>多标签分类</Checkbox>
-          </Form.Item>
           
           <Form.Item>
             <Button
@@ -336,45 +286,110 @@ const CaseClassification: React.FC = () => {
               htmlType="submit"
               icon={<FileTextOutlined />}
               loading={loading}
-              disabled={fileList.length === 0}
+              disabled={penaltyFileList.length === 0}
             >
-              开始批量分类
+              开始批量分析
             </Button>
           </Form.Item>
         </Form>
       </Card>
 
-      {/* Batch Results Modal */}
+
+
+      {/* Batch Penalty Analysis Results Modal */}
       <Modal
-        title="批量分类结果"
-        open={resultModalVisible}
-        onCancel={() => setResultModalVisible(false)}
-        width={1000}
+        title="批量行政处罚分析结果"
+        open={penaltyResultModalVisible}
+        onCancel={() => setPenaltyResultModalVisible(false)}
+        width={1200}
         footer={[
           <Button
             key="download"
             type="primary"
             icon={<DownloadOutlined />}
-            onClick={downloadBatchResults}
+            onClick={downloadPenaltyBatchResults}
           >
             下载结果
           </Button>,
-          <Button key="close" onClick={() => setResultModalVisible(false)}>
+          <Button key="close" onClick={() => setPenaltyResultModalVisible(false)}>
             关闭
           </Button>,
         ]}
       >
         <Table
-          columns={batchColumns}
-          dataSource={batchResults}
-          rowKey="id"
+          columns={[
+            {
+              title: 'ID',
+              dataIndex: 'id',
+              key: 'id',
+              width: '8%',
+            },
+            {
+              title: '决定书文号',
+              dataIndex: '行政处罚决定书文号',
+              key: 'documentNumber',
+              width: '15%',
+              ellipsis: true,
+            },
+            {
+              title: '被处罚当事人',
+              dataIndex: '被处罚当事人',
+              key: 'penalizedParty',
+              width: '12%',
+              ellipsis: true,
+            },
+            {
+              title: '处罚机关',
+              dataIndex: '作出处罚决定的机关名称',
+              key: 'authority',
+              width: '12%',
+              ellipsis: true,
+            },
+            {
+              title: '罚款金额',
+              dataIndex: '罚款总金额',
+              key: 'fineAmount',
+              width: '10%',
+              render: (amount: any) => amount || '未提取',
+            },
+            {
+              title: '违规类型',
+              dataIndex: '违规类型',
+              key: 'violationType',
+              width: '12%',
+              ellipsis: true,
+            },
+            {
+              title: '行业',
+              dataIndex: '行业',
+              key: 'industry',
+              width: '8%',
+              ellipsis: true,
+            },
+            {
+              title: '监管地区',
+              dataIndex: '监管地区',
+              key: 'region',
+              width: '10%',
+              ellipsis: true,
+            },
+            {
+              title: '作出处罚决定的日期',
+              dataIndex: '作出处罚决定的日期',
+              key: 'date',
+              width: '13%',
+              ellipsis: true,
+            },
+          ]}
+          dataSource={penaltyBatchResults}
+          rowKey={(record, index) => record.id || index}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
             showTotal: (total, range) =>
               `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
           }}
-          scroll={{ x: 800 }}
+          scroll={{ x: 1000 }}
         />
       </Modal>
     </div>

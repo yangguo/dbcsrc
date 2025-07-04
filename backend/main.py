@@ -26,11 +26,15 @@ from contextlib import asynccontextmanager
 
 # Import your existing modules
 try:
-    from classifier import df2label, get_class
+    from classifier import df2label, get_class, extract_penalty_info, df2penalty_analysis
 except ImportError:
     def get_class(*args, **kwargs):
         return {"labels": ["未分类"], "scores": [1.0]}
     def df2label(*args, **kwargs):
+        return pd.DataFrame()
+    def extract_penalty_info(*args, **kwargs):
+        return {"success": False, "error": "LLM analysis not available"}
+    def df2penalty_analysis(*args, **kwargs):
         return pd.DataFrame()
 
 try:
@@ -470,6 +474,9 @@ class CaseSearchRequest(BaseModel):
             except ValueError:
                 raise ValueError('Date must be in YYYY-MM-DD format')
         return v
+
+class PenaltyAnalysisRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=50000, description="行政处罚决定书文本内容")
 
 @app.get("/")
 def read_root():
@@ -1096,6 +1103,63 @@ async def people_analysis(
         return APIResponse(
             success=False,
             message="People analysis failed",
+            error=str(e)
+        )
+
+@app.post("/penalty-analysis", response_model=APIResponse)
+async def penalty_analysis(request: PenaltyAnalysisRequest):
+    """Extract key information from administrative penalty decision using LLM"""
+    try:
+        logger.info("Starting penalty analysis with LLM")
+        
+        # Extract penalty information using LLM
+        result = extract_penalty_info(request.text)
+        
+        logger.info("Penalty analysis completed successfully")
+        return APIResponse(
+            success=True,
+            message="Penalty analysis completed successfully",
+            data={"result": result}
+        )
+        
+    except Exception as e:
+        logger.error(f"Penalty analysis failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Penalty analysis failed",
+            error=str(e)
+        )
+
+@app.post("/batch-penalty-analysis", response_model=APIResponse)
+async def batch_penalty_analysis(
+    file: UploadFile = File(...),
+    idcol: str = Query(...),
+    contentcol: str = Query(...)
+):
+    """Batch extract key information from administrative penalty decisions using LLM"""
+    try:
+        logger.info(f"Starting batch penalty analysis from file: {file.filename}")
+        
+        contents = file.file.read()
+        file_obj = io.BytesIO(contents)
+        df = pd.read_csv(file_obj)
+        
+        logger.info(f"Processing {len(df)} rows for penalty analysis")
+        result_df = df2penalty_analysis(df, idcol, contentcol)
+        
+        logger.info(f"Batch penalty analysis completed successfully for {len(result_df)} records")
+        return APIResponse(
+            success=True,
+            message=f"Batch penalty analysis completed for {len(result_df)} records",
+            data={"results": result_df.to_dict('records')},
+            count=len(result_df)
+        )
+        
+    except Exception as e:
+        logger.error(f"Batch penalty analysis failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Batch penalty analysis failed",
             error=str(e)
         )
 

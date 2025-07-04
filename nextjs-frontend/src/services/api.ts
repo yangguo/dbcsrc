@@ -308,6 +308,30 @@ export const caseApi = {
     return response.data;
   },
 
+  // Analyze single penalty case
+  analyzePenalty: async (text: string): Promise<any> => {
+    const response = await apiClient.post('/penalty-analysis', { text });
+    return response.data;
+  },
+
+  // Batch analyze penalty cases
+  batchAnalyzePenalty: async (file: File, params: {
+    idCol: string;
+    contentCol: string;
+  }): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('idcol', params.idCol);
+    formData.append('contentcol', params.contentCol);
+    
+    const response = await apiClient.post('/batch-penalty-analysis', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   // Download data functions
   getDownloadData: async (): Promise<{
     caseDetail: { data: any[]; count: number; uniqueCount: number };

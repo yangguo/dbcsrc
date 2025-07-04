@@ -101,3 +101,132 @@ def df2label(df, idcol, contentcol, candidate_labels, multi_label=False):
     # savename = "csrc2label" + get_nowdate()
     # savedf2(tempdf1, savename)
     return tempdf
+
+
+def extract_penalty_info(text):
+    """使用LLM提取行政处罚决定书关键信息"""
+    try:
+        # 构建提示词
+        prompt = f"""你是一个文本信息抽取模型。
+请从以下文本中提取以下关键信息，并以 JSON 格式输出：
+  "行政处罚决定书文号",
+  "被处罚当事人",
+  "主要违法违规事实",
+  "行政处罚依据"（列出所有详细条文）,
+  "行政处罚决定",
+  "作出处罚决定的机关名称"，
+  "作出处罚决定的日期"，
+  "行业",
+  "罚款总金额"，（数字形式）
+  "违规类型"，
+  "监管地区" （相关省份）。
+重要提示：将输出格式化为JSON。只返回JSON响应，不添加其他评论或文本。如果返回的文本不是JSON，将视为失败。
+
+输入文本：{text}"""
+        
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "你是一个专业的文本信息抽取助手。请严格按照要求以JSON格式返回结果。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=1500
+        )
+        
+        # 解析响应
+        result_text = response.choices[0].message.content.strip()
+        try:
+            # 尝试解析JSON
+            result = json.loads(result_text)
+            return {
+                "success": True,
+                "data": result
+            }
+        except json.JSONDecodeError:
+            # 如果JSON解析失败，尝试提取JSON部分
+            import re
+            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group())
+                    return {
+                        "success": True,
+                        "data": result
+                    }
+                except json.JSONDecodeError:
+                    pass
+            
+            return {
+                "success": False,
+                "error": "无法解析LLM返回的JSON格式",
+                "raw_response": result_text
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"LLM分析失败: {str(e)}"
+        }
+
+
+def df2penalty_analysis(df, idcol, contentcol):
+    """批量处理行政处罚决定书信息提取"""
+    artls = df[contentcol].tolist()
+    urls = df[idcol].tolist()
+    
+    results = []
+    
+    for i, (article, url) in enumerate(zip(artls, urls)):
+        print(f"处理第 {i+1}/{len(artls)} 条记录: {url}")
+        
+        # 提取信息
+        analysis_result = extract_penalty_info(str(article))
+        
+        if analysis_result["success"]:
+            # 成功提取信息
+            extracted_data = analysis_result["data"]
+            result_row = {
+                "id": url,
+                "行政处罚决定书文号": extracted_data.get("行政处罚决定书文号", ""),
+                "被处罚当事人": extracted_data.get("被处罚当事人", ""),
+                "主要违法违规事实": extracted_data.get("主要违法违规事实", ""),
+                "行政处罚依据": extracted_data.get("行政处罚依据", ""),
+                "行政处罚决定": extracted_data.get("行政处罚决定", ""),
+                "作出处罚决定的机关名称": extracted_data.get("作出处罚决定的机关名称", ""),
+                "作出处罚决定的日期": extracted_data.get("作出处罚决定的日期", ""),
+                "行业": extracted_data.get("行业", ""),
+                "罚款总金额": extracted_data.get("罚款总金额", ""),
+                "违规类型": extracted_data.get("违规类型", ""),
+                "监管地区": extracted_data.get("监管地区", ""),
+                "analysis_status": "success"
+            }
+        else:
+            # 提取失败
+            result_row = {
+                "id": url,
+                "行政处罚决定书文号": "",
+                "被处罚当事人": "",
+                "主要违法违规事实": "",
+                "行政处罚依据": "",
+                "行政处罚决定": "",
+                "作出处罚决定的机关名称": "",
+                "作出处罚决定的日期": "",
+                "行业": "",
+                "罚款总金额": "",
+                "违规类型": "",
+                "监管地区": "",
+                "analysis_status": "failed",
+                "error": analysis_result.get("error", "未知错误")
+            }
+        
+        results.append(result_row)
+        
+        # 每处理10条记录保存一次临时结果
+        if (i + 1) % 10 == 0:
+            temp_df = pd.DataFrame(results)
+            savename = f"penalty_analysis_temp_{i + 1}"
+            savetemp(temp_df, savename)
+    
+    # 返回最终结果
+    return pd.DataFrame(results)
