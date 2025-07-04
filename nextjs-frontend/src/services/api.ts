@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 120000, // Increased to 120 seconds for data-heavy operations
+  timeout: 300000, // Increased to 300 seconds (5 minutes) for data-heavy operations
   headers: {
     'Content-Type': 'application/json',
   },
@@ -94,6 +94,15 @@ export interface CaseSummary {
   byMonth: Record<string, number>;
 }
 
+export interface OrgSummaryItem {
+  orgName: string;
+  caseCount: number;
+  percentage: number;
+  minDate: string;
+  maxDate: string;
+  dateRange: string;
+}
+
 export interface CaseDetail {
   id: string;
   title: string;
@@ -140,6 +149,36 @@ export const caseApi = {
       } catch (error: any) {
         lastError = error;
         console.warn(`Summary fetch attempt ${attempt + 1} failed:`, error.message);
+        
+        // Don't retry on client errors (4xx) or if it's the last attempt
+        if (error.response?.status >= 400 && error.response?.status < 500) {
+          break;
+        }
+        
+        if (attempt < retries) {
+          // Wait before retrying (exponential backoff)
+          const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw lastError;
+  },
+
+  // Get organization summary with date ranges
+  getOrgSummary: async (retries: number = 2): Promise<OrgSummaryItem[]> => {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        console.log(`Fetching organization summary data (attempt ${attempt + 1}/${retries + 1})`);
+        const response = await apiClient.get('/api/org-summary');
+        return response.data.data;
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`Organization summary fetch attempt ${attempt + 1} failed:`, error.message);
         
         // Don't retry on client errors (4xx) or if it's the last attempt
         if (error.response?.status >= 400 && error.response?.status < 500) {

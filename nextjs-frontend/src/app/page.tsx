@@ -18,7 +18,6 @@ import AttachmentProcessing from '@/components/AttachmentProcessing';
 import CaseClassification from '@/components/CaseClassification';
 import CaseDownload from '@/components/CaseDownload';
 import CaseUpload from '@/components/CaseUpload';
-import DebugApiTest from '@/components/DebugApiTest';
 
 const { Header, Sider, Content } = Layout;
 
@@ -69,12 +68,7 @@ const menuItems: MenuItem[] = [
 const renderContent = (selectedKey: string) => {
   switch (selectedKey) {
     case 'summary':
-      return (
-        <div>
-          <CaseSummary />
-          <DebugApiTest />
-        </div>
-      );
+      return <CaseSummary />;
     case 'search':
       return <CaseSearch />;
     case 'update':
@@ -88,12 +82,7 @@ const renderContent = (selectedKey: string) => {
     case 'upload':
       return <CaseUpload />;
     default:
-      return (
-        <div>
-          <CaseSummary />
-          <DebugApiTest />
-        </div>
-      );
+      return <CaseSummary />;
   }
 };
 

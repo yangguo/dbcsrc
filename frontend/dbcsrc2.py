@@ -1152,7 +1152,23 @@ def count_by_province(city_ls, count_ls):
 
 
 def print_pie(namels, valuels, title):
-    data = pd.DataFrame({"names": namels, "values": valuels})
+    # Sort data by values in descending order
+    sorted_data = sorted(zip(namels, valuels), key=lambda x: x[1], reverse=True)
+    
+    # Limit to top 10 items and group others
+    if len(sorted_data) > 10:
+        top_data = sorted_data[:10]
+        others_sum = sum(value for _, value in sorted_data[10:])
+        
+        # Add "其他" category if there are remaining items
+        if others_sum > 0:
+            top_data.append(("其他", others_sum))
+        
+        names, values = zip(*top_data)
+    else:
+        names, values = namels, valuels
+    
+    data = pd.DataFrame({"names": names, "values": values})
 
     fig = px.pie(
         data,
@@ -1161,7 +1177,32 @@ def print_pie(namels, valuels, title):
         title=title,
         labels={"names": "名称", "values": "数量"},
     )
-    fig.update_traces(textinfo="label+percent", insidetextorientation="radial")
+    
+    # Improve layout for better readability
+    fig.update_traces(
+        textinfo="label+percent", 
+        insidetextorientation="radial",
+        textfont_size=10,
+        # Show percentage only for slices smaller than 3%
+        texttemplate="%{label}<br>%{percent}" if len(names) <= 8 else "%{percent}",
+        hole=0.3,  # Create donut chart for better readability
+    )
+    
+    # Update layout for better spacing
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.2,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=10)
+        ),
+        margin=dict(t=80, b=80, l=50, r=50),
+        height=500,
+    )
+    
     # Display the chart
     event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
 
@@ -1170,7 +1211,7 @@ def print_pie(namels, valuels, title):
     if monthselected == []:
         clickevent = None
     else:
-        clickevent = namels[monthselected[0]]
+        clickevent = names[monthselected[0]]
 
     return fig, clickevent
 

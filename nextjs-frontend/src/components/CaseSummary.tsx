@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Card, Row, Col, Statistic, Spin, Alert, Button } from 'antd';
+import { Card, Row, Col, Statistic, Spin, Alert, Button, Table } from 'antd';
 import { FileTextOutlined, BankOutlined, CalendarOutlined, ReloadOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import { caseApi, CaseSummary as CaseSummaryType } from '@/services/api';
+import { caseApi, CaseSummary as CaseSummaryType, OrgSummaryItem } from '@/services/api';
 
 const CaseSummary: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<CaseSummaryType | null>(null);
+  const [orgData, setOrgData] = useState<OrgSummaryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,8 +20,15 @@ const CaseSummary: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const summaryData = await caseApi.getSummary();
+      
+      // Fetch both summary and organization data in parallel
+      const [summaryData, orgSummaryData] = await Promise.all([
+        caseApi.getSummary(),
+        caseApi.getOrgSummary()
+      ]);
+      
       setData(summaryData);
+      setOrgData(orgSummaryData);
     } catch (err: any) {
       console.error('Error fetching summary:', err);
       
@@ -50,37 +58,90 @@ const CaseSummary: React.FC = () => {
   const getOrgChartOption = () => {
     if (!data?.byOrg) return {};
     
-    const orgData = Object.entries(data.byOrg).map(([name, value]) => ({
+    // Sort by value and limit to top 15 institutions to avoid overcrowding
+    const sortedOrgData = Object.entries(data.byOrg)
+      .sort(([, a], [, b]) => (b as number) - (a as number))
+      .slice(0, 15);
+    
+    // Group smaller institutions into "其他" category
+    const topOrgData = sortedOrgData.slice(0, 10);
+    const otherOrgData = sortedOrgData.slice(10);
+    
+    let orgData = topOrgData.map(([name, value]) => ({
       name,
       value,
     }));
+    
+    // Add "其他" category if there are more institutions
+    if (otherOrgData.length > 0) {
+      const otherSum = otherOrgData.reduce((sum, [, value]) => sum + (value as number), 0);
+      orgData.push({
+        name: '其他',
+        value: otherSum,
+      });
+    }
 
     return {
       title: {
         text: '各机构案例分布',
         left: 'center',
+        top: 10,
       },
       tooltip: {
         trigger: 'item',
         formatter: '{a} <br/>{b}: {c} ({d}%)',
       },
       legend: {
-        orient: 'vertical',
-        left: 'left',
+        type: 'scroll',
+        orient: 'horizontal',
+        bottom: 0,
+        left: 'center',
+        itemWidth: 10,
+        itemHeight: 10,
+        textStyle: {
+          fontSize: 10,
+        },
+        pageButtonItemGap: 5,
+        pageIconSize: 10,
       },
       series: [
         {
           name: '案例数量',
           type: 'pie',
-          radius: '50%',
+          radius: ['20%', '60%'], // Use donut chart for better readability
+          center: ['50%', '45%'], // Adjust center to accommodate bottom legend
           data: orgData,
+          label: {
+            show: true,
+            position: 'outside',
+            formatter: function(params: any) {
+              // Only show label for slices larger than 3%
+              if (params.percent < 3) {
+                return '';
+              }
+              return `${params.name}\n${params.percent}%`;
+            },
+            fontSize: 10,
+          },
+          labelLine: {
+            show: true,
+            length: 15,
+            length2: 10,
+          },
           emphasis: {
             itemStyle: {
               shadowBlur: 10,
               shadowOffsetX: 0,
               shadowColor: 'rgba(0, 0, 0, 0.5)',
             },
+            label: {
+              show: true,
+              fontSize: 12,
+              fontWeight: 'bold',
+            },
           },
+          // Set minimum angle for small slices to improve readability
+          minAngle: 5,
         },
       ],
     };
@@ -140,6 +201,63 @@ const CaseSummary: React.FC = () => {
       ],
     };
   };
+
+  const getOrgTableData = () => {
+    if (!orgData || orgData.length === 0) return [];
+    
+    return orgData.map((org, index) => ({
+      key: index + 1,
+      rank: index + 1,
+      orgName: org.orgName,
+      caseCount: org.caseCount,
+      percentage: org.percentage.toFixed(2),
+      dateRange: org.dateRange,
+    }));
+  };
+
+  const orgTableColumns = [
+    {
+      title: '排名',
+      dataIndex: 'rank',
+      key: 'rank',
+      width: 80,
+      align: 'center' as const,
+    },
+    {
+      title: '机构名称',
+      dataIndex: 'orgName',
+      key: 'orgName',
+      ellipsis: true,
+    },
+    {
+      title: '案例数量',
+      dataIndex: 'caseCount',
+      key: 'caseCount',
+      width: 120,
+      align: 'right' as const,
+      sorter: (a: any, b: any) => a.caseCount - b.caseCount,
+    },
+    {
+      title: '占比 (%)',
+      dataIndex: 'percentage',
+      key: 'percentage',
+      width: 100,
+      align: 'right' as const,
+      render: (value: string) => `${value}%`,
+    },
+    {
+      title: '案例时间范围',
+      dataIndex: 'dateRange',
+      key: 'dateRange',
+      width: 180,
+      align: 'center' as const,
+      render: (value: string) => (
+        <span className="text-gray-600 text-sm">
+          {value}
+        </span>
+      ),
+    },
+  ];
 
   if (loading) {
     return (
@@ -212,18 +330,39 @@ const CaseSummary: React.FC = () => {
       {/* Charts */}
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Card title="机构分布" className="h-96">
+          <Card title="机构分布" className="h-[480px]">
             <ReactECharts
               option={getOrgChartOption()}
-              style={{ height: '300px' }}
+              style={{ height: '400px' }}
             />
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title="时间趋势" className="h-96">
+          <Card title="时间趋势" className="h-[480px]">
             <ReactECharts
               option={getMonthChartOption()}
-              style={{ height: '300px' }}
+              style={{ height: '400px' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Organization Summary Table */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24}>
+          <Card title="机构案例数量汇总表">
+            <Table
+              columns={orgTableColumns}
+              dataSource={getOrgTableData()}
+              pagination={{
+                pageSize: 20,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total, range) => 
+                  `第 ${range[0]}-${range[1]} 条，共 ${total} 个机构`,
+              }}
+              scroll={{ y: 400 }}
+              size="small"
             />
           </Card>
         </Col>

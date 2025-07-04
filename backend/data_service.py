@@ -36,9 +36,9 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(search_files)
             try:
-                files = future.result(timeout=15)  # 15 second timeout
+                files = future.result(timeout=30)  # Increased to 30 second timeout for file search
             except FutureTimeoutError:
-                print(f"File search timed out after 15 seconds in {penfolder}")
+                print(f"File search timed out after 30 seconds in {penfolder}")
                 return pd.DataFrame()
         
         search_time = time.time() - start_time
@@ -47,11 +47,6 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
         if not files:
             print(f"No CSV files found matching pattern: {beginwith}*.csv in {penfolder}")
             return pd.DataFrame()
-        
-        # Limit the number of files to process to avoid memory issues
-        if len(files) > 50:
-            print(f"Warning: Found {len(files)} files, limiting to first 50 for performance")
-            files = files[:50]
         
         dflist = []
         
@@ -66,17 +61,11 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(read_single_file)
                     try:
-                        df = future.result(timeout=10)  # 10 second timeout per file
+                        df = future.result(timeout=20)  # Increased to 20 second timeout per file
                         dflist.append(df)
                     except FutureTimeoutError:
                         print(f"Timeout reading {filepath}, skipping")
                         continue
-                
-                # Limit total rows to prevent memory issues
-                total_rows = sum(len(df) for df in dflist)
-                if total_rows > 100000:
-                    print(f"Warning: Reached 100k rows limit, stopping file processing")
-                    break
                     
             except Exception as e:
                 print(f"Error reading {filepath}: {e}")

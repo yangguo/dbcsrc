@@ -507,11 +507,11 @@ def get_summary_working():
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(load_csv_data)
-                df = future.result(timeout=30)
+                df = future.result(timeout=120)  # Increased to 120 second timeout
                 if df is None:
                     df = pd.DataFrame()
         except FutureTimeoutError:
-            logger.warning("CSV loading timed out")
+            logger.warning("CSV loading timed out after 120 seconds")
             df = pd.DataFrame()
         except Exception as e:
             logger.warning(f"CSV loading failed: {e}")
@@ -609,6 +609,92 @@ def get_api_summary():
     """Get case summary statistics - API endpoint"""
     return _get_summary_impl()
 
+@app.get("/api/org-summary", response_model=APIResponse)
+def get_org_summary():
+    """Get organization summary with case counts and date ranges"""
+    try:
+        logger.info("Fetching organization summary with date ranges")
+        
+        # Get case detail data from CSV files
+        df = pd.DataFrame()
+        try:
+            from data_service import get_csrc2detail
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+            
+            def load_csv_data():
+                return get_csrc2detail()
+            
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(load_csv_data)
+                try:
+                    df = future.result(timeout=120)
+                    if df is None or df.empty:
+                        logger.warning("No CSV data found")
+                        df = pd.DataFrame()
+                    else:
+                        logger.info(f"Loaded {len(df)} rows from CSV data")
+                except FutureTimeoutError:
+                    logger.warning("CSV data loading timed out after 120 seconds")
+                    df = pd.DataFrame()
+                    
+        except Exception as csv_error:
+            logger.warning(f"Failed to load CSV data: {csv_error}")
+            df = pd.DataFrame()
+        
+        org_summary = []
+        
+        if not df.empty and '机构' in df.columns and '发文日期' in df.columns:
+            # Process organization data with date ranges
+            df_copy = df.copy()
+            
+            # Clean and parse dates
+            df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+            df_copy = df_copy.dropna(subset=['发文日期', '机构'])
+            df_copy = df_copy[df_copy['机构'].str.strip() != '']
+            
+            if not df_copy.empty:
+                # Group by organization and calculate statistics
+                org_groups = df_copy.groupby('机构').agg({
+                    '发文日期': ['count', 'min', 'max']
+                }).reset_index()
+                
+                # Flatten column names
+                org_groups.columns = ['orgName', 'caseCount', 'minDate', 'maxDate']
+                
+                # Sort by case count and take top organizations
+                org_groups = org_groups.sort_values('caseCount', ascending=False).head(50)
+                
+                total_cases = len(df_copy)
+                
+                for _, row in org_groups.iterrows():
+                    org_data = {
+                        'orgName': row['orgName'],
+                        'caseCount': int(row['caseCount']),
+                        'percentage': round((row['caseCount'] / total_cases) * 100, 2),
+                        'minDate': row['minDate'].strftime('%Y-%m') if pd.notna(row['minDate']) else '',
+                        'maxDate': row['maxDate'].strftime('%Y-%m') if pd.notna(row['maxDate']) else '',
+                        'dateRange': f"{row['minDate'].strftime('%Y-%m')} 至 {row['maxDate'].strftime('%Y-%m')}" if pd.notna(row['minDate']) and pd.notna(row['maxDate']) else '暂无数据'
+                    }
+                    org_summary.append(org_data)
+        
+        logger.info(f"Generated organization summary for {len(org_summary)} organizations")
+        
+        return APIResponse(
+            success=True,
+            message=f"Organization summary generated successfully: {len(org_summary)} organizations",
+            data=org_summary,
+            count=len(org_summary)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating organization summary: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to generate organization summary",
+            error=str(e),
+            data=[]
+        )
+
 def _get_summary_impl():
     try:
         import time
@@ -635,14 +721,14 @@ def _get_summary_impl():
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(load_csv_data)
                 try:
-                    df = future.result(timeout=30)  # 30 second timeout
+                    df = future.result(timeout=120)  # Increased to 120 second timeout
                     if df is None or df.empty:
                         logger.warning("No CSV data found")
                         df = pd.DataFrame()
                     else:
                         logger.info(f"Loaded {len(df)} rows from CSV data")
                 except FutureTimeoutError:
-                    logger.warning("CSV data loading timed out after 30 seconds")
+                    logger.warning("CSV data loading timed out after 120 seconds")
                     df = pd.DataFrame()
                     
         except Exception as csv_error:
@@ -673,7 +759,7 @@ def _get_summary_impl():
                 org_series = df['机构'].dropna()
                 org_series = org_series[org_series.str.strip() != '']
                 if not org_series.empty:
-                    by_org = org_series.value_counts().to_dict()
+                    by_org = org_series.value_counts().head(15).to_dict()  # Limit to top 15 for better chart readability
             
             # Simple month count
             by_month = {}
@@ -684,7 +770,7 @@ def _get_summary_impl():
                     df_copy = df_copy.dropna(subset=['发文日期'])
                     if not df_copy.empty:
                         df_copy['month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
-                        by_month = df_copy['month'].value_counts().sort_index().to_dict()
+                        by_month = df_copy['month'].value_counts().sort_index().tail(24).to_dict()  # Limit to last 24 months for better readability
                 except Exception as date_error:
                     logger.warning(f"Date processing error: {date_error}")
                     by_month = {}
