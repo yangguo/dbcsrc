@@ -454,6 +454,12 @@ export const caseApi = {
     });
     return response.data;
   },
+
+  // Generate labels for case classification
+  generateLabels: async (): Promise<any> => {
+    const response = await apiClient.post('/generate-labels');
+    return response.data;
+  },
 };
 
 export default apiClient;

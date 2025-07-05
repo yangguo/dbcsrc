@@ -2060,6 +2060,111 @@ async def upload_cases(request: UploadCasesRequest):
             error=str(e)
         )
 
+@app.post("/generate-labels", response_model=APIResponse)
+async def generate_labels():
+    """Generate labels for case classification training - following frontend logic"""
+    try:
+        logger.info("Starting label generation for case classification")
+        
+        from data_service import get_csrc2analysis, get_csrc2cat, get_csrc2split
+        
+        # Get analysis data (equivalent to newdf in frontend)
+        analysis_df = get_csrc2analysis()
+        
+        if analysis_df.empty:
+            return APIResponse(
+                success=False,
+                message="No analysis data available for label generation"
+            )
+        
+        # Get all analysis case URLs
+        analysis_urls = analysis_df["链接"].tolist()
+        
+        # Get category data (equivalent to amtdf in frontend)
+        category_df = get_csrc2cat()
+        if category_df.empty:
+            old_category_urls = []
+        else:
+            old_category_urls = category_df["id"].tolist()
+        
+        # Get split data (equivalent to splitdf in frontend)
+        split_df = get_csrc2split()
+        if split_df.empty:
+            old_split_urls = []
+        else:
+            old_split_urls = split_df["id"].tolist()
+        
+        # Find cases that need category labeling (not in category data)
+        new_category_urls = [x for x in analysis_urls if x not in old_category_urls]
+        category_update_df = analysis_df[analysis_df["链接"].isin(new_category_urls)].copy()
+        category_update_df.reset_index(drop=True, inplace=True)
+        
+        # Find cases that need split labeling (not in split data)
+        new_split_urls = [x for x in analysis_urls if x not in old_split_urls]
+        split_update_df = analysis_df[analysis_df["链接"].isin(new_split_urls)].copy()
+        split_update_df.reset_index(drop=True, inplace=True)
+        
+        # Prepare data for labeling
+        label_data = {
+            "category_cases": [],
+            "split_cases": [],
+            "category_count": len(category_update_df),
+            "split_count": len(split_update_df)
+        }
+        
+        # Process category cases
+        for _, row in category_update_df.iterrows():
+            label_data["category_cases"].append({
+                "id": row.get('链接', ''),
+                "title": row.get('名称', ''),
+                "content": row.get('内容', '')[:500] + '...' if len(str(row.get('内容', ''))) > 500 else row.get('内容', ''),
+                "org": row.get('机构', ''),
+                "date": str(row.get('发文日期', '')),
+                "wenhao": row.get('文号', ''),
+                "status": "pending_category_label",
+                "type": "category"
+            })
+        
+        # Process split cases
+        for _, row in split_update_df.iterrows():
+            label_data["split_cases"].append({
+                "id": row.get('链接', ''),
+                "title": row.get('名称', ''),
+                "content": row.get('内容', '')[:500] + '...' if len(str(row.get('内容', ''))) > 500 else row.get('内容', ''),
+                "org": row.get('机构', ''),
+                "date": str(row.get('发文日期', '')),
+                "wenhao": row.get('文号', ''),
+                "status": "pending_split_label",
+                "type": "split"
+            })
+        
+        total_cases = len(label_data["category_cases"]) + len(label_data["split_cases"])
+        
+        if total_cases == 0:
+            return APIResponse(
+                success=True,
+                message="所有数据已更新，无需标注",
+                data=label_data,
+                count=0
+            )
+        
+        logger.info(f"Generated {total_cases} cases for labeling (Category: {len(label_data['category_cases'])}, Split: {len(label_data['split_cases'])})")
+        
+        return APIResponse(
+            success=True,
+            message=f"成功生成 {total_cases} 条待标注案例 (分类: {len(label_data['category_cases'])}条, 拆分: {len(label_data['split_cases'])}条)",
+            data=label_data,
+            count=total_cases
+        )
+        
+    except Exception as e:
+        logger.error(f"Label generation failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Label generation failed",
+            error=str(e)
+        )
+
 @app.delete("/online-data", response_model=APIResponse)
 @app.delete("/api/online-data", response_model=APIResponse)
 async def delete_online_data_endpoint():

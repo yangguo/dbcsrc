@@ -44,7 +44,97 @@ interface BatchResult {
 const CaseClassification: React.FC = () => {
   const { message } = App.useApp();
 
+  // Label results table columns
+  const labelColumns = [
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 100,
+      ellipsis: true,
+    },
+    {
+      title: '标题',
+      dataIndex: 'title',
+      key: 'title',
+      width: 200,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text}</span>
+      ),
+    },
+    {
+      title: '文号',
+      dataIndex: 'wenhao',
+      key: 'wenhao',
+      width: 150,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
+      ),
+    },
+    {
+      title: '内容',
+      dataIndex: 'content',
+      key: 'content',
+      width: 300,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 100)}...</span>
+      ),
+    },
+    {
+      title: '机构',
+      dataIndex: 'organization',
+      key: 'organization',
+      width: 150,
+      ellipsis: true,
+    },
+    {
+      title: '日期',
+      dataIndex: 'date',
+      key: 'date',
+      width: 120,
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
+      width: 100,
+      render: (type: string) => (
+        <Tag color={type === 'category' ? 'blue' : 'green'}>
+          {type === 'category' ? '分类' : '拆分'}
+        </Tag>
+      ),
+    },
+    {
+       title: '状态',
+       dataIndex: 'status',
+       key: 'status',
+       width: 120,
+       render: (status: string) => {
+         let color = 'orange';
+         let text = '待标注';
+         
+         if (status === 'pending_category_label') {
+           color = 'orange';
+           text = '待分类标注';
+         } else if (status === 'pending_split_label') {
+           color = 'purple';
+           text = '待拆分标注';
+         } else if (status) {
+           text = status;
+         }
+         
+         return <Tag color={color}>{text}</Tag>;
+       },
+     },
+  ];
+
   const [loading, setLoading] = useState(false);
+  const [categoryResults, setCategoryResults] = useState<any[]>([]);
+  const [splitResults, setSplitResults] = useState<any[]>([]);
+  const [labelResultsVisible, setLabelResultsVisible] = useState(false);
 
   const [penaltyResult, setPenaltyResult] = useState<any>(null);
   const [penaltyBatchResults, setPenaltyBatchResults] = useState<any[]>([]);
@@ -56,11 +146,24 @@ const CaseClassification: React.FC = () => {
   const handleGenerateLabels = async () => {
     try {
       setLoading(true);
-      const result = await caseApi.generateLabels();
-      message.success('标签生成完成');
+      const response = await caseApi.generateLabels();
+      if (response.success) {
+        // Separate category and split cases
+        setCategoryResults(response.data.category_cases || []);
+        setSplitResults(response.data.split_cases || []);
+        setLabelResultsVisible(true);
+        
+        if (response.count > 0) {
+          message.success(response.message);
+        } else {
+          message.info(response.message || '所有数据已更新，无需标注');
+        }
+      } else {
+        message.error(response.message || '生成标签失败');
+      }
     } catch (error) {
-      message.error('标签生成失败');
       console.error('Generate labels error:', error);
+      message.error('生成标签失败');
     } finally {
       setLoading(false);
     }
@@ -112,6 +215,92 @@ const CaseClassification: React.FC = () => {
     }
   };
 
+  const downloadCategoryResults = () => {
+    if (categoryResults.length === 0) {
+      message.warning('没有待分类数据可下载');
+      return;
+    }
+
+    // 准备CSV数据
+    const csvData = categoryResults.map(item => ({
+       'ID': item.id || '',
+       '标题': item.title || '',
+       '文号': item.wenhao || '',
+       '内容': item.content || '',
+       '机构': item.org || '',
+       '日期': item.date || '',
+       '类型': '待分类标注',
+       '状态': '待分类标注'
+     }));
+
+    // 转换为CSV格式
+    const headers = Object.keys(csvData[0]);
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => 
+        headers.map(header => 
+          `"${String(row[header as keyof typeof row]).replace(/"/g, '""')}"`
+        ).join(',')
+      )
+    ].join('\n');
+
+    // 创建下载链接
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `待分类案例_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    message.success('下载成功');
+  };
+
+  const downloadSplitResults = () => {
+    if (splitResults.length === 0) {
+      message.warning('没有待拆分数据可下载');
+      return;
+    }
+
+    // 准备CSV数据
+    const csvData = splitResults.map(item => ({
+       'ID': item.id || '',
+       '标题': item.title || '',
+       '文号': item.wenhao || '',
+       '内容': item.content || '',
+       '机构': item.org || '',
+       '日期': item.date || '',
+       '类型': '待拆分标注',
+       '状态': '待拆分标注'
+     }));
+
+    // 转换为CSV格式
+    const headers = Object.keys(csvData[0]);
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => 
+        headers.map(header => 
+          `"${String(row[header as keyof typeof row]).replace(/"/g, '""')}"`
+        ).join(',')
+      )
+    ].join('\n');
+
+    // 创建下载链接
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `待拆分案例_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    message.success('下载成功');
+  };
+
   const downloadPenaltyBatchResults = () => {
     if (penaltyBatchResults.length === 0) return;
     
@@ -158,6 +347,67 @@ const CaseClassification: React.FC = () => {
           >
             生成待标签文本
           </Button>
+          
+          {/* Label Results */}
+          {labelResultsVisible && (
+            <>
+              {categoryResults.length > 0 && (
+                <div className="mt-6">
+                  <Divider />
+                  <div className="flex justify-between items-center mb-4">
+                    <Title level={4}>待分类数据 ({categoryResults.length} 条)</Title>
+                    <Button
+                      icon={<DownloadOutlined />}
+                      onClick={downloadCategoryResults}
+                    >
+                      下载待分类数据
+                    </Button>
+                  </div>
+                  <Table
+                    dataSource={categoryResults}
+                    columns={labelColumns}
+                    rowKey="id"
+                    pagination={{
+                      pageSize: 10,
+                      showSizeChanger: true,
+                      showQuickJumper: true,
+                      showTotal: (total) => `共 ${total} 条记录`,
+                    }}
+                    scroll={{ x: 1200 }}
+                    size="small"
+                  />
+                </div>
+              )}
+              
+              {splitResults.length > 0 && (
+                <div className="mt-6">
+                  <Divider />
+                  <div className="flex justify-between items-center mb-4">
+                    <Title level={4}>待拆分标注数据 ({splitResults.length} 条)</Title>
+                    <Button
+                      icon={<DownloadOutlined />}
+                      onClick={downloadSplitResults}
+                    >
+                      下载待拆分数据
+                    </Button>
+                  </div>
+                  <Table
+                    dataSource={splitResults}
+                    columns={labelColumns}
+                    rowKey="id"
+                    pagination={{
+                      pageSize: 10,
+                      showSizeChanger: true,
+                      showQuickJumper: true,
+                      showTotal: (total) => `共 ${total} 条记录`,
+                    }}
+                    scroll={{ x: 1200 }}
+                    size="small"
+                  />
+                </div>
+              )}
+            </>
+          )}
         </div>
       </Card>
 
