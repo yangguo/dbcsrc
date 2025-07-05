@@ -11,7 +11,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
-from database import delete_data, get_collection, get_data
+from database import get_collection, get_data
 from dbcsrc import get_csvdf, get_now, get_nowdate
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -1775,16 +1775,22 @@ def sum_amount_by_month(df):
 def uplink_csrcsum():
     st.markdown("#### 案例数据上线")
 
-    # get old sumeventdf
-    oldsum2 = get_csrc2detail()
-    # get lengh
-    oldlen = len(oldsum2)
-    st.write("案例数据量：" + str(oldlen))
-    # get id nunique
-    oldidn = oldsum2["链接"].nunique()
-    st.write("案例数据id数：" + str(oldidn))
-    # drop duplicate by id
-    oldsum2.drop_duplicates(subset=["链接"], inplace=True)
+    try:
+        # get old sumeventdf
+        oldsum2 = get_csrc2detail()
+        # get lengh
+        oldlen = len(oldsum2)
+        st.write("案例数据量：" + str(oldlen))
+        # get id nunique
+        oldidn = oldsum2["链接"].nunique()
+        st.write("案例数据id数：" + str(oldidn))
+        # drop duplicate by id
+        oldsum2.drop_duplicates(subset=["链接"], inplace=True)
+    except Exception as e:
+        st.error(f"获取案例数据时出错: {str(e)}")
+        oldsum2 = pd.DataFrame()
+        oldlen = 0
+        oldidn = 0
 
     # detailname
     # detailname = "csrcdtlall" + get_nowdate() + ".csv"
@@ -1814,39 +1820,57 @@ def uplink_csrcsum():
 
     # labelname = "csrc2label" + get_nowdate() + ".csv"
     # download analysis data
-    analysisdf = get_csrc2analysis()
-    # get lengh
-    analysislen = len(analysisdf)
-    st.write("分析数据量：" + str(analysislen))
-    # get id nunique
-    analysisidn = analysisdf["链接"].nunique()
-    st.write("分析数据id数：" + str(analysisidn))
-    # drop duplicate by id
-    analysisdf.drop_duplicates(subset=["链接"], inplace=True)
+    try:
+        analysisdf = get_csrc2analysis()
+        # get lengh
+        analysislen = len(analysisdf)
+        st.write("分析数据量：" + str(analysislen))
+        # get id nunique
+        analysisidn = analysisdf["链接"].nunique()
+        st.write("分析数据id数：" + str(analysisidn))
+        # drop duplicate by id
+        analysisdf.drop_duplicates(subset=["链接"], inplace=True)
+    except Exception as e:
+        st.error(f"获取分析数据时出错: {str(e)}")
+        analysisdf = pd.DataFrame()
+        analysislen = 0
+        analysisidn = 0
 
     # download amount data
-    amountdf = get_csrc2cat()
-    # get lengh
-    amountlen = len(amountdf)
-    st.write("分类数据量：" + str(amountlen))
-    # get id nunique
-    amountidn = amountdf["id"].nunique()
-    st.write("分类数据id数：" + str(amountidn))
-    # drop duplicate by id
-    amountdf.drop_duplicates(subset=["id"], inplace=True)
+    try:
+        amountdf = get_csrc2cat()
+        # get lengh
+        amountlen = len(amountdf)
+        st.write("分类数据量：" + str(amountlen))
+        # get id nunique
+        amountidn = amountdf["id"].nunique()
+        st.write("分类数据id数：" + str(amountidn))
+        # drop duplicate by id
+        amountdf.drop_duplicates(subset=["id"], inplace=True)
+    except Exception as e:
+        st.error(f"获取分类数据时出错: {str(e)}")
+        amountdf = pd.DataFrame()
+        amountlen = 0
+        amountidn = 0
 
     # amountname = "csrc2amt" + get_nowdate() + ".csv"
 
     # download split data
-    splitdf = get_csrc2split()
-    # get lengh
-    splitlen = len(splitdf)
-    st.write("拆分数据量：" + str(splitlen))
-    # get id nunique
-    splitidn = splitdf["id"].nunique()
-    st.write("拆分数据id数：" + str(splitidn))
-    # drop duplicate by id
-    splitdf.drop_duplicates(subset=["id"], inplace=True)
+    try:
+        splitdf = get_csrc2split()
+        # get lengh
+        splitlen = len(splitdf)
+        st.write("拆分数据量：" + str(splitlen))
+        # get id nunique
+        splitidn = splitdf["id"].nunique()
+        st.write("拆分数据id数：" + str(splitidn))
+        # drop duplicate by id
+        splitdf.drop_duplicates(subset=["id"], inplace=True)
+    except Exception as e:
+        st.error(f"获取拆分数据时出错: {str(e)}")
+        splitdf = pd.DataFrame()
+        splitlen = 0
+        splitidn = 0
 
     # st.write(analysisdf.head())
     # convert date to datetime
@@ -1854,49 +1878,203 @@ def uplink_csrcsum():
 
     # analysisname = "csrc2analysis" + get_nowdate() + ".csv"
 
-    collection = get_collection("pencsrc2", "csrc2analysis")
+    try:
+        collection = get_collection("pencsrc2", "csrc2analysis")
 
-    # get all online data
-    online_data = get_data(collection)
+        # get all online data
+        online_data = get_data(collection)
 
-    # get unique id number from online data
-    online_id = online_data["链接"].nunique()
+        # get unique id number from online data
+        if "链接" in online_data.columns and not online_data.empty:
+            online_id = online_data["链接"].nunique()
+        else:
+            online_id = 0
 
-    # display online data
-    st.write("在线案例数据量：" + str(online_id))
+        # display online data
+        st.write("在线案例数据量：" + str(online_id))
 
-    # download online data
-    onlinename = "online_csrc2analysis" + get_nowdate() + ".csv"
-    st.download_button(
-        "下载在线案例数据",
-        data=online_data.to_csv().encode("utf_8_sig"),
-        file_name=onlinename,
-    )
+        # download online data
+        onlinename = "online_csrc2analysis" + get_nowdate() + ".csv"
+        st.download_button(
+            "下载在线案例数据",
+            data=online_data.to_csv().encode("utf_8_sig"),
+            file_name=onlinename,
+        )
 
-    # delete data from the MongoDB collection
-    if st.button("删除案例数据"):
-        delete_data(collection)
-        st.success("案例数据删除成功！")
 
-    # get different data
-    diff_data = analysisdf[~analysisdf["链接"].isin(online_data["链接"])]
+
+        # get different data
+        if "链接" in online_data.columns and not online_data.empty:
+            diff_analysis = analysisdf[~analysisdf["链接"].isin(online_data["链接"])]
+        else:
+            diff_analysis = analysisdf  # If no online data, all analysis data is different
+
+        # merge with csrc2cat and csrc2split data (使用inner join获取交集)
+        try:
+            # 首先确保三个数据集都不为空
+            if not amountdf.empty and not splitdf.empty and not diff_analysis.empty:
+                # 第一步：与csrc2cat数据进行inner join
+                diff_data = pd.merge(
+                    diff_analysis, 
+                    amountdf, 
+                    left_on="链接", 
+                    right_on="id", 
+                    how="inner"
+                )
+                
+                # 第二步：与csrc2split数据进行inner join
+                if not diff_data.empty:
+                    # 如果diff_data中已有org字段，先删除它以确保使用splitdf中的org字段
+                    if 'org' in diff_data.columns:
+                        diff_data = diff_data.drop(columns=['org'])
+                    
+                    diff_data = pd.merge(
+                        diff_data, 
+                        splitdf, 
+                        left_on="链接", 
+                        right_on="id", 
+                        how="inner",
+                        suffixes=('', '_split')
+                    )
+                else:
+                    st.warning("csrc2analysis与csrc2cat没有交集数据")
+            else:
+                st.warning("缺少必要的数据集，无法生成交集数据")
+                diff_data = pd.DataFrame()
+            
+            # 只保留指定字段
+            selected_columns = []
+            
+            # csrc2analysis字段（包含序列号）
+            analysis_fields = ["名称", "文号", "发文日期", "序列号", "链接", "内容", "机构"]
+            for field in analysis_fields:
+                if field in diff_data.columns:
+                    selected_columns.append(field)
+            
+            # csrc2cat字段
+            cat_fields = ["amount", "category", "province", "industry"]
+            for field in cat_fields:
+                if field in diff_data.columns:
+                    selected_columns.append(field)
+            
+            # csrc2split字段
+            split_fields = ["wenhao", "people", "event", "law", "penalty", "org", "date"]
+            for field in split_fields:
+                if field in diff_data.columns:
+                    selected_columns.append(field)
+                else:
+                    st.write(f"字段 {field} 不存在于合并后的数据中")
+            
+
+            
+            # 只保留选定的字段
+            if selected_columns:
+                diff_data = diff_data[selected_columns]
+                
+        except Exception as e:
+            st.error(f"合并关联数据时出错: {str(e)}")
+            diff_data = diff_analysis
+
+    except Exception as e:
+        st.error(f"连接数据库时出错: {str(e)}")
+        online_data = pd.DataFrame()
+        online_id = 0
+        diff_analysis = analysisdf  # Use all analysis data as diff data
+        
+        # merge with csrc2cat and csrc2split data for offline case (使用inner join获取交集)
+        try:
+            # 首先确保三个数据集都不为空
+            if not amountdf.empty and not splitdf.empty and not diff_analysis.empty:
+                # 第一步：与csrc2cat数据进行inner join
+                diff_data = pd.merge(
+                    diff_analysis, 
+                    amountdf, 
+                    left_on="链接", 
+                    right_on="id", 
+                    how="inner"
+                )
+                
+                # 第二步：与csrc2split数据进行inner join
+                if not diff_data.empty:
+                    # 如果diff_data中已有org字段，先删除它以确保使用splitdf中的org字段
+                    if 'org' in diff_data.columns:
+                        diff_data = diff_data.drop(columns=['org'])
+                    
+                    diff_data = pd.merge(
+                        diff_data, 
+                        splitdf, 
+                        left_on="链接", 
+                        right_on="id", 
+                        how="inner",
+                        suffixes=('', '_split')
+                    )
+                else:
+                    st.warning("csrc2analysis与csrc2cat没有交集数据（离线模式）")
+            else:
+                st.warning("缺少必要的数据集，无法生成交集数据（离线模式）")
+                diff_data = pd.DataFrame()
+            
+            # 只保留指定字段
+            selected_columns = []
+            
+            # csrc2analysis字段（包含序列号）
+            analysis_fields = ["名称", "文号", "发文日期", "序列号", "链接", "内容", "机构"]
+            for field in analysis_fields:
+                if field in diff_data.columns:
+                    selected_columns.append(field)
+            
+            # csrc2cat字段
+            cat_fields = ["amount", "category", "province", "industry"]
+            for field in cat_fields:
+                if field in diff_data.columns:
+                    selected_columns.append(field)
+            
+            # csrc2split字段
+            split_fields = ["wenhao", "people", "event", "law", "penalty", "org", "date"]
+            for field in split_fields:
+                if field in diff_data.columns:
+                    selected_columns.append(field)
+                else:
+                    st.write(f"字段 {field} 不存在于合并后的数据中（离线模式）")
+            
+
+            
+            # 只保留选定的字段
+            if selected_columns:
+                diff_data = diff_data[selected_columns]
+                
+        except Exception as e:
+            st.error(f"合并关联数据时出错: {str(e)}")
+            diff_data = diff_analysis
+        
+        collection = None
 
     # display different data
-    st.write("差异数据量：" + str(len(diff_data)))
+    st.write("差异数据量（三表交集）：" + str(len(diff_data)))
+    st.write("差异数据为csrc2analysis、csrc2cat、csrc2split三个表的交集，包含指定字段：")
+    st.write("- csrc2analysis: 名称、文号、发文日期、链接、内容、机构、序列号")
+    st.write("- csrc2cat: 金额、类别、省份、行业")
+    st.write("- csrc2split: 文号、当事人、事件、处罚依据、处罚、监管机构、处罚日期")
     st.write(diff_data)
 
     # download different data
-    diffname = "diff_csrc2analysis" + get_nowdate() + ".csv"
+    diffname = "diff_csrc2analysis_with_cat_split_" + get_nowdate() + ".csv"
     st.download_button(
-        "下载差异数据",
+        "下载差异数据（含关联信息）",
         data=diff_data.to_csv().encode("utf_8_sig"),
         file_name=diffname,
     )
 
     # Insert data into the MongoDB collection
-    # if st.button("更新上线案例数据"):
-    #     insert_data(diff_data, collection)
-    #     st.success("更新案例数据上线成功！")
+    if st.button("更新上线案例数据"):
+        if collection is not None:
+            try:
+                insert_data(diff_data, collection)
+                st.success("更新案例数据上线成功！")
+            except Exception as e:
+                st.error(f"更新数据时出错: {str(e)}")
+        else:
+            st.error("数据库连接失败，无法更新数据")
 
 
 def get_csrc2split():

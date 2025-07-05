@@ -28,7 +28,6 @@ import {
   CheckCircleOutlined,
   SyncOutlined,
   FileTextOutlined,
-  DeleteOutlined,
   DownloadOutlined,
   DiffOutlined,
   DatabaseOutlined,
@@ -401,19 +400,7 @@ const CaseUpload: React.FC = () => {
     message.success(`已重置 ${failedItems.length} 个失败任务`);
   };
 
-  const handleDeleteOnlineData = async () => {
-    try {
-      setLoading(true);
-      await apiClient.delete('/online-cases');
-      message.success('在线案例数据删除成功');
-      loadUploadData();
-    } catch (error) {
-      message.error('删除在线数据失败');
-      console.error('Delete error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const handleDownloadOnlineData = async () => {
     try {
@@ -564,14 +551,7 @@ const CaseUpload: React.FC = () => {
           >
             下载差异数据
           </Button>
-          <Button
-            icon={<DeleteOutlined />}
-            danger
-            onClick={handleDeleteOnlineData}
-            disabled={stats.onlineDataCount === 0}
-          >
-            删除在线数据
-          </Button>
+
           <Button
             icon={<SyncOutlined />}
             onClick={loadUploadData}
