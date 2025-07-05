@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Row, Col, Statistic, Spin, Alert, Button, Table } from 'antd';
 import { FileTextOutlined, BankOutlined, CalendarOutlined, ReloadOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import { caseApi, CaseSummary as CaseSummaryType, OrgSummaryItem } from '@/services/api';
+import { caseApi, CaseSummary as CaseSummaryType, OrgSummaryItem, OrgChartData } from '@/services/api';
 
 const CaseSummary: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -21,13 +21,22 @@ const CaseSummary: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      // Fetch both summary and organization data in parallel
-      const [summaryData, orgSummaryData] = await Promise.all([
-        caseApi.getSummary(),
+      // Fetch org chart data, time trend data, and organization summary in parallel
+      // Use org-chart-data for pie chart to ensure consistency with table
+      const [orgChartData, timeTrendData, orgSummaryData] = await Promise.all([
+        caseApi.getOrgChartData(),
+        caseApi.getSummary(), // Still need this for time trend data
         caseApi.getOrgSummary()
       ]);
       
-      setData(summaryData);
+      // Combine the data: use org chart data for organization counts, time trend data for months
+      const combinedData = {
+        total: orgChartData.total,
+        byOrg: orgChartData.byOrg,
+        byMonth: timeTrendData.byMonth
+      };
+      
+      setData(combinedData);
       setOrgData(orgSummaryData);
     } catch (err: any) {
       console.error('Error fetching summary:', err);
@@ -56,26 +65,22 @@ const CaseSummary: React.FC = () => {
   };
 
   const getOrgChartOption = () => {
-    if (!data?.byOrg) return {};
+    if (!orgData || orgData.length === 0) return {};
     
-    // Sort by value and limit to top 15 institutions to avoid overcrowding
-    const sortedOrgData = Object.entries(data.byOrg)
-      .sort(([, a], [, b]) => (b as number) - (a as number))
-      .slice(0, 15);
+    // Use the same data as the table for consistency
+    // Limit to top 15 for chart readability, group the rest as "其他"
+    const topOrgData = orgData.slice(0, 15);
+    const otherOrgData = orgData.slice(15);
     
-    // Group smaller institutions into "其他" category
-    const topOrgData = sortedOrgData.slice(0, 10);
-    const otherOrgData = sortedOrgData.slice(10);
-    
-    let orgData = topOrgData.map(([name, value]) => ({
-      name,
-      value,
+    let chartData = topOrgData.map((org) => ({
+      name: org.orgName,
+      value: org.caseCount,
     }));
     
     // Add "其他" category if there are more institutions
     if (otherOrgData.length > 0) {
-      const otherSum = otherOrgData.reduce((sum, [, value]) => sum + (value as number), 0);
-      orgData.push({
+      const otherSum = otherOrgData.reduce((sum, org) => sum + org.caseCount, 0);
+      chartData.push({
         name: '其他',
         value: otherSum,
       });
@@ -110,7 +115,7 @@ const CaseSummary: React.FC = () => {
           type: 'pie',
           radius: ['20%', '60%'], // Use donut chart for better readability
           center: ['50%', '45%'], // Adjust center to accommodate bottom legend
-          data: orgData,
+          data: chartData,
           label: {
             show: true,
             position: 'outside',

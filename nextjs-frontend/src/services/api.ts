@@ -94,6 +94,11 @@ export interface CaseSummary {
   byMonth: Record<string, number>;
 }
 
+export interface OrgChartData {
+  organizations: Record<string, number>;
+  total_cases: number;
+}
+
 export interface OrgSummaryItem {
   orgName: string;
   caseCount: number;
@@ -179,6 +184,45 @@ export const caseApi = {
       } catch (error: any) {
         lastError = error;
         console.warn(`Organization summary fetch attempt ${attempt + 1} failed:`, error.message);
+        
+        // Don't retry on client errors (4xx) or if it's the last attempt
+        if (error.response?.status >= 400 && error.response?.status < 500) {
+          break;
+        }
+        
+        if (attempt < retries) {
+          // Wait before retrying (exponential backoff)
+          const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw lastError;
+  },
+
+  // Get organization chart data with consistent filtering
+  getOrgChartData: async (retries: number = 2): Promise<CaseSummary> => {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        console.log(`Fetching organization chart data (attempt ${attempt + 1}/${retries + 1})`);
+        const response = await apiClient.get('/api/org-chart-data');
+        
+        // Transform the response to match CaseSummary interface
+        const orgChartData: OrgChartData = response.data.data;
+        const caseSummary: CaseSummary = {
+          total: orgChartData.total_cases,
+          byOrg: orgChartData.organizations,
+          byMonth: {} // Empty for chart data endpoint
+        };
+        
+        return caseSummary;
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`Organization chart data fetch attempt ${attempt + 1} failed:`, error.message);
         
         // Don't retry on client errors (4xx) or if it's the last attempt
         if (error.response?.status >= 400 && error.response?.status < 500) {

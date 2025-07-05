@@ -391,7 +391,7 @@ async def detailed_health_check():
             "timestamp": time.time(),
             "database": await check_database_connection(),
             "disk_space": check_disk_space(),
-            "memory_usage": check_memory_usage(),
+            "memory_usage": get_memory_usage(),
             "uptime": time.time() - start_time if 'start_time' in globals() else 0
         }
         
@@ -488,7 +488,10 @@ _summary_cache = {"data": None, "timestamp": 0}
 CACHE_DURATION = 300  # 5 minutes
 
 @app.get("/summary-working", response_model=APIResponse)
-def get_summary_working():
+def get_summary_working(
+    limit_orgs: int = Query(None, ge=1, le=100, description="Limit number of organizations (optional)"),
+    limit_months: int = Query(None, ge=1, le=60, description="Limit number of months (optional)")
+):
     """Get case summary statistics with working implementation"""
     try:
         import time
@@ -525,15 +528,33 @@ def get_summary_working():
         if not df.empty and total > 0:
             logger.info(f"Processing {total} rows")
             
-            # Simple organization count
+            # Simple organization count - show ALL organizations or limit if specified
+            # Use same filtering as org-summary for consistency
             if '机构' in df.columns:
                 try:
-                    org_counts = df['机构'].value_counts().head(10)  # Limit to top 10
-                    by_org = org_counts.to_dict()
+                    # Additional filtering for consistency with table data
+                    if '发文日期' in df.columns:
+                        # Only count organizations with valid dates for consistency
+                        df_filtered = df.copy()
+                        df_filtered['发文日期'] = pd.to_datetime(df_filtered['发文日期'], errors='coerce')
+                        df_filtered = df_filtered.dropna(subset=['发文日期', '机构'])
+                        df_filtered = df_filtered[df_filtered['机构'].str.strip() != '']
+                        
+                        if not df_filtered.empty:
+                            org_counts = df_filtered['机构'].value_counts()  # Show ALL organizations
+                            if limit_orgs:
+                                org_counts = org_counts.head(limit_orgs)
+                            by_org = org_counts.to_dict()
+                    else:
+                        # Fallback to original logic if no date column
+                        org_counts = df['机构'].value_counts()  # Show ALL organizations
+                        if limit_orgs:
+                            org_counts = org_counts.head(limit_orgs)
+                        by_org = org_counts.to_dict()
                 except Exception as e:
                     logger.warning(f"Organization processing failed: {e}")
             
-            # Simple month count
+            # Simple month count - show ALL months chronologically or limit if specified
             if '发文日期' in df.columns:
                 try:
                     df_copy = df[['发文日期']].copy()
@@ -541,7 +562,10 @@ def get_summary_working():
                     df_copy = df_copy.dropna()
                     if not df_copy.empty:
                         df_copy['month'] = df_copy['发文日期'].dt.strftime('%Y-%m')
-                        month_counts = df_copy['month'].value_counts().head(12)  # Limit to 12 months
+                        # Get ALL months and sort chronologically
+                        month_counts = df_copy['month'].value_counts().sort_index()
+                        if limit_months:
+                            month_counts = month_counts.tail(limit_months)  # Show last N months
                         by_month = month_counts.to_dict()
                 except Exception as e:
                     logger.warning(f"Date processing failed: {e}")
@@ -599,15 +623,256 @@ def get_summary_fast():
             data={}
         )
 
+@app.get("/debug/org-comparison", response_model=APIResponse)
+def get_org_comparison():
+    """Debug endpoint to compare organization data between different filtering methods"""
+    try:
+        logger.info("Comparing organization data with different filtering methods")
+        
+        # Get case detail data
+        from data_service import get_csrc2detail
+        df = get_csrc2detail()
+        
+        if df.empty:
+            return APIResponse(
+                success=False,
+                message="No data found",
+                data={}
+            )
+        
+        comparison_data = {
+            "total_records": len(df),
+            "method_1_no_date_filter": {},
+            "method_2_with_date_filter": {},
+            "difference_analysis": {}
+        }
+        
+        # Method 1: No date filtering (original pie chart method)
+        if '机构' in df.columns:
+            org_series = df['机构'].dropna()
+            org_series = org_series[org_series.str.strip() != '']
+            org_counts_no_filter = org_series.value_counts()
+            total_no_filter = len(org_series)
+            
+            comparison_data["method_1_no_date_filter"] = {
+                "total_cases": total_no_filter,
+                "unique_orgs": len(org_counts_no_filter),
+                "top_10": {org: f"{count} ({round(count/total_no_filter*100, 2)}%)" 
+                          for org, count in org_counts_no_filter.head(10).items()}
+            }
+        
+        # Method 2: With date filtering (table method)
+        if '机构' in df.columns and '发文日期' in df.columns:
+            df_filtered = df.copy()
+            df_filtered['发文日期'] = pd.to_datetime(df_filtered['发文日期'], errors='coerce')
+            df_filtered = df_filtered.dropna(subset=['发文日期', '机构'])
+            df_filtered = df_filtered[df_filtered['机构'].str.strip() != '']
+            
+            if not df_filtered.empty:
+                org_counts_filtered = df_filtered['机构'].value_counts()
+                total_filtered = len(df_filtered)
+                
+                comparison_data["method_2_with_date_filter"] = {
+                    "total_cases": total_filtered,
+                    "unique_orgs": len(org_counts_filtered),
+                    "top_10": {org: f"{count} ({round(count/total_filtered*100, 2)}%)" 
+                              for org, count in org_counts_filtered.head(10).items()}
+                }
+                
+                # Calculate differences
+                diff_total = total_no_filter - total_filtered
+                diff_percentage = round((diff_total / total_no_filter) * 100, 2) if total_no_filter > 0 else 0
+                
+                comparison_data["difference_analysis"] = {
+                    "cases_excluded_by_date_filter": diff_total,
+                    "percentage_excluded": f"{diff_percentage}%",
+                    "explanation": "Cases with invalid or missing dates are excluded in method 2"
+                }
+        
+        return APIResponse(
+            success=True,
+            message="Organization data comparison completed",
+            data=comparison_data
+        )
+        
+    except Exception as e:
+        logger.error(f"Organization comparison failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Organization comparison failed",
+            error=str(e)
+        )
+
+@app.get("/debug/data-coverage", response_model=APIResponse)
+def get_data_coverage():
+    """Debug endpoint to check data coverage for organizations and time periods"""
+    try:
+        logger.info("Checking data coverage for debug purposes")
+        
+        # Get case detail data
+        from data_service import get_csrc2detail
+        df = get_csrc2detail()
+        
+        if df.empty:
+            return APIResponse(
+                success=False,
+                message="No data found",
+                data={}
+            )
+        
+        coverage_info = {
+            "total_records": len(df),
+            "columns": list(df.columns),
+            "organizations": {},
+            "time_periods": {}
+        }
+        
+        # Check organization coverage
+        if '机构' in df.columns:
+            org_series = df['机构'].dropna()
+            org_series = org_series[org_series.str.strip() != '']
+            org_counts = org_series.value_counts()
+            coverage_info["organizations"] = {
+                "total_unique": len(org_counts),
+                "top_10": org_counts.head(10).to_dict(),
+                "all_orgs": list(org_counts.index)
+            }
+        
+        # Check time period coverage
+        if '发文日期' in df.columns:
+            df_copy = df[['发文日期']].copy()
+            df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+            df_copy = df_copy.dropna(subset=['发文日期'])
+            if not df_copy.empty:
+                df_copy['month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
+                month_counts = df_copy['month'].value_counts().sort_index()
+                coverage_info["time_periods"] = {
+                    "total_unique_months": len(month_counts),
+                    "date_range": {
+                        "earliest": str(df_copy['发文日期'].min()),
+                        "latest": str(df_copy['发文日期'].max())
+                    },
+                    "month_range": {
+                        "earliest": month_counts.index.min(),
+                        "latest": month_counts.index.max()
+                    },
+                    "monthly_counts": month_counts.to_dict()
+                }
+        
+        return APIResponse(
+            success=True,
+            message="Data coverage analysis completed",
+            data=coverage_info
+        )
+        
+    except Exception as e:
+        logger.error(f"Data coverage analysis failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Data coverage analysis failed",
+            error=str(e)
+        )
+
+@app.get("/summary-complete", response_model=APIResponse)
+def get_summary_complete():
+    """Get complete case summary statistics with ALL periods and organizations"""
+    return _get_summary_impl(limit_orgs=None, limit_months=None)
+
+@app.get("/api/summary-complete", response_model=APIResponse)
+def get_api_summary_complete():
+    """Get complete case summary statistics - API endpoint with ALL periods and organizations"""
+    return _get_summary_impl(limit_orgs=None, limit_months=None)
+
 @app.get("/summary", response_model=APIResponse)
-def get_summary():
+def get_summary(
+    limit_orgs: int = Query(None, ge=1, le=100, description="Limit number of organizations (optional)"),
+    limit_months: int = Query(None, ge=1, le=60, description="Limit number of months (optional)")
+):
     """Get case summary statistics - simplified version"""
-    return _get_summary_impl()
+    return _get_summary_impl(limit_orgs, limit_months)
 
 @app.get("/api/summary", response_model=APIResponse)
-def get_api_summary():
+def get_api_summary(
+    limit_orgs: int = Query(None, ge=1, le=100, description="Limit number of organizations (optional)"),
+    limit_months: int = Query(None, ge=1, le=60, description="Limit number of months (optional)")
+):
     """Get case summary statistics - API endpoint"""
-    return _get_summary_impl()
+    return _get_summary_impl(limit_orgs, limit_months)
+
+@app.get("/api/org-chart-data", response_model=APIResponse)
+def get_org_chart_data():
+    """Get organization data specifically formatted for pie charts with consistent percentages"""
+    try:
+        logger.info("Fetching organization chart data with consistent filtering")
+        
+        # Get case detail data from CSV files
+        df = pd.DataFrame()
+        try:
+            from data_service import get_csrc2detail
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+            
+            def load_csv_data():
+                return get_csrc2detail()
+            
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(load_csv_data)
+                try:
+                    df = future.result(timeout=120)
+                    if df is None or df.empty:
+                        logger.warning("No CSV data found")
+                        df = pd.DataFrame()
+                    else:
+                        logger.info(f"Loaded {len(df)} rows from CSV data")
+                except FutureTimeoutError:
+                    logger.warning("CSV data loading timed out after 120 seconds")
+                    df = pd.DataFrame()
+                    
+        except Exception as csv_error:
+            logger.warning(f"Failed to load CSV data: {csv_error}")
+            df = pd.DataFrame()
+        
+        org_chart_data = {}
+        
+        if not df.empty and '机构' in df.columns and '发文日期' in df.columns:
+            # Use same filtering as org-summary for consistency
+            df_copy = df.copy()
+            
+            # Clean and parse dates
+            df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+            df_copy = df_copy.dropna(subset=['发文日期', '机构'])
+            df_copy = df_copy[df_copy['机构'].str.strip() != '']
+            
+            if not df_copy.empty:
+                # Get organization counts
+                org_counts = df_copy['机构'].value_counts()
+                total_cases = len(df_copy)
+                
+                # Limit to top 50 organizations for consistency with table
+                org_counts = org_counts.head(50)
+                
+                # Convert to dictionary with counts (raw numbers for pie chart)
+                org_chart_data = org_counts.to_dict()
+                
+                logger.info(f"Generated chart data for {len(org_counts)} organizations, total cases: {total_cases}")
+        
+        return APIResponse(
+            success=True,
+            message=f"Organization chart data generated successfully: {len(org_chart_data)} organizations",
+            data={
+                "organizations": org_chart_data,
+                "total_cases": sum(org_chart_data.values()) if org_chart_data else 0
+            },
+            count=len(org_chart_data)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating organization chart data: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to generate organization chart data",
+            error=str(e),
+            data={"organizations": {}, "total_cases": 0}
+        )
 
 @app.get("/api/org-summary", response_model=APIResponse)
 def get_org_summary():
@@ -695,7 +960,7 @@ def get_org_summary():
             data=[]
         )
 
-def _get_summary_impl():
+def _get_summary_impl(limit_orgs: int = None, limit_months: int = None):
     try:
         import time
         
@@ -753,15 +1018,39 @@ def _get_summary_impl():
             total = len(df)
             logger.info(f"Processing {total} cases for summary")
             
-            # Simple organization count
+            # Simple organization count - show ALL organizations or limit if specified
+            # Use same filtering as org-summary for consistency
             by_org = {}
             if '机构' in df.columns:
                 org_series = df['机构'].dropna()
                 org_series = org_series[org_series.str.strip() != '']
-                if not org_series.empty:
-                    by_org = org_series.value_counts().head(15).to_dict()  # Limit to top 15 for better chart readability
+                
+                # Additional filtering for consistency with table data
+                if '发文日期' in df.columns:
+                    # Only count organizations with valid dates for consistency
+                    df_filtered = df.copy()
+                    df_filtered['发文日期'] = pd.to_datetime(df_filtered['发文日期'], errors='coerce')
+                    df_filtered = df_filtered.dropna(subset=['发文日期', '机构'])
+                    df_filtered = df_filtered[df_filtered['机构'].str.strip() != '']
+                    
+                    if not df_filtered.empty:
+                        org_counts = df_filtered['机构'].value_counts()
+                        logger.info(f"Found {len(org_counts)} unique organizations (filtered for valid dates)")
+                        if limit_orgs:
+                            org_counts = org_counts.head(limit_orgs)
+                            logger.info(f"Limited to top {limit_orgs} organizations")
+                        by_org = org_counts.to_dict()
+                else:
+                    # Fallback to original logic if no date column
+                    if not org_series.empty:
+                        org_counts = org_series.value_counts()
+                        logger.info(f"Found {len(org_counts)} unique organizations")
+                        if limit_orgs:
+                            org_counts = org_counts.head(limit_orgs)
+                            logger.info(f"Limited to top {limit_orgs} organizations")
+                        by_org = org_counts.to_dict()
             
-            # Simple month count
+            # Simple month count - show ALL months chronologically or limit if specified
             by_month = {}
             if '发文日期' in df.columns:
                 try:
@@ -770,7 +1059,13 @@ def _get_summary_impl():
                     df_copy = df_copy.dropna(subset=['发文日期'])
                     if not df_copy.empty:
                         df_copy['month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
-                        by_month = df_copy['month'].value_counts().sort_index().tail(24).to_dict()  # Limit to last 24 months for better readability
+                        # Get ALL months and sort chronologically
+                        month_counts = df_copy['month'].value_counts().sort_index()
+                        logger.info(f"Found {len(month_counts)} unique months from {month_counts.index.min()} to {month_counts.index.max()}")
+                        if limit_months:
+                            month_counts = month_counts.tail(limit_months)  # Show last N months
+                            logger.info(f"Limited to last {limit_months} months")
+                        by_month = month_counts.to_dict()
                 except Exception as date_error:
                     logger.warning(f"Date processing error: {date_error}")
                     by_month = {}
