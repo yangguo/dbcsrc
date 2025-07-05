@@ -1496,11 +1496,12 @@ async def penalty_analysis(request: PenaltyAnalysisRequest):
         # Extract penalty information using LLM
         result = extract_penalty_info(request.text)
         
+        logger.info(f"Extract penalty info result: {result}")
         logger.info("Penalty analysis completed successfully")
         return APIResponse(
             success=True,
             message="Penalty analysis completed successfully",
-            data={"result": result}
+            data={"result": result.get("data") if result.get("success") else None}
         )
         
     except Exception as e:
@@ -1532,7 +1533,7 @@ async def batch_penalty_analysis(
         return APIResponse(
             success=True,
             message=f"Batch penalty analysis completed for {len(result_df)} records",
-            data={"results": result_df.to_dict('records')},
+            data={"result": {"data": result_df.to_dict('records')}},
             count=len(result_df)
         )
         

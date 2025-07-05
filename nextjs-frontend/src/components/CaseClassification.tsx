@@ -131,7 +131,11 @@ const CaseClassification: React.FC = () => {
      },
   ];
 
-  const [loading, setLoading] = useState(false);
+  // 为每个功能创建独立的loading状态
+  const [labelLoading, setLabelLoading] = useState(false);
+  const [singlePenaltyLoading, setSinglePenaltyLoading] = useState(false);
+  const [batchPenaltyLoading, setBatchPenaltyLoading] = useState(false);
+  
   const [categoryResults, setCategoryResults] = useState<any[]>([]);
   const [splitResults, setSplitResults] = useState<any[]>([]);
   const [labelResultsVisible, setLabelResultsVisible] = useState(false);
@@ -145,7 +149,7 @@ const CaseClassification: React.FC = () => {
 
   const handleGenerateLabels = async () => {
     try {
-      setLoading(true);
+      setLabelLoading(true);
       const response = await caseApi.generateLabels();
       if (response.success) {
         // Separate category and split cases
@@ -165,7 +169,7 @@ const CaseClassification: React.FC = () => {
       console.error('Generate labels error:', error);
       message.error('生成标签失败');
     } finally {
-      setLoading(false);
+      setLabelLoading(false);
     }
   };
 
@@ -177,15 +181,20 @@ const CaseClassification: React.FC = () => {
 
   const handleSinglePenaltyAnalysis = async (values: any) => {
     try {
-      setLoading(true);
+      setSinglePenaltyLoading(true);
       const result = await caseApi.analyzePenalty(values.penaltyText);
-      setPenaltyResult(result.data?.result?.data || null);
+      console.log('Penalty analysis result:', result);
+      console.log('Full result structure:', JSON.stringify(result, null, 2));
+      console.log('result.data:', result.data);
+      console.log('result.data.data:', result.data?.data);
+      setPenaltyResult(result.data?.result || null);
+      console.log('penaltyResult set, should trigger re-render');
       message.success('行政处罚分析完成');
     } catch (error) {
       message.error('行政处罚分析失败');
       console.error('Penalty analysis error:', error);
     } finally {
-      setLoading(false);
+      setSinglePenaltyLoading(false);
     }
   };
 
@@ -196,7 +205,7 @@ const CaseClassification: React.FC = () => {
     }
 
     try {
-      setLoading(true);
+      setBatchPenaltyLoading(true);
       const file = penaltyFileList[0].originFileObj as File;
       
       const result = await caseApi.batchAnalyzePenalty(file, {
@@ -211,7 +220,7 @@ const CaseClassification: React.FC = () => {
       message.error('批量行政处罚分析失败');
       console.error('Batch penalty analysis error:', error);
     } finally {
-      setLoading(false);
+      setBatchPenaltyLoading(false);
     }
   };
 
@@ -343,7 +352,7 @@ const CaseClassification: React.FC = () => {
             type="primary"
             icon={<TagsOutlined />}
             onClick={handleGenerateLabels}
-            loading={loading}
+            loading={labelLoading}
           >
             生成待标签文本
           </Button>
@@ -437,13 +446,21 @@ const CaseClassification: React.FC = () => {
               type="primary"
               htmlType="submit"
               icon={<FileTextOutlined />}
-              loading={loading}
+              loading={singlePenaltyLoading}
             >
               开始分析
             </Button>
           </Form.Item>
         </Form>
         
+        {/* Debug Info */}
+        <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded">
+          <Text strong>调试信息：</Text>
+          <div>penaltyResult 状态: {penaltyResult ? 'Has Data' : 'No Data'}</div>
+          <div>penaltyResult 类型: {typeof penaltyResult}</div>
+          <div>penaltyResult 内容: {JSON.stringify(penaltyResult, null, 2)}</div>
+        </div>
+
         {/* Single Penalty Analysis Results */}
         {penaltyResult && (
           <div className="mt-6">
@@ -535,7 +552,7 @@ const CaseClassification: React.FC = () => {
               type="primary"
               htmlType="submit"
               icon={<FileTextOutlined />}
-              loading={loading}
+              loading={batchPenaltyLoading}
               disabled={penaltyFileList.length === 0}
             >
               开始批量分析
