@@ -1,14 +1,15 @@
+import json
 import math
+import os
 import pickle
 import re
 from itertools import groupby
 from operator import itemgetter
 
 import chinese2digits as c2d
-import pandas as pd
 import openai
-import os
-import json
+import pandas as pd
+
 from utils import savetemp
 
 
@@ -80,11 +81,12 @@ def count_list(list1, str1):  # 计算list1中str1出现的次数
 # Initialize OpenAI client
 client = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 )
 
 # Get model name from environment or use default
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+
 
 def nlp_input(schema, string):  # schema为字符串目标list，string为字符串总量
     """Extract information using OpenAI LLM"""
@@ -102,17 +104,20 @@ Respond with only a JSON object where keys are the schema types and values are a
         }}
         
 If no entities are found for a schema type, use an empty array: []"""
-        
+
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
-                {"role": "system", "content": "You are an expert in Chinese information extraction. Always respond with valid JSON."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are an expert in Chinese information extraction. Always respond with valid JSON.",
+                },
+                {"role": "user", "content": prompt},
             ],
             temperature=0.1,
-            max_tokens=500
+            max_tokens=500,
         )
-        
+
         # Parse the response
         result_text = response.choices[0].message.content.strip()
         try:
@@ -123,7 +128,7 @@ If no entities are found for a schema type, use an empty array: []"""
             # Failed to parse JSON response
             pass
             return [{}]
-            
+
     except Exception as e:
         return [{}]
 
@@ -658,9 +663,25 @@ def list_split(list1, list2, strict=1):
             all["key"] = all["list1"].apply(lambda x: "".join(str(x)))
             all = all.drop_duplicates(subset=["key"], keep="first")
         # all=all[all['list2-list1'].astype(str).str.contains(r'list2包含list1', regex= True)]
-        if len(all[~all["list2-list1"].astype(str).str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)]) != len(all[~all["list2-list1"].astype(str).str.contains(r"list2包含list1", regex=True)]):
+        if len(
+            all[
+                ~all["list2-list1"]
+                .astype(str)
+                .str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)
+            ]
+        ) != len(
+            all[
+                ~all["list2-list1"]
+                .astype(str)
+                .str.contains(r"list2包含list1", regex=True)
+            ]
+        ):
             # Intersection detected
-            all = all[~all["list2-list1"].astype(str).str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)]
+            all = all[
+                ~all["list2-list1"]
+                .astype(str)
+                .str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)
+            ]
         # print(all)
         all = all["list1"].tolist()
         # print(all)
@@ -1197,7 +1218,6 @@ def calculate_similar(
 
     import pandas as pd
 
-
     def split_santence(string, s=128):  # string是要分的句子，s为阈值
         n = math.ceil(len(string) / s)
         num = math.floor(len(string) / n)
@@ -1247,40 +1267,41 @@ Respond with only a JSON object:
             {{
                 "similarity": similarity_score_between_0_and_1
             }}"""
-            
+
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are an expert in Chinese text similarity analysis. Always respond with valid JSON."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are an expert in Chinese text similarity analysis. Always respond with valid JSON.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,
-                max_tokens=100
+                max_tokens=100,
             )
-            
+
             result_text = response.choices[0].message.content.strip()
             try:
                 sim_result = json.loads(result_text)
-                similarity_results.append({
-                    "text1": pair[0],
-                    "text2": pair[1], 
-                    "similarity": float(sim_result.get("similarity", 0.0))
-                })
+                similarity_results.append(
+                    {
+                        "text1": pair[0],
+                        "text2": pair[1],
+                        "similarity": float(sim_result.get("similarity", 0.0)),
+                    }
+                )
             except (json.JSONDecodeError, ValueError):
-                similarity_results.append({
-                    "text1": pair[0],
-                    "text2": pair[1],
-                    "similarity": 0.0
-                })
+                similarity_results.append(
+                    {"text1": pair[0], "text2": pair[1], "similarity": 0.0}
+                )
         except Exception as e:
             # Error in similarity calculation
             pass
-            similarity_results.append({
-                "text1": pair[0],
-                "text2": pair[1],
-                "similarity": 0.0
-            })
-    
+            similarity_results.append(
+                {"text1": pair[0], "text2": pair[1], "similarity": 0.0}
+            )
+
     result = similarity_results
     for j in result:
         db_outcome = pd.concat(
@@ -1311,7 +1332,6 @@ def calculate_similar_batch(
 
     import pandas as pd
 
-
     def split_santence(string, s=128):  # string是要分的句子，s为阈值
         n = math.ceil(len(string) / s)
         num = math.floor(len(string) / n)
@@ -1338,40 +1358,41 @@ Respond with only a JSON object:
             {{
                 "similarity": similarity_score_between_0_and_1
             }}"""
-            
+
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are an expert in Chinese text similarity analysis. Always respond with valid JSON."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are an expert in Chinese text similarity analysis. Always respond with valid JSON.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,
-                max_tokens=100
+                max_tokens=100,
             )
-            
+
             result_text = response.choices[0].message.content.strip()
             try:
                 sim_result = json.loads(result_text)
-                similarity_results.append({
-                    "text1": pair[0],
-                    "text2": pair[1], 
-                    "similarity": float(sim_result.get("similarity", 0.0))
-                })
+                similarity_results.append(
+                    {
+                        "text1": pair[0],
+                        "text2": pair[1],
+                        "similarity": float(sim_result.get("similarity", 0.0)),
+                    }
+                )
             except (json.JSONDecodeError, ValueError):
-                similarity_results.append({
-                    "text1": pair[0],
-                    "text2": pair[1],
-                    "similarity": 0.0
-                })
+                similarity_results.append(
+                    {"text1": pair[0], "text2": pair[1], "similarity": 0.0}
+                )
         except Exception as e:
             # Error in similarity calculation
             pass
-            similarity_results.append({
-                "text1": pair[0],
-                "text2": pair[1],
-                "similarity": 0.0
-            })
-    
+            similarity_results.append(
+                {"text1": pair[0], "text2": pair[1], "similarity": 0.0}
+            )
+
     result = similarity_results
     for j in result:
         db_outcome = pd.concat(

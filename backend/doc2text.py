@@ -8,9 +8,8 @@ import zipfile
 from pathlib import Path
 
 import docx
-import pdfplumber
-import base64
 import openai
+import pdfplumber
 
 # import streamlit as st
 from easyofd import OFD
@@ -22,8 +21,6 @@ from reportlab.pdfbase.ttfonts import TTFont
 Image.MAX_IMAGE_PIXELS = None
 
 # uploadpath = "uploads/"
-
-
 
 
 def docxurl2txt(url):
@@ -61,24 +58,26 @@ def pdfurl2txt(url):
 # Initialize OpenAI client
 client = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 )
 
 # Get model name from environment or use default
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4-vision-preview")
 
+
 def encode_image(image_path):
     """Encode image to base64 string"""
     with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
 
 def llm_ocr_text(image_file):
     """Extract text from image using OpenAI Vision model"""
     try:
         # Get the base64 string
         base64_image = encode_image(image_file)
-        
+
         response = client.chat.completions.create(
             model=OPENAI_VISION_MODEL,
             messages=[
@@ -87,22 +86,22 @@ def llm_ocr_text(image_file):
                     "content": [
                         {
                             "type": "text",
-                            "text": "Please extract all text from this image. Return only the extracted text without any additional commentary or formatting. If the text is in Chinese, preserve the Chinese characters."
+                            "text": "Please extract all text from this image. Return only the extracted text without any additional commentary or formatting. If the text is in Chinese, preserve the Chinese characters.",
                         },
                         {
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:image/jpeg;base64,{base64_image}"
-                            }
-                        }
-                    ]
+                            },
+                        },
+                    ],
                 }
             ],
-            max_tokens=1000
+            max_tokens=1000,
         )
-        
+
         return response.choices[0].message.content
-        
+
     except Exception as e:
         # Error in OCR processing
         pass

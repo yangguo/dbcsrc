@@ -1,12 +1,13 @@
-import pandas as pd
-import openai
-import os
 import json
+import os
+
+import openai
+import pandas as pd
 
 # Initialize OpenAI client
 client = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 )
 
 # Get model name from environment or use default
@@ -79,21 +80,25 @@ def llm_parse_location(text):
         
         Only return the JSON object, no other text.
         """
-        
+
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
-                {"role": "system", "content": "You are a location extraction expert for Chinese addresses. Return only valid JSON."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are a location extraction expert for Chinese addresses. Return only valid JSON.",
+                },
+                {"role": "user", "content": prompt},
             ],
-            temperature=0
+            temperature=0,
         )
-        
+
         result = json.loads(response.choices[0].message.content)
         return result
     except Exception as e:
         # Error in LLM location parsing
         return {"province": None, "city": None, "county": None}
+
 
 def df2part1loc(df, idcol, contentcol):
     txtls = []
@@ -117,8 +122,10 @@ def df2part1loc(df, idcol, contentcol):
 def llm_transform_addresses(address_list):
     """Use LLM to transform a list of addresses into structured location data"""
     try:
-        addresses_text = "\n".join([f"{i+1}. {addr}" for i, addr in enumerate(address_list)])
-        
+        addresses_text = "\n".join(
+            [f"{i+1}. {addr}" for i, addr in enumerate(address_list)]
+        )
+
         prompt = f"""
         Parse the following Chinese addresses and extract province (省), city (市), and district/county (区) information.
         Return a JSON array where each object corresponds to the address at the same index.
@@ -135,22 +142,26 @@ def llm_transform_addresses(address_list):
         
         Only return the JSON array, no other text.
         """
-        
+
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
-                {"role": "system", "content": "You are an address parsing expert for Chinese addresses. Return only valid JSON arrays."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are an address parsing expert for Chinese addresses. Return only valid JSON arrays.",
+                },
+                {"role": "user", "content": prompt},
             ],
-            temperature=0
+            temperature=0,
         )
-        
+
         result = json.loads(response.choices[0].message.content)
         return pd.DataFrame(result)
     except Exception as e:
         # Error in LLM address transformation
         # Return empty dataframe with expected columns
         return pd.DataFrame([{"省": "", "市": "", "区": ""} for _ in address_list])
+
 
 def df2part2loc(df, idcol, contentcol):
     titls = df[contentcol].tolist()
