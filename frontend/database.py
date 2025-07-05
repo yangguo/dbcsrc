@@ -49,7 +49,18 @@ def get_collection(dbname, collectionname):
 
 # insert dataframes into MongoDB
 def insert_data(df, collection):
-    records = df.to_dict("records")
+    import datetime
+    
+    # Convert date objects to datetime objects for MongoDB compatibility
+    df_copy = df.copy()
+    for col in df_copy.columns:
+        if df_copy[col].dtype == 'object':
+            # Check if column contains date objects
+            sample_value = df_copy[col].dropna().iloc[0] if not df_copy[col].dropna().empty else None
+            if isinstance(sample_value, datetime.date) and not isinstance(sample_value, datetime.datetime):
+                df_copy[col] = pd.to_datetime(df_copy[col])
+    
+    records = df_copy.to_dict("records")
     batch_size = 10000
     for i in range(0, len(records), batch_size):
         batch = records[i : i + batch_size]

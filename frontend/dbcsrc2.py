@@ -11,7 +11,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
-from database import get_collection, get_data
+from database import get_collection, get_data, insert_data
 from dbcsrc import get_csvdf, get_now, get_nowdate
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
