@@ -32,7 +32,6 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 black isort bandit safety mypy
         cd backend && pip install -r requirements.txt
         
     - name: Code formatting check (Black)

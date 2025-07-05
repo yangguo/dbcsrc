@@ -10,10 +10,10 @@ numpy==1.25.2
 python-dotenv==1.0.0
 
 # Data validation and serialization
-pydantic==2.5.0
+pydantic==2.9.2
 
 # HTTP requests
-requests==2.31.0
+requests==2.32.4
 
 # Document processing
 openpyxl==3.1.2
@@ -44,7 +44,7 @@ bleach==6.1.0
 html5lib==1.1
 
 # System monitoring
-psutil==5.9.6
+psutil==6.1.1
 
 # Performance and async utilities
 aiofiles==23.2.1
@@ -58,22 +58,21 @@ slowapi==0.1.9
 
 # Background tasks
 celery==5.3.4
-redis==5.0.1  # For Celery broker
 
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
-httpx==0.25.2
+httpx==0.28.1
 locust==2.17.0  # Performance testing
 
 # Development tools
-black==23.11.0
-flake8==6.1.0
-isort==5.12.0
-mypy==1.7.1
-bandit==1.7.5  # Security linting
-safety==2.3.5  # Dependency vulnerability checking
+black==25.1.0
+flake8==7.3.0
+isort==6.0.1
+mypy==1.16.1
+bandit==1.8.5  # Security linting
+safety==3.5.2  # Dependency vulnerability checking
 
 # Documentation
 mkdocs==1.5.3
