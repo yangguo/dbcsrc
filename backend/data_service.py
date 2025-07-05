@@ -151,3 +151,51 @@ def get_csrc2analysis() -> pd.DataFrame:
         pendf = pendf.fillna("")
     
     return pendf
+
+
+def get_csrc2cat() -> pd.DataFrame:
+    """
+    Get CSRC2 category data from CSV files.
+    
+    Returns:
+        DataFrame with CSRC2 category data
+    """
+    # Use absolute path to ensure it works from any working directory
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pencsrc2 = os.path.join(base_dir, "data", "penalty", "csrc2")
+    print(f"Looking for CSRC2 category data in: {pencsrc2}")
+    amtdf = get_csvdf(pencsrc2, "csrccat")
+    
+    if not amtdf.empty:
+        # Process amount column
+        if "amount" in amtdf.columns:
+            amtdf["amount"] = pd.to_numeric(amtdf["amount"], errors='coerce')
+        # Rename columns law to lawlist
+        if "law" in amtdf.columns:
+            amtdf.rename(columns={"law": "lawlist"}, inplace=True)
+        # Fill NaN values
+        amtdf = amtdf.fillna("")
+    
+    return amtdf
+
+
+def get_csrc2split() -> pd.DataFrame:
+    """
+    Get CSRC2 split data from CSV files.
+    
+    Returns:
+        DataFrame with CSRC2 split data
+    """
+    # Use absolute path to ensure it works from any working directory
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pencsrc2 = os.path.join(base_dir, "data", "penalty", "csrc2")
+    print(f"Looking for CSRC2 split data in: {pencsrc2}")
+    pendf = get_csvdf(pencsrc2, "csrcsplit")
+    
+    if not pendf.empty:
+        # Fill NaN values
+        pendf = pendf.fillna("")
+    
+    return pendf

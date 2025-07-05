@@ -64,6 +64,11 @@ interface UploadConfig {
 }
 
 interface UploadStats {
+  total: number;
+  pending: number;
+  uploading: number;
+  completed: number;
+  failed: number;
   caseDetailCount: number;
   caseDetailUniqueCount: number;
   analysisDataCount: number;
@@ -91,6 +96,11 @@ const CaseUpload: React.FC = () => {
   const [overallProgress, setOverallProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
   const [stats, setStats] = useState<UploadStats>({
+    total: 0,
+    pending: 0,
+    uploading: 0,
+    completed: 0,
+    failed: 0,
     caseDetailCount: 0,
     caseDetailUniqueCount: 0,
     analysisDataCount: 0,
@@ -119,8 +129,35 @@ const CaseUpload: React.FC = () => {
       });
       const data = response.data?.data || {};
       
+      // Use backend-generated diff data directly (cases not in online)
+      const diffData = data.diffData?.data || [];
+      const diffItems: UploadItem[] = diffData.map((item: CaseData) => ({
+        ...item,
+        status: 'pending' as const,
+        uploadProgress: 0,
+        isOnline: false,
+      }));
+      
+      setDiffData(diffItems);
+      
+      // Set upload items to only show pending items (diff data)
+      setUploadItems(diffItems);
+      
+      // Keep online items for statistics only
+      const onlineItems: UploadItem[] = (data.onlineData?.data || []).map((item: CaseData) => ({
+        ...item,
+        status: 'completed' as const,
+        uploadProgress: 100,
+        isOnline: true,
+      }));
+      
       // Update stats
       setStats({
+        total: diffItems.length,
+        pending: diffItems.length,
+        uploading: 0,
+        completed: onlineItems.length,
+        failed: 0,
         caseDetailCount: data.caseDetail?.count || 0,
         caseDetailUniqueCount: data.caseDetail?.uniqueCount || 0,
         analysisDataCount: data.analysisData?.count || 0,
@@ -130,28 +167,11 @@ const CaseUpload: React.FC = () => {
         splitDataCount: data.splitData?.count || 0,
         splitDataUniqueCount: data.splitData?.uniqueCount || 0,
         onlineDataCount: data.onlineData?.count || 0,
-        diffDataCount: data.diffData?.length || 0,
+        diffDataCount: data.diffData?.count || 0,
       });
       
       // Set online data
       setOnlineData(data.onlineData?.data || []);
-      
-      // Set upload items (analysis data with upload status)
-      const analysisData = data.analysisData?.data || [];
-      const onlineUrls = new Set((data.onlineData?.data || []).map((item: CaseData) => item.链接));
-      
-      const uploadItems: UploadItem[] = analysisData.map((item: CaseData) => ({
-        ...item,
-        status: onlineUrls.has(item.链接) ? 'completed' as const : 'pending' as const,
-        uploadProgress: onlineUrls.has(item.链接) ? 100 : 0,
-        isOnline: onlineUrls.has(item.链接),
-      }));
-      
-      setUploadItems(uploadItems);
-      
-      // Set diff data (items not online)
-      const diffItems = uploadItems.filter(item => !item.isOnline);
-      setDiffData(diffItems);
       
     } catch (error: any) {
       console.error('Failed to load upload data:', error);
@@ -296,18 +316,7 @@ const CaseUpload: React.FC = () => {
       
       // Call backend API to upload data
       const response = await apiClient.post('/api/upload-cases', {
-        cases: selectedItems.map(item => ({
-          链接: item.链接,
-          标题: item.标题,
-          机构: item.机构,
-          发文日期: item.发文日期,
-          文号: item.文号,
-          当事人: item.当事人,
-          处罚金额: item.处罚金额,
-          违规类型: item.违规类型,
-          内容: item.内容,
-        })),
-        config: uploadConfig,
+        case_ids: selectedItems.map(item => item.链接),
       });
       
       setOverallProgress(70);
@@ -501,11 +510,19 @@ const CaseUpload: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Data Statistics */}
-      <Card title="数据统计" loading={dataLoading}>
+      <Card title="数据统计概览" loading={dataLoading}>
         <Row gutter={[16, 16]}>
           <Col span={6}>
             <Statistic
               title="案例数据量"
+              value={stats.caseDetailCount}
+              suffix={`/ ${stats.caseDetailUniqueCount} 唯一`}
+              prefix={<FileTextOutlined />}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="分析数据量"
               value={stats.analysisDataCount}
               suffix={`/ ${stats.analysisDataUniqueCount} 唯一`}
               prefix={<DatabaseOutlined />}
@@ -516,22 +533,46 @@ const CaseUpload: React.FC = () => {
               title="分类数据量"
               value={stats.categoryDataCount}
               suffix={`/ ${stats.categoryDataUniqueCount} 唯一`}
-              prefix={<FileTextOutlined />}
+              prefix={<DatabaseOutlined />}
             />
           </Col>
           <Col span={6}>
+            <Statistic
+              title="拆分数据量"
+              value={stats.splitDataCount}
+              suffix={`/ ${stats.splitDataUniqueCount} 唯一`}
+              prefix={<DatabaseOutlined />}
+            />
+          </Col>
+        </Row>
+        <Divider />
+        <Row gutter={[16, 16]}>
+          <Col span={8}>
             <Statistic
               title="在线数据量"
               value={stats.onlineDataCount}
-              prefix={<CloudUploadOutlined />}
+              prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
             />
           </Col>
-          <Col span={6}>
+          <Col span={8}>
             <Statistic
-              title="差异数据量"
+              title="待上线数据量（三表交集）"
               value={stats.diffDataCount}
-              prefix={<DiffOutlined />}
+              prefix={<DiffOutlined style={{ color: '#1890ff' }} />}
             />
+          </Col>
+          <Col span={8}>
+            <div className="text-center">
+              <Text strong style={{ color: '#1890ff' }}>待上线列表逻辑</Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                csrc2analysis ∩ csrc2cat ∩ csrc2split - 在线数据
+              </Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: '11px' }}>
+                （三个表的交集，排除已在线案例）
+              </Text>
+            </div>
           </Col>
         </Row>
         
@@ -609,7 +650,7 @@ const CaseUpload: React.FC = () => {
 
       {/* Upload Table */}
       <Card 
-        title="上线列表"
+        title="待上线列表（三表交集）"
         extra={
           <Space>
             <Button

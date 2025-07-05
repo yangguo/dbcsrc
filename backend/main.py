@@ -1617,7 +1617,7 @@ async def get_download_data():
         data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'penalty', 'csrc2')
         
         # Helper function to get CSV file count
-        def get_csv_stats(pattern):
+        def get_csv_stats(pattern, unique_id_column):
             files = glob.glob(os.path.join(data_dir, pattern))
             if files:
                 dflist = []
@@ -1634,21 +1634,21 @@ async def get_download_data():
                     combined_df = pd.concat(dflist)
                     combined_df.reset_index(drop=True, inplace=True)
                     count = len(combined_df)
-                    unique_count = combined_df['案例编号'].nunique() if '案例编号' in combined_df.columns else count
+                    unique_count = combined_df[unique_id_column].nunique() if unique_id_column in combined_df.columns else count
                     return count, unique_count
             return 0, 0
         
-        # Get case detail data stats
-        case_detail_count, case_detail_unique = get_csv_stats("csrcdtlall*.csv")
+        # Get case detail data stats (uses "链接" as unique ID)
+        case_detail_count, case_detail_unique = get_csv_stats("csrcdtlall*.csv", "链接")
         
-        # Get analysis data stats
-        analysis_count, analysis_unique = get_csv_stats("csrc2analysis*.csv")
+        # Get analysis data stats (uses "链接" as unique ID)
+        analysis_count, analysis_unique = get_csv_stats("csrc2analysis*.csv", "链接")
         
-        # Get category data stats (assuming similar pattern)
-        category_count, category_unique = get_csv_stats("csrc2label*.csv")
+        # Get category data stats (uses "id" as unique ID)
+        category_count, category_unique = get_csv_stats("csrccat*.csv", "id")
         
-        # Get split data stats
-        split_count, split_unique = get_csv_stats("csrc2split*.csv")
+        # Get split data stats (uses "id" as unique ID)
+        split_count, split_unique = get_csv_stats("csrcsplit*.csv", "id")
         
         data = {
             "caseDetail": {
@@ -1783,9 +1783,9 @@ async def download_split_data():
     try:
         logger.info("Starting split data CSV download")
         
-        from data_service import get_csvdf
+        from data_service import get_csrc2split
         
-        df = get_csvdf("../data/penalty/csrc2", "csrc2split")
+        df = get_csrc2split()
         
         # Convert to CSV
         csv_buffer = io.StringIO()
@@ -1827,7 +1827,7 @@ async def get_upload_data():
             logger.info("Returning cached upload data")
             return upload_data_cache["data"]
             
-        from data_service import get_csrc2detail, get_csrc2analysis, get_csrc2label, get_csvdf
+        from data_service import get_csrc2detail, get_csrc2analysis, get_csrc2label, get_csrc2cat, get_csrc2split
         
         # Get case detail data with timeout handling
         logger.info("Loading case detail data")
@@ -1839,53 +1839,123 @@ async def get_upload_data():
         
         # Get category data with timeout handling
         logger.info("Loading category data")
-        category_df = get_csrc2label()
+        category_df = get_csrc2cat()
         
         # Get split data with timeout handling
         logger.info("Loading split data")
-        split_df = get_csvdf("../data/penalty/csrc2", "csrc2split")
+        split_df = get_csrc2split()
         
         # Get online data from MongoDB with timeout handling
         logger.info("Loading online data from MongoDB")
         online_df = get_online_data()
         
-        # Calculate diff data (cases not in online)
-        if not case_detail_df.empty:
-            if not online_df.empty and '案例编号' in online_df.columns:
-                # Get cases that are not online
-                online_case_ids = set(online_df['案例编号'].tolist())
-                diff_df = case_detail_df[~case_detail_df['案例编号'].isin(online_case_ids)].copy()
+        # Calculate diff data (three-table intersection minus online data)
+        # Following frontend logic: csrc2analysis + csrc2cat + csrc2split intersection
+        logger.info("Calculating three-table intersection for diff data")
+        
+        # First, get the three-table intersection regardless of online data
+        try:
+            if not analysis_df.empty and not category_df.empty and not split_df.empty:
+                logger.info(f"Starting three-table intersection: analysis({len(analysis_df)}), category({len(category_df)}), split({len(split_df)})")
+                
+                # Step 1: Inner join analysis with category data
+                intersection_df = pd.merge(
+                    analysis_df,
+                    category_df,
+                    left_on="链接",
+                    right_on="id",
+                    how="inner"
+                )
+                logger.info(f"After analysis+category merge: {len(intersection_df)} records")
+                
+                # Step 2: Inner join with split data
+                if not intersection_df.empty:
+                    # Remove 'org' column if exists to use the one from split data
+                    if 'org' in intersection_df.columns:
+                        intersection_df = intersection_df.drop(columns=['org'])
+                    
+                    intersection_df = pd.merge(
+                        intersection_df,
+                        split_df,
+                        left_on="链接",
+                        right_on="id",
+                        how="inner",
+                        suffixes=('', '_split')
+                    )
+                    logger.info(f"After three-table intersection: {len(intersection_df)} records")
+                    
+                    # Now exclude online cases from the intersection
+                    if not online_df.empty and '链接' in online_df.columns:
+                        online_case_ids = set(online_df['链接'].tolist())
+                        diff_df = intersection_df[~intersection_df['链接'].isin(online_case_ids)].copy()
+                        logger.info(f"After excluding online cases: {len(diff_df)} records")
+                    else:
+                        diff_df = intersection_df.copy()
+                        logger.info(f"No online data to exclude, keeping all intersection: {len(diff_df)} records")
+                    
+                    # Select specific columns as in frontend
+                    selected_columns = []
+                    
+                    # csrc2analysis fields (including 序列号)
+                    analysis_fields = ["名称", "文号", "发文日期", "序列号", "链接", "内容", "机构"]
+                    for field in analysis_fields:
+                        if field in diff_df.columns:
+                            selected_columns.append(field)
+                    
+                    # csrc2cat fields
+                    cat_fields = ["amount", "category", "province", "industry"]
+                    for field in cat_fields:
+                        if field in diff_df.columns:
+                            selected_columns.append(field)
+                    
+                    # csrc2split fields
+                    split_fields = ["wenhao", "people", "event", "law", "penalty", "org", "date"]
+                    for field in split_fields:
+                        if field in diff_df.columns:
+                            selected_columns.append(field)
+                    
+                    # Keep only selected columns
+                    if selected_columns:
+                        diff_df = diff_df[selected_columns]
+                        logger.info(f"Final diff data with selected columns: {len(diff_df)} records")
+                else:
+                    logger.warning("No data after analysis+category merge")
+                    diff_df = pd.DataFrame()
             else:
-                # If no online data, all cases are diff
-                diff_df = case_detail_df.copy()
-            
-            # Add upload status fields
+                logger.warning("Missing required datasets for three-table intersection")
+                logger.info(f"Data availability: analysis={not analysis_df.empty}, category={not category_df.empty}, split={not split_df.empty}")
+                diff_df = pd.DataFrame()
+                
+        except Exception as e:
+            logger.error(f"Error calculating three-table intersection: {str(e)}")
+            diff_df = pd.DataFrame()
+        
+        # Add upload status fields
+        if not diff_df.empty:
             diff_df['status'] = 'pending'
             diff_df['uploadProgress'] = 0
             diff_df['errorMessage'] = None
-        else:
-            diff_df = pd.DataFrame()
         
         data = {
             "caseDetail": {
                 "data": case_detail_df.to_dict('records') if not case_detail_df.empty else [],
                 "count": len(case_detail_df),
-                "uniqueCount": case_detail_df['案例编号'].nunique() if not case_detail_df.empty and '案例编号' in case_detail_df.columns else 0
+                "uniqueCount": case_detail_df['链接'].nunique() if not case_detail_df.empty and '链接' in case_detail_df.columns else 0
             },
             "analysisData": {
                 "data": analysis_df.to_dict('records') if not analysis_df.empty else [],
                 "count": len(analysis_df),
-                "uniqueCount": analysis_df['案例编号'].nunique() if not analysis_df.empty and '案例编号' in analysis_df.columns else 0
+                "uniqueCount": analysis_df['链接'].nunique() if not analysis_df.empty and '链接' in analysis_df.columns else 0
             },
             "categoryData": {
                 "data": category_df.to_dict('records') if not category_df.empty else [],
                 "count": len(category_df),
-                "uniqueCount": category_df['案例编号'].nunique() if not category_df.empty and '案例编号' in category_df.columns else 0
+                "uniqueCount": category_df['id'].nunique() if not category_df.empty and 'id' in category_df.columns else 0
             },
             "splitData": {
                 "data": split_df.to_dict('records') if not split_df.empty else [],
                 "count": len(split_df),
-                "uniqueCount": split_df['案例编号'].nunique() if not split_df.empty and '案例编号' in split_df.columns else 0
+                "uniqueCount": split_df['id'].nunique() if not split_df.empty and 'id' in split_df.columns else 0
             },
             "onlineData": {
                 "data": online_df.to_dict('records') if not online_df.empty else [],
@@ -1895,7 +1965,7 @@ async def get_upload_data():
             "diffData": {
                 "data": diff_df.to_dict('records') if not diff_df.empty else [],
                 "count": len(diff_df),
-                "uniqueCount": diff_df['案例编号'].nunique() if not diff_df.empty and '案例编号' in diff_df.columns else 0
+                "uniqueCount": diff_df['链接'].nunique() if not diff_df.empty and '链接' in diff_df.columns else 0
             }
         }
         
@@ -2063,14 +2133,75 @@ async def download_online_data():
 
 @app.get("/download/diff-data")
 async def download_diff_data():
-    """Download diff data CSV file"""
+    """Download diff data CSV file (three-table intersection minus online)"""
     try:
         logger.info("Starting diff data CSV download")
         
-        from data_service import get_csrc2detail
+        from data_service import get_csrc2analysis, get_csrc2cat, get_csrc2split
         
-        # Get case detail data as diff data (cases not online)
-        diff_df = get_csrc2detail()
+        # Get analysis data
+        analysis_df = get_csrc2analysis()
+        
+        # Get category data
+        category_df = get_csrc2cat()
+        
+        # Get split data
+        split_df = get_csrc2split()
+        
+        # Get online data
+        online_df = get_online_data()
+        
+        # Calculate diff data using same logic as upload-data endpoint
+        if not analysis_df.empty:
+            # Exclude online cases from analysis data
+            if not online_df.empty and '链接' in online_df.columns:
+                online_case_ids = set(online_df['链接'].tolist())
+                diff_analysis = analysis_df[~analysis_df['链接'].isin(online_case_ids)].copy()
+            else:
+                diff_analysis = analysis_df.copy()
+            
+            # Merge with category and split data (inner join for intersection)
+            if not category_df.empty and not split_df.empty and not diff_analysis.empty:
+                # Step 1: Inner join with category data
+                diff_df = pd.merge(
+                    diff_analysis,
+                    category_df,
+                    left_on="链接",
+                    right_on="id",
+                    how="inner"
+                )
+                
+                # Step 2: Inner join with split data
+                if not diff_df.empty:
+                    # Remove 'org' column if exists
+                    if 'org' in diff_df.columns:
+                        diff_df = diff_df.drop(columns=['org'])
+                    
+                    diff_df = pd.merge(
+                        diff_df,
+                        split_df,
+                        left_on="链接",
+                        right_on="id",
+                        how="inner",
+                        suffixes=('', '_split')
+                    )
+                
+                # Select specific columns
+                selected_columns = []
+                analysis_fields = ["名称", "文号", "发文日期", "序列号", "链接", "内容", "机构"]
+                cat_fields = ["amount", "category", "province", "industry"]
+                split_fields = ["wenhao", "people", "event", "law", "penalty", "org", "date"]
+                
+                for field in analysis_fields + cat_fields + split_fields:
+                    if field in diff_df.columns:
+                        selected_columns.append(field)
+                
+                if selected_columns:
+                    diff_df = diff_df[selected_columns]
+            else:
+                diff_df = pd.DataFrame()
+        else:
+            diff_df = pd.DataFrame()
         
         # Convert to CSV
         csv_buffer = io.StringIO()
