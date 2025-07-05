@@ -28,7 +28,7 @@ aioredis==2.0.1
 
 # AI and machine learning
 transformers==4.36.2
-torch==2.1.2
+torch==2.2.0
 scikit-learn==1.4.0
 
 # Streamlit for web interface

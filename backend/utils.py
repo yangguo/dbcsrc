@@ -1,8 +1,8 @@
 import datetime
-import os
 import glob
+import os
+
 import pandas as pd
-import datetime
 
 pencsrc2 = "../data/penalty/csrc2"
 tempdir = "../data/penalty/csrc2/temp"
@@ -66,7 +66,7 @@ def df2aggrid(df):
     return df
 
 
-# simplified df2echartstable function for backend compatibility  
+# simplified df2echartstable function for backend compatibility
 def df2echartstable(df, title):
     # Return dataframe as-is since backend doesn't use echarts
     return df

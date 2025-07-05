@@ -240,9 +240,9 @@ data/
 *.zip
 
 # Test files and debug code
-test_*.py
+# test_*.py  # Remove this line to allow backend/tests/test_*.py files
 *_test.py
-tests/
+# tests/  # Remove this line to allow backend/tests/ directory
 __tests__/
 *.test.js
 *.test.ts

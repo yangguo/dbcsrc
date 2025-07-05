@@ -1,18 +1,20 @@
-import pandas as pd
-import openai
-import os
 import json
+import os
+
+import openai
 import pandas as pd
+
 from utils import savetemp
 
 # Initialize OpenAI client
 client = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 )
 
 # Get model name from environment or use default
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+
 
 def text2schema(text, topic):
     """Extract entities using OpenAI LLM"""
@@ -33,17 +35,20 @@ Entity type to extract: {topic}
             - 个人: Extract person names
             - 单位: Extract organization/company names  
             - 负责人: Extract names of responsible persons/leaders"""
-            
+
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are an expert in Chinese named entity recognition. Always respond with valid JSON arrays."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are an expert in Chinese named entity recognition. Always respond with valid JSON arrays.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,
-                max_tokens=300
+                max_tokens=300,
             )
-            
+
             # Parse the response
             result_text = response.choices[0].message.content.strip()
             try:
@@ -52,10 +57,10 @@ Entity type to extract: {topic}
                     txtls = entities
             except json.JSONDecodeError:
                 pass
-                
+
         except Exception as e:
             pass
-            
+
     return txtls
 
 
