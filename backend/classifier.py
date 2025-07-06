@@ -117,7 +117,7 @@ def extract_penalty_info(text):
   "作出处罚决定的机关名称"，
   "作出处罚决定的日期"，
   "行业",
-  "罚款总金额"，（数字形式）
+  "罚没总金额"，（数字形式，包含罚款金额和没收金额的总和）
   "违规类型"，
   "监管地区" （相关省份）。
 重要提示：将输出格式化为JSON。只返回JSON响应，不添加其他评论或文本。如果返回的文本不是JSON，将视为失败。所有字段值都必须是字符串类型，不要使用数组或列表格式。
@@ -196,7 +196,7 @@ def df2penalty_analysis(df, idcol, contentcol):
                 "作出处罚决定的机关名称": extracted_data.get("作出处罚决定的机关名称", ""),
                 "作出处罚决定的日期": extracted_data.get("作出处罚决定的日期", ""),
                 "行业": extracted_data.get("行业", ""),
-                "罚款总金额": extracted_data.get("罚款总金额", ""),
+                "罚没总金额": extracted_data.get("罚没总金额", ""),
                 "违规类型": extracted_data.get("违规类型", ""),
                 "监管地区": extracted_data.get("监管地区", ""),
                 "analysis_status": "success"
@@ -213,7 +213,7 @@ def df2penalty_analysis(df, idcol, contentcol):
                 "作出处罚决定的机关名称": "",
                 "作出处罚决定的日期": "",
                 "行业": "",
-                "罚款总金额": "",
+                "罚没总金额": "",
                 "违规类型": "",
                 "监管地区": "",
                 "analysis_status": "failed",

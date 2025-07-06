@@ -2115,26 +2115,40 @@ async def generate_labels():
         
         # Process category cases
         for _, row in category_update_df.iterrows():
+            # Ensure all fields contain complete information
+            content = str(row.get('内容', '')) if row.get('内容') is not None else ''
+            title = str(row.get('名称', '')) if row.get('名称') is not None else ''
+            org = str(row.get('机构', '')) if row.get('机构') is not None else ''
+            wenhao = str(row.get('文号', '')) if row.get('文号') is not None else ''
+            
             label_data["category_cases"].append({
                 "id": row.get('链接', ''),
-                "title": row.get('名称', ''),
-                "content": row.get('内容', '')[:500] + '...' if len(str(row.get('内容', ''))) > 500 else row.get('内容', ''),
-                "org": row.get('机构', ''),
+                "title": title,
+                "content": content,  # Keep full content without truncation
+                "organization": org,  # Use 'organization' to match frontend column
+                "org": org,  # Keep 'org' for backward compatibility
                 "date": str(row.get('发文日期', '')),
-                "wenhao": row.get('文号', ''),
+                "wenhao": wenhao,
                 "status": "pending_category_label",
                 "type": "category"
             })
         
         # Process split cases
         for _, row in split_update_df.iterrows():
+            # Ensure all fields contain complete information
+            content = str(row.get('内容', '')) if row.get('内容') is not None else ''
+            title = str(row.get('名称', '')) if row.get('名称') is not None else ''
+            org = str(row.get('机构', '')) if row.get('机构') is not None else ''
+            wenhao = str(row.get('文号', '')) if row.get('文号') is not None else ''
+            
             label_data["split_cases"].append({
                 "id": row.get('链接', ''),
-                "title": row.get('名称', ''),
-                "content": row.get('内容', '')[:500] + '...' if len(str(row.get('内容', ''))) > 500 else row.get('内容', ''),
-                "org": row.get('机构', ''),
+                "title": title,
+                "content": content,  # Keep full content without truncation
+                "organization": org,  # Use 'organization' to match frontend column
+                "org": org,  # Keep 'org' for backward compatibility
                 "date": str(row.get('发文日期', '')),
-                "wenhao": row.get('文号', ''),
+                "wenhao": wenhao,
                 "status": "pending_split_label",
                 "type": "split"
             })

@@ -9,13 +9,11 @@ import {
   Space,
   Upload,
   Select,
-  Checkbox,
   Table,
   App,
   Typography,
   Divider,
   Tag,
-  Modal,
 } from 'antd';
 import {
   TagsOutlined,
@@ -144,8 +142,15 @@ const CaseClassification: React.FC = () => {
   const [penaltyResult, setPenaltyResult] = useState<any>(null);
   const [penaltyBatchResults, setPenaltyBatchResults] = useState<any[]>([]);
   const [penaltyFileList, setPenaltyFileList] = useState<UploadFile[]>([]);
-  const [penaltyResultModalVisible, setPenaltyResultModalVisible] = useState(false);
+
   const [csvColumns, setCsvColumns] = useState<string[]>([]);
+  
+
+  
+  // 表格行选择状态
+  const [selectedCategoryRows, setSelectedCategoryRows] = useState<string[]>([]);
+  const [selectedSplitRows, setSelectedSplitRows] = useState<string[]>([]);
+  const [selectedPenaltyRows, setSelectedPenaltyRows] = useState<string[]>([]);
 
 
 
@@ -283,7 +288,6 @@ const CaseClassification: React.FC = () => {
       });
       
       setPenaltyBatchResults(result.data?.result?.data || []);
-      setPenaltyResultModalVisible(true);
       message.success(`批量行政处罚分析完成，处理了 ${result.data?.result?.data?.length || 0} 条记录`);
     } catch (error) {
       message.error('批量行政处罚分析失败');
@@ -293,19 +297,23 @@ const CaseClassification: React.FC = () => {
     }
   };
 
-  const downloadCategoryResults = () => {
-    if (categoryResults.length === 0) {
-      message.warning('没有待分类数据可下载');
+  const downloadCategoryResults = (selectedOnly = false) => {
+    const dataToDownload = selectedOnly 
+      ? categoryResults.filter(item => selectedCategoryRows.includes(item.id))
+      : categoryResults;
+      
+    if (dataToDownload.length === 0) {
+      message.warning(selectedOnly ? '请先选择要下载的记录' : '没有待分类数据可下载');
       return;
     }
 
     // 准备CSV数据
-    const csvData = categoryResults.map(item => ({
+    const csvData = dataToDownload.map(item => ({
        'ID': item.id || '',
        '标题': item.title || '',
        '文号': item.wenhao || '',
        '内容': item.content || '',
-       '机构': item.org || '',
+       '机构': item.organization || item.org || '',
        '日期': item.date || '',
        '类型': '待分类标注',
        '状态': '待分类标注'
@@ -327,28 +335,35 @@ const CaseClassification: React.FC = () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `待分类案例_${new Date().toISOString().split('T')[0]}.csv`);
+    const fileName = selectedOnly 
+      ? `待分类案例_选中${dataToDownload.length}条_${new Date().toISOString().split('T')[0]}.csv`
+      : `待分类案例_${new Date().toISOString().split('T')[0]}.csv`;
+    link.setAttribute('download', fileName);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    message.success('下载成功');
+    message.success(`下载成功：${dataToDownload.length} 条记录`);
   };
 
-  const downloadSplitResults = () => {
-    if (splitResults.length === 0) {
-      message.warning('没有待拆分数据可下载');
+  const downloadSplitResults = (selectedOnly = false) => {
+    const dataToDownload = selectedOnly 
+      ? splitResults.filter(item => selectedSplitRows.includes(item.id))
+      : splitResults;
+      
+    if (dataToDownload.length === 0) {
+      message.warning(selectedOnly ? '请先选择要下载的记录' : '没有待拆分数据可下载');
       return;
     }
 
     // 准备CSV数据
-    const csvData = splitResults.map(item => ({
+    const csvData = dataToDownload.map(item => ({
        'ID': item.id || '',
        '标题': item.title || '',
        '文号': item.wenhao || '',
        '内容': item.content || '',
-       '机构': item.org || '',
+       '机构': item.organization || item.org || '',
        '日期': item.date || '',
        '类型': '待拆分标注',
        '状态': '待拆分标注'
@@ -369,37 +384,43 @@ const CaseClassification: React.FC = () => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `待拆分案例_${new Date().toISOString().split('T')[0]}.csv`);
+    const fileName = selectedOnly 
+      ? `待拆分案例_选中${dataToDownload.length}条_${new Date().toISOString().split('T')[0]}.csv`
+      : `待拆分案例_${new Date().toISOString().split('T')[0]}.csv`;
+    link.setAttribute('download', fileName);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    message.success('下载成功');
+    message.success(`下载成功：${dataToDownload.length} 条记录`);
   };
 
-  const downloadPenaltyBatchResults = () => {
-    if (!penaltyBatchResults || penaltyBatchResults.length === 0) {
-      message.warning('没有可下载的数据');
+  const downloadPenaltyBatchResults = (selectedOnly = false) => {
+    const dataToDownload = selectedOnly 
+      ? penaltyBatchResults.filter(item => selectedPenaltyRows.includes(item.id))
+      : penaltyBatchResults;
+      
+    if (!dataToDownload || dataToDownload.length === 0) {
+      message.warning(selectedOnly ? '请先选择要下载的记录' : '没有可下载的数据');
       return;
     }
     
     console.log('开始生成CSV内容');
-    console.log('批量分析结果数据:', penaltyBatchResults);
+    console.log('批量分析结果数据:', dataToDownload);
     
     const csvContent = [
       // CSV 头部 - 包含所有字段
-      'ID,行政处罚决定书文号,被处罚当事人,作出处罚决定的机关名称,作出处罚决定的日期,行业,罚款总金额,违规类型,监管地区,主要违法违规事实,行政处罚依据,行政处罚决定',
+      'ID,行政处罚决定书文号,被处罚当事人,作出处罚决定的机关名称,作出处罚决定的日期,行业,罚没总金额,违规类型,监管地区,主要违法违规事实,行政处罚依据,行政处罚决定',
       // CSV 数据行
-      ...penaltyBatchResults.map(result => [
+      ...dataToDownload.map(result => [
         result.id || '',
         `"${(result['行政处罚决定书文号'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['被处罚当事人'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['作出处罚决定的机关名称'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['作出处罚决定的日期'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['行业'] || '').toString().replace(/"/g, '""')}"`,
-        result['罚款总金额'] || '',
+        result['罚没总金额'] || '',
         `"${(result['违规类型'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['监管地区'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['主要违法违规事实'] || '').toString().replace(/"/g, '""')}"`,
@@ -413,16 +434,20 @@ const CaseClassification: React.FC = () => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `批量行政处罚分析结果_${new Date().toISOString().split('T')[0]}.csv`);
+    const fileName = selectedOnly 
+      ? `批量行政处罚分析结果_选中${dataToDownload.length}条_${new Date().toISOString().split('T')[0]}.csv`
+      : `批量行政处罚分析结果_${new Date().toISOString().split('T')[0]}.csv`;
+    link.setAttribute('download', fileName);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     
     console.log('下载链接已点击');
-    message.success('下载成功');
+    message.success(`下载成功：${dataToDownload.length} 条记录`);
   };
+
+
 
 
 
@@ -451,17 +476,35 @@ const CaseClassification: React.FC = () => {
                   <Divider />
                   <div className="flex justify-between items-center mb-4">
                     <Title level={4}>待分类数据 ({categoryResults.length} 条)</Title>
-                    <Button
-                      icon={<DownloadOutlined />}
-                      onClick={downloadCategoryResults}
-                    >
-                      下载待分类数据
-                    </Button>
+                    <Space>
+                      <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() => downloadCategoryResults(true)}
+                        disabled={selectedCategoryRows.length === 0}
+                      >
+                        下载选中 ({selectedCategoryRows.length})
+                      </Button>
+                      <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() => downloadCategoryResults(false)}
+                      >
+                        下载全部
+                      </Button>
+                    </Space>
                   </div>
                   <Table
                     dataSource={categoryResults}
                     columns={labelColumns}
                     rowKey="id"
+                    rowSelection={{
+                      selectedRowKeys: selectedCategoryRows,
+                      onChange: (selectedRowKeys) => {
+                        setSelectedCategoryRows(selectedRowKeys as string[]);
+                      },
+                      getCheckboxProps: (record) => ({
+                        name: record.id,
+                      }),
+                    }}
                     pagination={{
                       pageSize: 10,
                       showSizeChanger: true,
@@ -479,17 +522,35 @@ const CaseClassification: React.FC = () => {
                   <Divider />
                   <div className="flex justify-between items-center mb-4">
                     <Title level={4}>待拆分标注数据 ({splitResults.length} 条)</Title>
-                    <Button
-                      icon={<DownloadOutlined />}
-                      onClick={downloadSplitResults}
-                    >
-                      下载待拆分数据
-                    </Button>
+                    <Space>
+                      <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() => downloadSplitResults(true)}
+                        disabled={selectedSplitRows.length === 0}
+                      >
+                        下载选中 ({selectedSplitRows.length})
+                      </Button>
+                      <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() => downloadSplitResults(false)}
+                      >
+                        下载全部
+                      </Button>
+                    </Space>
                   </div>
                   <Table
                     dataSource={splitResults}
                     columns={labelColumns}
                     rowKey="id"
+                    rowSelection={{
+                      selectedRowKeys: selectedSplitRows,
+                      onChange: (selectedRowKeys) => {
+                        setSelectedSplitRows(selectedRowKeys as string[]);
+                      },
+                      getCheckboxProps: (record) => ({
+                        name: record.id,
+                      }),
+                    }}
                     pagination={{
                       pageSize: 10,
                       showSizeChanger: true,
@@ -569,9 +630,9 @@ const CaseClassification: React.FC = () => {
                 <Text strong>行业：</Text>
                 <div className="mb-2">{penaltyResult['行业'] || '未提取'}</div>
                 
-                <Text strong>罚款总金额：</Text>
+                <Text strong>罚没总金额：</Text>
                 <div className="mb-2">{(() => {
-                  const amount = penaltyResult['罚款总金额'];
+                  const amount = penaltyResult['罚没总金额'];
                   if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
                     return '0';
                   }
@@ -696,148 +757,161 @@ const CaseClassification: React.FC = () => {
             </Button>
           </Form.Item>
         </Form>
+        
+        {/* Batch Penalty Analysis Results */}
+        {penaltyBatchResults && penaltyBatchResults.length > 0 && (
+          <div className="mt-6">
+            <Divider />
+            <div className="flex justify-between items-center mb-4">
+              <Title level={4}>批量行政处罚分析结果 ({penaltyBatchResults.length} 条)</Title>
+              <Space>
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={() => downloadPenaltyBatchResults(true)}
+                  disabled={selectedPenaltyRows.length === 0}
+                >
+                  下载选中 ({selectedPenaltyRows.length})
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<DownloadOutlined />}
+                  onClick={() => downloadPenaltyBatchResults(false)}
+                >
+                  下载全部
+                </Button>
+              </Space>
+            </div>
+            <Table
+              columns={[
+                {
+                  title: 'ID',
+                  dataIndex: 'id',
+                  key: 'id',
+                  width: '6%',
+                  fixed: 'left',
+                },
+                {
+                  title: '决定书文号',
+                  dataIndex: '行政处罚决定书文号',
+                  key: 'documentNumber',
+                  width: '12%',
+                  ellipsis: true,
+                },
+                {
+                  title: '被处罚当事人',
+                  dataIndex: '被处罚当事人',
+                  key: 'penalizedParty',
+                  width: '10%',
+                  ellipsis: true,
+                },
+                {
+                  title: '处罚机关',
+                  dataIndex: '作出处罚决定的机关名称',
+                  key: 'authority',
+                  width: '10%',
+                  ellipsis: true,
+                },
+                {
+                  title: '处罚日期',
+                  dataIndex: '作出处罚决定的日期',
+                  key: 'date',
+                  width: '10%',
+                  ellipsis: true,
+                },
+                {
+                  title: '行业',
+                  dataIndex: '行业',
+                  key: 'industry',
+                  width: '8%',
+                  ellipsis: true,
+                },
+                {
+                  title: '罚没金额',
+                  dataIndex: '罚没总金额',
+                  key: 'fineAmount',
+                  width: '8%',
+                  render: (amount: any) => {
+                    if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
+                      return '0';
+                    }
+                    return amount;
+                  },
+                },
+                {
+                  title: '违规类型',
+                  dataIndex: '违规类型',
+                  key: 'violationType',
+                  width: '10%',
+                  ellipsis: true,
+                },
+                {
+                  title: '监管地区',
+                  dataIndex: '监管地区',
+                  key: 'region',
+                  width: '8%',
+                  ellipsis: true,
+                },
+                {
+                  title: '违法事实',
+                  dataIndex: '主要违法违规事实',
+                  key: 'violationFacts',
+                  width: '15%',
+                  ellipsis: true,
+                  render: (text: string) => (
+                    <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
+                      {text || '未提取'}
+                    </div>
+                  ),
+                },
+                {
+                  title: '处罚依据',
+                  dataIndex: '行政处罚依据',
+                  key: 'legalBasis',
+                  width: '15%',
+                  ellipsis: true,
+                  render: (text: string) => (
+                    <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
+                      {text || '未提取'}
+                    </div>
+                  ),
+                },
+                {
+                  title: '处罚决定',
+                  dataIndex: '行政处罚决定',
+                  key: 'penaltyDecision',
+                  width: '15%',
+                  ellipsis: true,
+                  render: (text: string) => (
+                    <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
+                      {text || '未提取'}
+                    </div>
+                  ),
+                },
+              ]}
+              dataSource={penaltyBatchResults}
+              rowKey={(record) => record.id || `row-${Math.random()}`}
+              rowSelection={{
+                selectedRowKeys: selectedPenaltyRows,
+                onChange: (selectedRowKeys) => {
+                  setSelectedPenaltyRows(selectedRowKeys as string[]);
+                },
+                getCheckboxProps: (record) => ({
+                  name: record.id,
+                }),
+              }}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showTotal: (total, range) =>
+                  `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+              }}
+              scroll={{ x: 1400, y: 400 }}
+            />
+          </div>
+        )}
       </Card>
+      
 
-
-
-      {/* Batch Penalty Analysis Results Modal */}
-      <Modal
-        title="批量行政处罚分析结果"
-        open={penaltyResultModalVisible}
-        onCancel={() => setPenaltyResultModalVisible(false)}
-        width={1600}
-        footer={[
-          <Button
-            key="download"
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={downloadPenaltyBatchResults}
-          >
-            下载结果
-          </Button>,
-          <Button key="close" onClick={() => setPenaltyResultModalVisible(false)}>
-            关闭
-          </Button>,
-        ]}
-      >
-        <Table
-          columns={[
-            {
-              title: 'ID',
-              dataIndex: 'id',
-              key: 'id',
-              width: '6%',
-              fixed: 'left',
-            },
-            {
-              title: '决定书文号',
-              dataIndex: '行政处罚决定书文号',
-              key: 'documentNumber',
-              width: '12%',
-              ellipsis: true,
-            },
-            {
-              title: '被处罚当事人',
-              dataIndex: '被处罚当事人',
-              key: 'penalizedParty',
-              width: '10%',
-              ellipsis: true,
-            },
-            {
-              title: '处罚机关',
-              dataIndex: '作出处罚决定的机关名称',
-              key: 'authority',
-              width: '10%',
-              ellipsis: true,
-            },
-            {
-              title: '处罚日期',
-              dataIndex: '作出处罚决定的日期',
-              key: 'date',
-              width: '10%',
-              ellipsis: true,
-            },
-            {
-              title: '行业',
-              dataIndex: '行业',
-              key: 'industry',
-              width: '8%',
-              ellipsis: true,
-            },
-            {
-              title: '罚款金额',
-              dataIndex: '罚款总金额',
-              key: 'fineAmount',
-              width: '8%',
-              render: (amount: any) => {
-                if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
-                  return '0';
-                }
-                return amount;
-              },
-            },
-            {
-              title: '违规类型',
-              dataIndex: '违规类型',
-              key: 'violationType',
-              width: '10%',
-              ellipsis: true,
-            },
-            {
-              title: '监管地区',
-              dataIndex: '监管地区',
-              key: 'region',
-              width: '8%',
-              ellipsis: true,
-            },
-            {
-              title: '违法事实',
-              dataIndex: '主要违法违规事实',
-              key: 'violationFacts',
-              width: '15%',
-              ellipsis: true,
-              render: (text: string) => (
-                <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
-                  {text || '未提取'}
-                </div>
-              ),
-            },
-            {
-              title: '处罚依据',
-              dataIndex: '行政处罚依据',
-              key: 'legalBasis',
-              width: '15%',
-              ellipsis: true,
-              render: (text: string) => (
-                <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
-                  {text || '未提取'}
-                </div>
-              ),
-            },
-            {
-              title: '处罚决定',
-              dataIndex: '行政处罚决定',
-              key: 'penaltyDecision',
-              width: '15%',
-              ellipsis: true,
-              render: (text: string) => (
-                <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
-                  {text || '未提取'}
-                </div>
-              ),
-            },
-          ]}
-          dataSource={penaltyBatchResults}
-          rowKey={(record) => record.id || `row-${Math.random()}`}
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showTotal: (total, range) =>
-              `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-          }}
-          scroll={{ x: 1400, y: 400 }}
-        />
-      </Modal>
     </div>
   );
 };
