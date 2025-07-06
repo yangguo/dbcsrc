@@ -43,6 +43,7 @@ interface BatchResult {
 
 const CaseClassification: React.FC = () => {
   const { message } = App.useApp();
+  const [penaltyForm] = Form.useForm();
 
   // Label results table columns
   const labelColumns = [
@@ -144,6 +145,7 @@ const CaseClassification: React.FC = () => {
   const [penaltyBatchResults, setPenaltyBatchResults] = useState<any[]>([]);
   const [penaltyFileList, setPenaltyFileList] = useState<UploadFile[]>([]);
   const [penaltyResultModalVisible, setPenaltyResultModalVisible] = useState(false);
+  const [csvColumns, setCsvColumns] = useState<string[]>([]);
 
 
 
@@ -195,6 +197,73 @@ const CaseClassification: React.FC = () => {
       console.error('Penalty analysis error:', error);
     } finally {
       setSinglePenaltyLoading(false);
+    }
+  };
+
+  const parseCsvColumns = (file: File): Promise<string[]> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          console.log('CSV文件内容预览:', text.substring(0, 200));
+          const firstLine = text.split('\n')[0].trim();
+          console.log('第一行内容:', firstLine);
+          
+          // 处理不同的分隔符和引号格式
+          let columns: string[];
+          if (firstLine.includes(',')) {
+            columns = firstLine.split(',').map(col => col.trim().replace(/^["']|["']$/g, ''));
+          } else if (firstLine.includes(';')) {
+            columns = firstLine.split(';').map(col => col.trim().replace(/^["']|["']$/g, ''));
+          } else {
+            columns = [firstLine];
+          }
+          
+          console.log('解析出的列名:', columns);
+          
+          if (columns.length === 0 || (columns.length === 1 && columns[0] === '')) {
+            reject(new Error('未能解析出有效的列名'));
+          } else {
+            resolve(columns.filter(col => col.length > 0));
+          }
+        } catch (error) {
+          console.error('CSV解析错误:', error);
+          reject(error);
+        }
+      };
+      reader.onerror = () => reject(new Error('文件读取失败'));
+      reader.readAsText(file, 'utf-8');
+    });
+  };
+
+  const handlePenaltyFileChange = async (info: any) => {
+    console.log('文件上传信息:', info);
+    
+    setPenaltyFileList(info.fileList);
+    
+    // 清空之前的列名
+    setCsvColumns([]);
+    
+    // 当有文件时解析列名
+    if (info.fileList.length > 0) {
+      const latestFile = info.fileList[info.fileList.length - 1];
+      const file = latestFile.originFileObj || latestFile;
+      
+      console.log('准备解析的文件:', file);
+      
+      if (file && file instanceof File) {
+        try {
+          console.log('开始解析CSV列名...');
+          const columns = await parseCsvColumns(file);
+          console.log('解析完成，设置列名:', columns);
+          setCsvColumns(columns);
+          message.success(`文件上传成功，已解析${columns.length}个列名`);
+        } catch (error) {
+           console.error('解析CSV列名失败:', error);
+           message.error(`解析CSV列名失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+      }
     }
   };
 
@@ -311,31 +380,48 @@ const CaseClassification: React.FC = () => {
   };
 
   const downloadPenaltyBatchResults = () => {
-    if (penaltyBatchResults.length === 0) return;
+    if (!penaltyBatchResults || penaltyBatchResults.length === 0) {
+      message.warning('没有可下载的数据');
+      return;
+    }
+    
+    console.log('开始生成CSV内容');
+    console.log('批量分析结果数据:', penaltyBatchResults);
     
     const csvContent = [
-      ['ID', '行政处罚决定书文号', '被处罚当事人', '主要违法违规事实', '行政处罚依据', '行政处罚决定', '作出处罚决定的机关名称', '作出处罚决定的日期', '行业', '罚款总金额', '违规类型', '监管地区'].join(','),
+      // CSV 头部 - 包含所有字段
+      'ID,行政处罚决定书文号,被处罚当事人,作出处罚决定的机关名称,作出处罚决定的日期,行业,罚款总金额,违规类型,监管地区,主要违法违规事实,行政处罚依据,行政处罚决定',
+      // CSV 数据行
       ...penaltyBatchResults.map(result => [
         result.id || '',
         `"${(result['行政处罚决定书文号'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['被处罚当事人'] || '').toString().replace(/"/g, '""')}"`,
-        `"${(result['主要违法违规事实'] || '').toString().replace(/"/g, '""')}"`,
-        `"${(result['行政处罚依据'] || '').toString().replace(/"/g, '""')}"`,
-        `"${(result['行政处罚决定'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['作出处罚决定的机关名称'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['作出处罚决定的日期'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['行业'] || '').toString().replace(/"/g, '""')}"`,
         result['罚款总金额'] || '',
         `"${(result['违规类型'] || '').toString().replace(/"/g, '""')}"`,
         `"${(result['监管地区'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['主要违法违规事实'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['行政处罚依据'] || '').toString().replace(/"/g, '""')}"`,
+        `"${(result['行政处罚决定'] || '').toString().replace(/"/g, '""')}"`
       ].join(','))
     ].join('\n');
     
+    console.log('CSV内容生成完成，长度:', csvContent.length);
+    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'penalty_analysis_results.csv';
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `批量行政处罚分析结果_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
+    
+    console.log('下载链接已点击');
+    message.success('下载成功');
   };
 
 
@@ -516,8 +602,12 @@ const CaseClassification: React.FC = () => {
       {/* Batch Penalty Analysis */}
       <Card title="批量行政处罚分析">
         <Form
+          form={penaltyForm}
           layout="vertical"
           onFinish={handleBatchPenaltyAnalysis}
+          onValuesChange={(changedValues, allValues) => {
+            console.log('表单值变化:', changedValues, allValues);
+          }}
         >
           <Form.Item
             label="上传文件"
@@ -526,7 +616,7 @@ const CaseClassification: React.FC = () => {
           >
             <Upload
               fileList={penaltyFileList}
-              onChange={({ fileList }) => setPenaltyFileList(fileList)}
+              onChange={handlePenaltyFileChange}
               beforeUpload={() => false}
               accept=".csv"
               maxCount={1}
@@ -535,21 +625,62 @@ const CaseClassification: React.FC = () => {
             </Upload>
           </Form.Item>
           
+          {csvColumns.length > 0 && (
+            <div className="mb-4 p-3 bg-blue-50 rounded">
+              <div className="flex justify-between items-center">
+                <Text type="secondary">检测到的列名：{csvColumns.join(', ')}</Text>
+                <Button 
+                  size="small" 
+                  onClick={() => {
+                    setCsvColumns([]);
+                    setPenaltyFileList([]);
+                    penaltyForm.resetFields(['penaltyIdCol', 'penaltyContentCol']);
+                    message.info('已清除文件和列名');
+                  }}
+                >
+                  清除
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {penaltyFileList.length > 0 && csvColumns.length === 0 && (
+            <div className="mb-4 p-3 bg-yellow-50 rounded">
+              <Text type="warning">文件已上传，但未能解析出列名。请检查文件格式是否正确。</Text>
+            </div>
+          )}
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Form.Item
               label="ID 字段"
               name="penaltyIdCol"
-              rules={[{ required: true, message: '请输入 ID 字段名' }]}
+              rules={[{ required: true, message: '请选择 ID 字段' }]}
             >
-              <Input placeholder="例如: id" />
+              <Select
+                placeholder="请选择 ID 字段"
+                disabled={csvColumns.length === 0}
+                showSearch
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={csvColumns.map(col => ({ label: col, value: col }))}
+              />
             </Form.Item>
             
             <Form.Item
               label="内容字段"
               name="penaltyContentCol"
-              rules={[{ required: true, message: '请输入内容字段名' }]}
+              rules={[{ required: true, message: '请选择内容字段' }]}
             >
-              <Input placeholder="例如: content" />
+              <Select
+                placeholder="请选择内容字段"
+                disabled={csvColumns.length === 0}
+                showSearch
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={csvColumns.map(col => ({ label: col, value: col }))}
+              />
             </Form.Item>
           </div>
           
@@ -574,7 +705,7 @@ const CaseClassification: React.FC = () => {
         title="批量行政处罚分析结果"
         open={penaltyResultModalVisible}
         onCancel={() => setPenaltyResultModalVisible(false)}
-        width={1200}
+        width={1600}
         footer={[
           <Button
             key="download"
@@ -595,34 +726,49 @@ const CaseClassification: React.FC = () => {
               title: 'ID',
               dataIndex: 'id',
               key: 'id',
-              width: '8%',
+              width: '6%',
+              fixed: 'left',
             },
             {
               title: '决定书文号',
               dataIndex: '行政处罚决定书文号',
               key: 'documentNumber',
-              width: '15%',
+              width: '12%',
               ellipsis: true,
             },
             {
               title: '被处罚当事人',
               dataIndex: '被处罚当事人',
               key: 'penalizedParty',
-              width: '12%',
+              width: '10%',
               ellipsis: true,
             },
             {
               title: '处罚机关',
               dataIndex: '作出处罚决定的机关名称',
               key: 'authority',
-              width: '12%',
+              width: '10%',
+              ellipsis: true,
+            },
+            {
+              title: '处罚日期',
+              dataIndex: '作出处罚决定的日期',
+              key: 'date',
+              width: '10%',
+              ellipsis: true,
+            },
+            {
+              title: '行业',
+              dataIndex: '行业',
+              key: 'industry',
+              width: '8%',
               ellipsis: true,
             },
             {
               title: '罚款金额',
               dataIndex: '罚款总金额',
               key: 'fineAmount',
-              width: '10%',
+              width: '8%',
               render: (amount: any) => {
                 if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
                   return '0';
@@ -634,40 +780,62 @@ const CaseClassification: React.FC = () => {
               title: '违规类型',
               dataIndex: '违规类型',
               key: 'violationType',
-              width: '12%',
-              ellipsis: true,
-            },
-            {
-              title: '行业',
-              dataIndex: '行业',
-              key: 'industry',
-              width: '8%',
+              width: '10%',
               ellipsis: true,
             },
             {
               title: '监管地区',
               dataIndex: '监管地区',
               key: 'region',
-              width: '10%',
+              width: '8%',
               ellipsis: true,
             },
             {
-              title: '作出处罚决定的日期',
-              dataIndex: '作出处罚决定的日期',
-              key: 'date',
-              width: '13%',
+              title: '违法事实',
+              dataIndex: '主要违法违规事实',
+              key: 'violationFacts',
+              width: '15%',
               ellipsis: true,
+              render: (text: string) => (
+                <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
+                  {text || '未提取'}
+                </div>
+              ),
+            },
+            {
+              title: '处罚依据',
+              dataIndex: '行政处罚依据',
+              key: 'legalBasis',
+              width: '15%',
+              ellipsis: true,
+              render: (text: string) => (
+                <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
+                  {text || '未提取'}
+                </div>
+              ),
+            },
+            {
+              title: '处罚决定',
+              dataIndex: '行政处罚决定',
+              key: 'penaltyDecision',
+              width: '15%',
+              ellipsis: true,
+              render: (text: string) => (
+                <div title={text} style={{ maxHeight: '60px', overflow: 'hidden' }}>
+                  {text || '未提取'}
+                </div>
+              ),
             },
           ]}
           dataSource={penaltyBatchResults}
-          rowKey={(record, index) => record.id || index}
+          rowKey={(record) => record.id || `row-${Math.random()}`}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
             showTotal: (total, range) =>
               `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
           }}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1400, y: 400 }}
         />
       </Modal>
     </div>

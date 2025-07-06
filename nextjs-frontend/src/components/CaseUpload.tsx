@@ -680,7 +680,7 @@ const CaseUpload: React.FC = () => {
         <Table
           columns={columns}
           dataSource={uploadItems}
-          rowKey="链接"
+          rowKey={(record) => record.链接 || `row-${Math.random()}`}
           rowSelection={rowSelection}
           loading={loading || dataLoading}
           pagination={{

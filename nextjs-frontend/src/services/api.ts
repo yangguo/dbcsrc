@@ -404,10 +404,14 @@ export const caseApi = {
   }): Promise<any> => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('idcol', params.idCol);
-    formData.append('contentcol', params.contentCol);
     
-    const response = await apiClient.post('/batch-penalty-analysis', formData, {
+    // Send idcol and contentcol as query parameters
+    const queryParams = new URLSearchParams({
+      idcol: params.idCol,
+      contentcol: params.contentCol
+    });
+    
+    const response = await apiClient.post(`/batch-penalty-analysis?${queryParams}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
