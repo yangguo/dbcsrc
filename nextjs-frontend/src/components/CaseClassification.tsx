@@ -484,7 +484,13 @@ const CaseClassification: React.FC = () => {
                 <div className="mb-2">{penaltyResult['行业'] || '未提取'}</div>
                 
                 <Text strong>罚款总金额：</Text>
-                <div className="mb-2">{penaltyResult['罚款总金额'] || '未提取'}</div>
+                <div className="mb-2">{(() => {
+                  const amount = penaltyResult['罚款总金额'];
+                  if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
+                    return '0';
+                  }
+                  return amount;
+                })()}</div>
               </div>
               <div>
                 <Text strong>违规类型：</Text>
@@ -617,7 +623,12 @@ const CaseClassification: React.FC = () => {
               dataIndex: '罚款总金额',
               key: 'fineAmount',
               width: '10%',
-              render: (amount: any) => amount || '未提取',
+              render: (amount: any) => {
+                if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
+                  return '0';
+                }
+                return amount;
+              },
             },
             {
               title: '违规类型',
