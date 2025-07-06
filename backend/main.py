@@ -180,7 +180,8 @@ def get_memory_usage() -> dict:
 class Settings:
     backend_url: str = os.getenv("BACKEND_URL", "http://localhost:8000")
     frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    mongo_url: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017/dbcsrc")
+    # Try MONGO_DB_URL first (frontend compatibility), then MONGODB_URL
+    mongo_url: str = os.getenv("MONGO_DB_URL") or os.getenv("MONGODB_URL", "mongodb://localhost:27017/dbcsrc")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     
 settings = Settings()
@@ -243,19 +244,33 @@ def get_online_data():
         return pd.DataFrame()
 
 def insert_online_data(df: pd.DataFrame):
-    """Insert data to MongoDB"""
+    """Insert data to MongoDB - following frontend logic"""
+    import datetime
+    
     try:
         collection = get_collection("pencsrc2", "csrc2analysis")
         if collection is not None and not df.empty:
-            records = df.to_dict("records")
-            batch_size = 1000
+            # Convert date objects to datetime objects for MongoDB compatibility
+            df_copy = df.copy()
+            for col in df_copy.columns:
+                if df_copy[col].dtype == 'object':
+                    # Check if column contains date objects
+                    sample_value = df_copy[col].dropna().iloc[0] if not df_copy[col].dropna().empty else None
+                    if isinstance(sample_value, datetime.date) and not isinstance(sample_value, datetime.datetime):
+                        df_copy[col] = pd.to_datetime(df_copy[col])
+            
+            records = df_copy.to_dict("records")
+            batch_size = 10000  # Use same batch size as frontend
             for i in range(0, len(records), batch_size):
                 batch = records[i:i + batch_size]
                 collection.insert_many(batch)
+            logger.info(f"Successfully inserted {len(records)} records to MongoDB")
             return True
-        return False
+        else:
+            logger.warning("Collection is None or DataFrame is empty")
+            return False
     except Exception as e:
-        logger.error(f"Failed to insert online data: {str(e)}")
+        logger.error(f"Failed to insert online data: {str(e)}", exc_info=True)
         return False
 
 def delete_online_data():
@@ -1961,7 +1976,7 @@ async def get_upload_data():
             "onlineData": {
                 "data": online_df.to_dict('records') if not online_df.empty else [],
                 "count": len(online_df),
-                "uniqueCount": 0
+                "uniqueCount": online_df['链接'].nunique() if not online_df.empty and '链接' in online_df.columns else 0
             },
             "diffData": {
                 "data": diff_df.to_dict('records') if not diff_df.empty else [],
@@ -2005,15 +2020,15 @@ class UploadCasesRequest(BaseModel):
 @app.post("/upload-cases", response_model=APIResponse)
 @app.post("/api/upload-cases", response_model=APIResponse)
 async def upload_cases(request: UploadCasesRequest):
-    """Upload selected cases to online database"""
+    """Upload selected cases to online database using three-table intersection data"""
     try:
         logger.info(f"Starting upload for {len(request.case_ids)} cases")
         
-        # Get case data to upload
-        from data_service import get_csrc2analysis
+        # Get three-table intersection data (following frontend logic)
+        from data_service import get_csrc2analysis, get_csrc2cat, get_csrc2split
         
+        # Get analysis data
         analysis_df = get_csrc2analysis()
-        
         if analysis_df.empty:
             return APIResponse(
                 success=False,
@@ -2021,19 +2036,97 @@ async def upload_cases(request: UploadCasesRequest):
                 count=0
             )
         
-        # Filter cases to upload
-        if '案例编号' in analysis_df.columns:
-            cases_to_upload = analysis_df[analysis_df['案例编号'].isin(request.case_ids)]
-        else:
-            # If no case ID column, use link as identifier
-            cases_to_upload = analysis_df[analysis_df['链接'].isin(request.case_ids)]
+        # Get category data
+        cat_df = get_csrc2cat()
+        if cat_df.empty:
+            return APIResponse(
+                success=False,
+                message="No category data available for upload",
+                count=0
+            )
+        
+        # Get split data
+        split_df = get_csrc2split()
+        if split_df.empty:
+            return APIResponse(
+                success=False,
+                message="No split data available for upload",
+                count=0
+            )
+        
+        # Create three-table intersection (inner join)
+        # Step 1: Merge analysis with category data
+        merged_data = pd.merge(
+            analysis_df,
+            cat_df,
+            left_on="链接",
+            right_on="id",
+            how="inner"
+        )
+        
+        if merged_data.empty:
+            return APIResponse(
+                success=False,
+                message="No intersection between analysis and category data",
+                count=0
+            )
+        
+        # Step 2: Merge with split data
+        if 'org' in merged_data.columns:
+            merged_data = merged_data.drop(columns=['org'])
+        
+        final_data = pd.merge(
+            merged_data,
+            split_df,
+            left_on="链接",
+            right_on="id",
+            how="inner",
+            suffixes=('', '_split')
+        )
+        
+        if final_data.empty:
+            return APIResponse(
+                success=False,
+                message="No three-table intersection data available",
+                count=0
+            )
+        
+        # Filter cases to upload from the three-table intersection
+        cases_to_upload = final_data[final_data['链接'].isin(request.case_ids)]
         
         if cases_to_upload.empty:
             return APIResponse(
                 success=False,
-                message="No matching cases found for upload",
+                message="No matching cases found in three-table intersection for upload",
                 count=0
             )
+        
+        # Select only the required fields (following frontend logic)
+        selected_columns = []
+        
+        # csrc2analysis fields
+        analysis_fields = ["名称", "文号", "发文日期", "序列号", "链接", "内容", "机构"]
+        for field in analysis_fields:
+            if field in cases_to_upload.columns:
+                selected_columns.append(field)
+        
+        # csrc2cat fields
+        cat_fields = ["amount", "category", "province", "industry"]
+        for field in cat_fields:
+            if field in cases_to_upload.columns:
+                selected_columns.append(field)
+        
+        # csrc2split fields
+        split_fields = ["wenhao", "people", "event", "law", "penalty", "org", "date"]
+        for field in split_fields:
+            if field in cases_to_upload.columns:
+                selected_columns.append(field)
+        
+        # Keep only selected columns
+        if selected_columns:
+            cases_to_upload = cases_to_upload[selected_columns]
+        
+        logger.info(f"Uploading {len(cases_to_upload)} cases with three-table intersection data")
         
         # Upload to MongoDB
         success = insert_online_data(cases_to_upload)
@@ -2041,9 +2134,15 @@ async def upload_cases(request: UploadCasesRequest):
         if success:
             uploaded_count = len(cases_to_upload)
             logger.info(f"Successfully uploaded {uploaded_count} cases to MongoDB")
+            
+            # Clear upload data cache to ensure fresh data on next request
+            upload_data_cache["data"] = None
+            upload_data_cache["timestamp"] = 0
+            logger.info("Cleared upload data cache after successful upload")
+            
             return APIResponse(
                 success=True,
-                message=f"Successfully uploaded {uploaded_count} cases",
+                message=f"Successfully uploaded {uploaded_count} cases with complete data",
                 count=uploaded_count
             )
         else:
@@ -2190,6 +2289,11 @@ async def delete_online_data_endpoint():
         # Delete from MongoDB
         deleted_count = delete_online_data()
         
+        # Clear upload data cache to ensure fresh data on next request
+        upload_data_cache["data"] = None
+        upload_data_cache["timestamp"] = 0
+        logger.info("Cleared upload data cache after successful deletion")
+        
         logger.info(f"Successfully deleted {deleted_count} online cases")
         return APIResponse(
             success=True,
@@ -2252,6 +2356,7 @@ async def download_online_data():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download/diff-data")
+@app.get("/api/download/diff-data")
 async def download_diff_data():
     """Download diff data CSV file (three-table intersection minus online)"""
     try:
@@ -2341,6 +2446,95 @@ async def download_diff_data():
     except Exception as e:
         logger.error(f"Diff data CSV download failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/save-penalty-analysis-results", response_model=APIResponse)
+async def save_penalty_analysis_results(request: Request):
+    """Save penalty analysis results to CSV files in the data directory"""
+    try:
+        logger.info("Starting penalty analysis results save")
+        
+        # Parse request body
+        body = await request.json()
+        penalty_results = body.get('penaltyResults', [])
+        
+        if not penalty_results:
+            return APIResponse(
+                success=False,
+                message="No penalty results to save"
+            )
+        
+        # Generate datetime string for filenames
+        datetime_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Define file paths in the same directory as csrc2analysis.csv
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(base_dir, "..", "data", "penalty", "csrc2")
+        data_dir = os.path.abspath(data_dir)  # Normalize the path
+        
+        # Ensure directory exists
+        os.makedirs(data_dir, exist_ok=True)
+        
+        cat_filename = f"csrccat_{datetime_str}.csv"
+        split_filename = f"csrcsplit_{datetime_str}.csv"
+        
+        cat_filepath = os.path.join(data_dir, cat_filename)
+        split_filepath = os.path.join(data_dir, split_filename)
+        
+        # Prepare data for csrc2cat (id, amount, category, province, industry)
+        cat_data = []
+        for result in penalty_results:
+            cat_data.append({
+                'id': result.get('id', ''),
+                'amount': result.get('罚没总金额', ''),
+                'category': result.get('违规类型', ''),
+                'province': result.get('监管地区', ''),
+                'industry': result.get('行业', '')
+            })
+        
+        # Prepare data for csrc2split (id, wenhao, people, event, law, penalty, org, date)
+        split_data = []
+        for result in penalty_results:
+            split_data.append({
+                'id': result.get('id', ''),
+                'wenhao': result.get('行政处罚决定书文号', ''),
+                'people': result.get('被处罚当事人', ''),
+                'event': result.get('主要违法违规事实', ''),
+                'law': result.get('行政处罚依据', ''),
+                'penalty': result.get('行政处罚决定', ''),
+                'org': result.get('作出处罚决定的机关名称', ''),
+                'date': result.get('作出处罚决定的日期', '')
+            })
+        
+        # Convert to DataFrames and save as CSV
+        import pandas as pd
+        
+        cat_df = pd.DataFrame(cat_data)
+        split_df = pd.DataFrame(split_data)
+        
+        cat_df.to_csv(cat_filepath, index=False, encoding='utf-8-sig')
+        split_df.to_csv(split_filepath, index=False, encoding='utf-8-sig')
+        
+        logger.info(f"Successfully saved penalty analysis results to {cat_filename} and {split_filename}")
+        
+        return APIResponse(
+            success=True,
+            message=f"分析结果已成功保存为 {cat_filename} 和 {split_filename}",
+            data={
+                'cat_filename': cat_filename,
+                'split_filename': split_filename,
+                'cat_filepath': cat_filepath,
+                'split_filepath': split_filepath,
+                'records_count': len(penalty_results)
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Penalty analysis results save failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="保存分析结果失败",
+            error=str(e)
+        )
 
 if __name__ == "__main__":
     import uvicorn

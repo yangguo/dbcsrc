@@ -464,6 +464,14 @@ export const caseApi = {
     const response = await apiClient.post('/generate-labels');
     return response.data;
   },
+
+  // Save penalty analysis results
+  savePenaltyAnalysisResults: async (penaltyResults: any[]): Promise<any> => {
+    const response = await apiClient.post('/api/save-penalty-analysis-results', {
+      penaltyResults
+    });
+    return response.data;
+  },
 };
 
 export default apiClient;

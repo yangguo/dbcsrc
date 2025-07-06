@@ -43,17 +43,25 @@ const CaseClassification: React.FC = () => {
   const { message } = App.useApp();
   const [penaltyForm] = Form.useForm();
 
-  // Label results table columns
+  // Label results table columns - 参考frontend实现，显示所有字段信息
   const labelColumns = [
     {
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
+      width: 80,
+      ellipsis: true,
+      fixed: 'left' as const,
+    },
+    {
+      title: '发文日期',
+      dataIndex: 'date',
+      key: 'date',
       width: 100,
       ellipsis: true,
     },
     {
-      title: '标题',
+      title: '发文名称',
       dataIndex: 'title',
       key: 'title',
       width: 200,
@@ -73,6 +81,100 @@ const CaseClassification: React.FC = () => {
       ),
     },
     {
+      title: '发文机构',
+      dataIndex: 'organization',
+      key: 'organization',
+      width: 120,
+      ellipsis: true,
+    },
+    {
+      title: '摘要',
+      dataIndex: 'summary',
+      key: 'summary',
+      width: 200,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 50)}...</span>
+      ),
+    },
+    {
+      title: '当事人',
+      dataIndex: 'people',
+      key: 'people',
+      width: 120,
+      ellipsis: true,
+    },
+    {
+      title: '违法事实',
+      dataIndex: 'event',
+      key: 'event',
+      width: 200,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 50)}...</span>
+      ),
+    },
+    {
+      title: '处罚依据',
+      dataIndex: 'law',
+      key: 'law',
+      width: 150,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 30)}...</span>
+      ),
+    },
+    {
+      title: '处罚决定',
+      dataIndex: 'penalty',
+      key: 'penalty',
+      width: 150,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 30)}...</span>
+      ),
+    },
+    {
+      title: '处罚日期',
+      dataIndex: 'penaltyDate',
+      key: 'penaltyDate',
+      width: 100,
+      ellipsis: true,
+    },
+    {
+      title: '案件类型',
+      dataIndex: 'category',
+      key: 'category',
+      width: 100,
+      ellipsis: true,
+    },
+    {
+      title: '罚款金额',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 100,
+      render: (amount: any) => {
+        if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
+          return '0';
+        }
+        return Number(amount).toLocaleString();
+      },
+    },
+    {
+      title: '处罚地区',
+      dataIndex: 'province',
+      key: 'province',
+      width: 100,
+      ellipsis: true,
+    },
+    {
+      title: '行业类型',
+      dataIndex: 'industry',
+      key: 'industry',
+      width: 100,
+      ellipsis: true,
+    },
+    {
       title: '内容',
       dataIndex: 'content',
       key: 'content',
@@ -83,23 +185,22 @@ const CaseClassification: React.FC = () => {
       ),
     },
     {
-      title: '机构',
-      dataIndex: 'organization',
-      key: 'organization',
-      width: 150,
+      title: '链接',
+      dataIndex: 'url',
+      key: 'url',
+      width: 100,
       ellipsis: true,
-    },
-    {
-      title: '日期',
-      dataIndex: 'date',
-      key: 'date',
-      width: 120,
+      render: (url: string) => (
+        <a href={url} target="_blank" rel="noopener noreferrer" title={url}>
+          查看详情
+        </a>
+      ),
     },
     {
       title: '类型',
       dataIndex: 'type',
       key: 'type',
-      width: 100,
+      width: 80,
       render: (type: string) => (
         <Tag color={type === 'category' ? 'blue' : 'green'}>
           {type === 'category' ? '分类' : '拆分'}
@@ -110,7 +211,8 @@ const CaseClassification: React.FC = () => {
        title: '状态',
        dataIndex: 'status',
        key: 'status',
-       width: 120,
+       width: 100,
+       fixed: 'right' as const,
        render: (status: string) => {
          let color = 'orange';
          let text = '待标注';
@@ -447,6 +549,26 @@ const CaseClassification: React.FC = () => {
     message.success(`下载成功：${dataToDownload.length} 条记录`);
   };
 
+  const savePenaltyAnalysisResults = async () => {
+    if (!penaltyBatchResults || penaltyBatchResults.length === 0) {
+      message.warning('没有可保存的分析结果');
+      return;
+    }
+
+    try {
+      const response = await caseApi.savePenaltyAnalysisResults(penaltyBatchResults);
+      
+      if (response.success) {
+        message.success(response.message || '分析结果已成功保存到数据库');
+      } else {
+        message.error(response.message || '保存分析结果失败');
+      }
+    } catch (error) {
+      console.error('保存分析结果失败:', error);
+      message.error('保存分析结果失败');
+    }
+  };
+
 
 
 
@@ -511,7 +633,7 @@ const CaseClassification: React.FC = () => {
                       showQuickJumper: true,
                       showTotal: (total) => `共 ${total} 条记录`,
                     }}
-                    scroll={{ x: 1200 }}
+                    scroll={{ x: 2000, y: 400 }}
                     size="small"
                   />
                 </div>
@@ -557,7 +679,7 @@ const CaseClassification: React.FC = () => {
                       showQuickJumper: true,
                       showTotal: (total) => `共 ${total} 条记录`,
                     }}
-                    scroll={{ x: 1200 }}
+                    scroll={{ x: 2000, y: 400 }}
                     size="small"
                   />
                 </div>
@@ -778,6 +900,14 @@ const CaseClassification: React.FC = () => {
                   onClick={() => downloadPenaltyBatchResults(false)}
                 >
                   下载全部
+                </Button>
+                <Button
+                  type="default"
+                  icon={<DownloadOutlined />}
+                  onClick={() => savePenaltyAnalysisResults()}
+                  disabled={penaltyBatchResults.length === 0}
+                >
+                  保存分析结果
                 </Button>
               </Space>
             </div>

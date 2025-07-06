@@ -24,7 +24,6 @@ import {
 } from 'antd';
 import {
   CloudUploadOutlined,
-  EyeOutlined,
   CheckCircleOutlined,
   SyncOutlined,
   FileTextOutlined,
@@ -57,11 +56,7 @@ interface UploadItem extends CaseData {
   isOnline?: boolean;
 }
 
-interface UploadConfig {
-  targetEnvironment: 'production' | 'staging' | 'test';
-  batchSize: number;
-  retryCount: number;
-}
+
 
 interface UploadStats {
   total: number;
@@ -78,7 +73,9 @@ interface UploadStats {
   splitDataCount: number;
   splitDataUniqueCount: number;
   onlineDataCount: number;
+  onlineDataUniqueCount: number;
   diffDataCount: number;
+  diffDataUniqueCount: number;
 }
 
 const CaseUpload: React.FC = () => {
@@ -91,7 +88,7 @@ const CaseUpload: React.FC = () => {
   const [diffData, setDiffData] = useState<UploadItem[]>([]);
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
-  const [configVisible, setConfigVisible] = useState(false);
+
   const [selectedItem, setSelectedItem] = useState<UploadItem | null>(null);
   const [overallProgress, setOverallProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
@@ -110,13 +107,11 @@ const CaseUpload: React.FC = () => {
     splitDataCount: 0,
     splitDataUniqueCount: 0,
     onlineDataCount: 0,
+    onlineDataUniqueCount: 0,
     diffDataCount: 0,
+    diffDataUniqueCount: 0,
   });
-  const [uploadConfig, setUploadConfig] = useState<UploadConfig>({
-    targetEnvironment: 'staging',
-    batchSize: 10,
-    retryCount: 3,
-  });
+
 
   // Load upload data
   const loadUploadData = async () => {
@@ -167,7 +162,9 @@ const CaseUpload: React.FC = () => {
         splitDataCount: data.splitData?.count || 0,
         splitDataUniqueCount: data.splitData?.uniqueCount || 0,
         onlineDataCount: data.onlineData?.count || 0,
+        onlineDataUniqueCount: data.onlineData?.uniqueCount || 0,
         diffDataCount: data.diffData?.count || 0,
+        diffDataUniqueCount: data.diffData?.uniqueCount || 0,
       });
       
       // Set online data
@@ -197,38 +194,192 @@ const CaseUpload: React.FC = () => {
 
   const columns = [
     {
-      title: '案例标题',
-      dataIndex: '标题',
-      key: '标题',
+      title: 'ID',
+      dataIndex: '链接',
+      key: '链接',
+      width: 80,
       ellipsis: true,
-      width: '30%',
+      fixed: 'left' as const,
+      render: (url: string) => {
+        // 从URL中提取ID或使用URL的最后部分作为ID
+        const id = url.split('/').pop() || url.substring(url.length - 8);
+        return <span title={url}>{id}</span>;
+      },
     },
     {
-      title: '机构',
-      dataIndex: '机构',
-      key: '机构',
-      width: '10%',
+      title: '名称',
+      dataIndex: '名称',
+      key: '名称',
+      width: 200,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
+      ),
     },
     {
-      title: '违规类型',
-      dataIndex: '违规类型',
-      key: '违规类型',
-      width: '12%',
-      render: (category: string) => (
-        category ? <Tag color="blue">{category}</Tag> : '-'
+      title: '文号',
+      dataIndex: '文号',
+      key: '文号',
+      width: 150,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
       ),
     },
     {
       title: '发文日期',
       dataIndex: '发文日期',
       key: '发文日期',
-      width: '12%',
+      width: 100,
+      ellipsis: true,
+    },
+    {
+      title: '序列号',
+      dataIndex: '序列号',
+      key: '序列号',
+      width: 100,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
+      ),
+    },
+    {
+      title: '机构',
+      dataIndex: '机构',
+      key: '机构',
+      width: 120,
+      ellipsis: true,
+    },
+    {
+      title: '内容',
+      dataIndex: '内容',
+      key: '内容',
+      width: 300,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 100)}...</span>
+      ),
+    },
+    {
+      title: '处罚金额',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 100,
+      render: (amount: any) => {
+        if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
+          return '0';
+        }
+        return Number(amount).toLocaleString();
+      },
+    },
+    {
+      title: '违规类型',
+      dataIndex: 'category',
+      key: 'category',
+      width: 120,
+      ellipsis: true,
+      render: (category: string) => (
+        category ? <Tag color="blue">{category}</Tag> : '-'
+      ),
+    },
+    {
+      title: '省份',
+      dataIndex: 'province',
+      key: 'province',
+      width: 100,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
+      ),
+    },
+    {
+      title: '行业',
+      dataIndex: 'industry',
+      key: 'industry',
+      width: 120,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
+      ),
+    },
+    {
+      title: '当事人',
+      dataIndex: 'people',
+      key: 'people',
+      width: 120,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
+      ),
+    },
+    {
+      title: '违法事实',
+      dataIndex: 'event',
+      key: 'event',
+      width: 200,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 50)}...</span>
+      ),
+    },
+    {
+      title: '处罚依据',
+      dataIndex: 'law',
+      key: 'law',
+      width: 150,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 50)}...</span>
+      ),
+    },
+    {
+      title: '处罚决定',
+      dataIndex: 'penalty',
+      key: 'penalty',
+      width: 200,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 50)}...</span>
+      ),
+    },
+    {
+      title: '处罚机关',
+      dataIndex: 'org',
+      key: 'org',
+      width: 120,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
+      ),
+    },
+    {
+      title: '处罚日期',
+      dataIndex: 'date',
+      key: 'date',
+      width: 100,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text || '-'}</span>
+      ),
+    },
+    {
+      title: '链接',
+      dataIndex: '链接',
+      key: '链接_url',
+      width: 100,
+      ellipsis: true,
+      render: (url: string) => (
+        <a href={url} target="_blank" rel="noopener noreferrer" title={url}>
+          查看详情
+        </a>
+      ),
     },
     {
       title: '上线状态',
       dataIndex: 'status',
       key: 'status',
-      width: '15%',
+      width: 120,
+      fixed: 'right' as const,
       render: (status: string, record: UploadItem) => {
         const statusConfig = {
           pending: { color: 'default', text: '待上线' },
@@ -253,28 +404,9 @@ const CaseUpload: React.FC = () => {
         );
       },
     },
-    {
-      title: '操作',
-      key: 'action',
-      width: '15%',
-      render: (_: any, record: UploadItem) => (
-        <Space>
-          <Button
-            type="link"
-            icon={<EyeOutlined />}
-            onClick={() => showDetail(record)}
-          >
-            详情
-          </Button>
-        </Space>
-      ),
-    },
   ];
 
-  const showDetail = (item: UploadItem) => {
-    setSelectedItem(item);
-    setDetailVisible(true);
-  };
+
 
   const handleBatchUpload = async () => {
     if (selectedRows.length === 0) {
@@ -438,11 +570,11 @@ const CaseUpload: React.FC = () => {
 
   const handleDownloadDiffData = async () => {
     try {
-      const response = await apiClient.get('/api/download/diff-data', {
-        responseType: 'blob',
-      });
+      setLoading(true);
+      message.info('正在下载差异数据，请稍候...');
       
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const blob = await caseApi.downloadDiffData();
+      
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -454,16 +586,14 @@ const CaseUpload: React.FC = () => {
       
       message.success('差异数据下载成功');
     } catch (error) {
-      message.error('下载差异数据失败');
+      message.error(`下载差异数据失败：${error instanceof Error ? error.message : String(error)}`);
       console.error('Download error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleConfigSave = (values: UploadConfig) => {
-    setUploadConfig(values);
-    setConfigVisible(false);
-    message.success('配置保存成功');
-  };
+
 
   const rowSelection = {
     selectedRowKeys: selectedRows,
@@ -551,6 +681,7 @@ const CaseUpload: React.FC = () => {
             <Statistic
               title="在线数据量"
               value={stats.onlineDataCount}
+              suffix={`/ ${stats.onlineDataUniqueCount} 唯一`}
               prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
             />
           </Col>
@@ -558,6 +689,7 @@ const CaseUpload: React.FC = () => {
             <Statistic
               title="待上线数据量（三表交集）"
               value={stats.diffDataCount}
+              suffix={`/ ${stats.diffDataUniqueCount} 唯一`}
               prefix={<DiffOutlined style={{ color: '#1890ff' }} />}
             />
           </Col>
@@ -654,12 +786,6 @@ const CaseUpload: React.FC = () => {
         extra={
           <Space>
             <Button
-              icon={<SyncOutlined />}
-              onClick={() => setConfigVisible(true)}
-            >
-              配置
-            </Button>
-            <Button
               type="primary"
               icon={<CloudUploadOutlined />}
               onClick={handleBatchUpload}
@@ -690,64 +816,10 @@ const CaseUpload: React.FC = () => {
             showTotal: (total, range) =>
               `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
           }}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 2800, y: 400 }}
+          size="small"
         />
       </Card>
-
-      {/* Configuration Modal */}
-      <Modal
-        title="上线配置"
-        open={configVisible}
-        onCancel={() => setConfigVisible(false)}
-        footer={null}
-        width={500}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={uploadConfig}
-          onFinish={handleConfigSave}
-        >
-          <Form.Item
-            label="目标环境"
-            name="targetEnvironment"
-            rules={[{ required: true, message: '请选择目标环境' }]}
-          >
-            <Select>
-              <Option value="test">测试环境</Option>
-              <Option value="staging">预发布环境</Option>
-              <Option value="production">生产环境</Option>
-            </Select>
-          </Form.Item>
-          
-          <Form.Item
-            label="批处理大小"
-            name="batchSize"
-            rules={[{ required: true, message: '请输入批处理大小' }]}
-          >
-            <Input type="number" min={1} max={100} />
-          </Form.Item>
-          
-          <Form.Item
-            label="重试次数"
-            name="retryCount"
-            rules={[{ required: true, message: '请输入重试次数' }]}
-          >
-            <Input type="number" min={0} max={10} />
-          </Form.Item>
-          
-          <Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit">
-                保存配置
-              </Button>
-              <Button onClick={() => setConfigVisible(false)}>
-                取消
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Modal>
 
       {/* Detail Modal */}
       <Modal
