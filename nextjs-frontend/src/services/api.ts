@@ -120,6 +120,25 @@ export interface CaseDetail {
   amount?: number;
 }
 
+// Enhanced case detail interface for new search functionality
+export interface EnhancedCaseDetail {
+  id: string;
+  name: string;
+  docNumber: string;
+  date: string;
+  org: string;
+  party: string;
+  amount: number;
+  penalty: string;
+  violationFacts: string;
+  penaltyBasis: string;
+  penaltyDecision: string;
+  content: string;
+  region: string;
+  industry: string;
+  category: string;
+}
+
 export interface SearchParams {
   keyword?: string;
   org?: string;
@@ -127,6 +146,29 @@ export interface SearchParams {
   dateTo?: string;
   page?: number;
   pageSize?: number;
+}
+
+// Enhanced search parameters interface
+export interface EnhancedSearchParams {
+  keyword?: string;        // 案件关键词
+  docNumber?: string;      // 文号
+  party?: string;          // 当事人
+  org?: string;           // 发文机构
+  minAmount?: number;     // 最低罚款金额
+  legalBasis?: string;    // 处罚依据
+  startDate?: string;     // 开始日期
+  endDate?: string;       // 结束日期
+  page?: number;
+  pageSize?: number;
+}
+
+// Search statistics interface
+export interface SearchStats {
+  totalCases: number;
+  totalAmount: number;
+  avgAmount: number;
+  orgDistribution: Record<string, number>;
+  monthlyDistribution: Record<string, number>;
 }
 
 export interface UpdateParams {
@@ -244,6 +286,12 @@ export const caseApi = {
   // Search cases
   searchCases: async (params: SearchParams): Promise<{ data: CaseDetail[]; total: number }> => {
     const response = await apiClient.get('/api/search', { params });
+    return response.data;
+  },
+
+  // Enhanced search cases with more parameters
+  searchCasesEnhanced: async (params: EnhancedSearchParams): Promise<{ data: EnhancedCaseDetail[]; total: number; stats?: SearchStats }> => {
+    const response = await apiClient.get('/api/search-enhanced', { params });
     return response.data;
   },
 

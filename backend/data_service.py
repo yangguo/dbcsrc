@@ -93,8 +93,11 @@ def get_csrc2detail() -> pd.DataFrame:
     """
     # Use absolute path to ensure it works from any working directory
     import os
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pencsrc2 = os.path.join(base_dir, "data", "penalty", "csrc2")
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    pencsrc2 = os.path.join(project_root, "data", "penalty", "csrc2")
     print(f"Looking for CSRC2 data in: {pencsrc2}")
     pendf = get_csvdf(pencsrc2, "csrcdtlall")
     
@@ -117,8 +120,11 @@ def get_csrc2label() -> pd.DataFrame:
     """
     # Use absolute path to ensure it works from any working directory
     import os
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pencsrc2 = os.path.join(base_dir, "data", "penalty", "csrc2")
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    pencsrc2 = os.path.join(project_root, "data", "penalty", "csrc2")
     print(f"Looking for CSRC2 label data in: {pencsrc2}")
     labeldf = get_csvdf(pencsrc2, "csrc2label")
     
@@ -138,8 +144,11 @@ def get_csrc2analysis() -> pd.DataFrame:
     """
     # Use absolute path to ensure it works from any working directory
     import os
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pencsrc2 = os.path.join(base_dir, "data", "penalty", "csrc2")
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    pencsrc2 = os.path.join(project_root, "data", "penalty", "csrc2")
     print(f"Looking for CSRC2 analysis data in: {pencsrc2}")
     pendf = get_csvdf(pencsrc2, "csrc2analysis")
     
@@ -162,8 +171,11 @@ def get_csrc2cat() -> pd.DataFrame:
     """
     # Use absolute path to ensure it works from any working directory
     import os
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pencsrc2 = os.path.join(base_dir, "data", "penalty", "csrc2")
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    pencsrc2 = os.path.join(project_root, "data", "penalty", "csrc2")
     print(f"Looking for CSRC2 category data in: {pencsrc2}")
     amtdf = get_csvdf(pencsrc2, "csrccat")
     
@@ -189,8 +201,11 @@ def get_csrc2split() -> pd.DataFrame:
     """
     # Use absolute path to ensure it works from any working directory
     import os
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pencsrc2 = os.path.join(base_dir, "data", "penalty", "csrc2")
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    pencsrc2 = os.path.join(project_root, "data", "penalty", "csrc2")
     print(f"Looking for CSRC2 split data in: {pencsrc2}")
     pendf = get_csvdf(pencsrc2, "csrcsplit")
     
@@ -199,3 +214,79 @@ def get_csrc2split() -> pd.DataFrame:
         pendf = pendf.fillna("")
     
     return pendf
+
+
+def get_csrc2_intersection() -> pd.DataFrame:
+    """
+    Get intersection of csrc2analysis, csrccat, and csrcsplit data.
+    
+    Returns:
+        DataFrame with intersection of three data sources based on common IDs
+    """
+    print("Loading three data sources for intersection...")
+    
+    # Load all three data sources
+    analysis_df = get_csrc2analysis()
+    cat_df = get_csrc2cat()
+    split_df = get_csrc2split()
+    
+    if analysis_df.empty or cat_df.empty or split_df.empty:
+        print("One or more data sources are empty, returning empty DataFrame")
+        return pd.DataFrame()
+    
+    print(f"Analysis data: {len(analysis_df)} rows")
+    print(f"Category data: {len(cat_df)} rows")
+    print(f"Split data: {len(split_df)} rows")
+    
+    # Check if required columns exist
+    # Analysis uses '链接', others use 'id'
+    if '链接' not in analysis_df.columns:
+        print("Missing '链接' column in analysis data")
+        return pd.DataFrame()
+    if 'id' not in cat_df.columns:
+        print("Missing 'id' column in category data")
+        return pd.DataFrame()
+    if 'id' not in split_df.columns:
+        print("Missing 'id' column in split data")
+        return pd.DataFrame()
+    
+    # Get common IDs across all three datasets
+    # Convert analysis '链接' to match 'id' format
+    analysis_ids = set(analysis_df['链接'].dropna())
+    cat_ids = set(cat_df['id'].dropna())
+    split_ids = set(split_df['id'].dropna())
+    
+    common_ids = analysis_ids & cat_ids & split_ids
+    print(f"Found {len(common_ids)} common IDs in intersection")
+    
+    if not common_ids:
+        print("No common IDs found, returning empty DataFrame")
+        return pd.DataFrame()
+    
+    # Filter datasets to only include common IDs
+    analysis_filtered = analysis_df[analysis_df['链接'].isin(common_ids)].copy()
+    cat_filtered = cat_df[cat_df['id'].isin(common_ids)].copy()
+    split_filtered = split_df[split_df['id'].isin(common_ids)].copy()
+    
+    # Rename 'id' columns to '链接' for consistent merging
+    cat_filtered = cat_filtered.rename(columns={'id': '链接'})
+    split_filtered = split_filtered.rename(columns={'id': '链接'})
+    
+    # Merge with category data to get additional fields like amount, lawlist, category, province, industry
+    cat_subset = cat_filtered[['链接', 'amount', 'lawlist', 'category', 'province', 'industry']]
+    intersection_df = analysis_filtered.merge(cat_subset, on='链接', how='left')
+    
+    # Merge with split data to get people, event, law, penalty, org, date
+    split_subset = split_filtered[['链接', 'people', 'event', 'law', 'penalty', 'org', 'date']]
+    intersection_df = intersection_df.merge(split_subset, on='链接', how='left')
+    
+    # Rename amount to 罚款金额 for consistency
+    if 'amount' in intersection_df.columns:
+        intersection_df['罚款金额'] = intersection_df['amount']
+    
+    # Rename lawlist to 法律依据 for consistency
+    if 'lawlist' in intersection_df.columns:
+        intersection_df['法律依据'] = intersection_df['lawlist']
+    
+    print(f"Intersection result: {len(intersection_df)} rows with {len(intersection_df.columns)} columns")
+    return intersection_df

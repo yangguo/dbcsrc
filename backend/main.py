@@ -293,8 +293,26 @@ class APIResponse(BaseModel):
     count: Optional[int] = None
     error: Optional[str] = None
 
+class CaseDetail(BaseModel):
+    id: str
+    title: str
+    name: str
+    docNumber: str
+    date: str
+    org: str
+    content: str
+    penalty: str = ""
+    amount: float = 0
+    party: str = ""
+    violationFacts: str = ""
+    penaltyBasis: str = ""
+    penaltyDecision: str = ""
+    category: str = ""
+    region: str = ""
+    industry: str = ""
+
 class SearchResponse(BaseModel):
-    data: List[dict]
+    data: List[CaseDetail]
     total: int
     page: Optional[int] = None
     pageSize: Optional[int] = None
@@ -1168,7 +1186,8 @@ def search_cases(
                 raise HTTPException(status_code=400, detail="dateTo must be in YYYY-MM-DD format")
         
         try:
-            df = get_csrc2analysis()
+            from data_service import get_csrc2_intersection
+            df = get_csrc2_intersection()
         except Exception as db_error:
             logger.error(f"Database access error: {db_error}")
             return SearchResponse(data=[], total=0, page=page, pageSize=pageSize)
@@ -1182,7 +1201,7 @@ def search_cases(
         
         # Apply filters
         if keyword:
-            mask = df['标题'].str.contains(keyword, na=False, case=False) | df['内容'].str.contains(keyword, na=False, case=False)
+            mask = df['名称'].str.contains(keyword, na=False, case=False) | df['内容'].str.contains(keyword, na=False, case=False)
             df = df[mask]
             logger.info(f"After keyword filter: {len(df)} cases")
         
@@ -1218,17 +1237,25 @@ def search_cases(
             name_field = str(row.get('名称', ''))
             doc_field = str(row.get('文号', ''))
             
-            cases.append({
-                "id": str(row.get('链接', '')),
-                "title": name_field,
-                "name": name_field,
-                "docNumber": doc_field,
-                "date": str(row.get('发文日期', '')),
-                "org": row.get('机构', ''),
-                "content": row.get('内容', ''),
-                "penalty": row.get('处罚类型', ''),
-                "amount": row.get('罚款金额', 0)
-            })
+            case_detail = CaseDetail(
+                id=str(row.get('链接', '')),
+                title=name_field,
+                name=name_field,
+                docNumber=doc_field,
+                date=str(row.get('date', row.get('发文日期', ''))),
+                org=str(row.get('org', row.get('机构', ''))),
+                content=str(row.get('内容', '')),
+                penalty=str(row.get('category', '')),  # 案件类型从category获取
+                amount=float(row.get('amount', row.get('罚款金额', 0))) if pd.notna(row.get('amount', row.get('罚款金额'))) else 0,
+                party=str(row.get('people', '')),
+                violationFacts=str(row.get('event', '')),
+                penaltyBasis=str(row.get('law', '')),
+                penaltyDecision=str(row.get('penalty', '')),  # 处罚决定从penalty获取
+                category=str(row.get('category', '')),
+                region=str(row.get('province', '')),
+                industry=str(row.get('industry', ''))
+            )
+            cases.append(case_detail)
         
         logger.info(f"Search completed: returning {len(cases)} cases out of {total} total matches")
         return SearchResponse(
@@ -1242,6 +1269,146 @@ def search_cases(
         raise
     except Exception as e:
         logger.error(f"Search error: {str(e)}", exc_info=True)
+        return SearchResponse(data=[], total=0, page=page, pageSize=pageSize)
+
+
+@app.get("/api/search-enhanced", response_model=SearchResponse)
+def search_cases_enhanced(
+    keyword: str = Query(None, max_length=200),
+    docNumber: str = Query(None, max_length=100),
+    org: str = Query(None, max_length=100),
+    dateFrom: str = Query(None),
+    dateTo: str = Query(None),
+    party: str = Query(None, max_length=100),
+    minAmount: float = Query(None, ge=0),
+    legalBasis: str = Query(None, max_length=200),
+    page: int = Query(1, ge=1, le=1000),
+    pageSize: int = Query(10, ge=1, le=100)
+):
+    """Enhanced search cases with additional filters"""
+    try:
+        logger.info(f"Enhanced search with filters: keyword={keyword}, docNumber={docNumber}, org={org}, party={party}, minAmount={minAmount}, legalBasis={legalBasis}")
+        
+        # Validate date formats
+        if dateFrom:
+            try:
+                datetime.strptime(dateFrom, '%Y-%m-%d')
+            except ValueError:
+                raise HTTPException(status_code=400, detail="dateFrom must be in YYYY-MM-DD format")
+        
+        if dateTo:
+            try:
+                datetime.strptime(dateTo, '%Y-%m-%d')
+            except ValueError:
+                raise HTTPException(status_code=400, detail="dateTo must be in YYYY-MM-DD format")
+        
+        try:
+            from data_service import get_csrc2_intersection
+            df = get_csrc2_intersection()
+        except Exception as db_error:
+            logger.error(f"Database access error: {db_error}")
+            return SearchResponse(data=[], total=0, page=page, pageSize=pageSize)
+        
+        if df.empty:
+            logger.warning("No data found in database")
+            return SearchResponse(data=[], total=0, page=page, pageSize=pageSize)
+        
+        original_count = len(df)
+        logger.info(f"Starting enhanced search with {original_count} total cases")
+        logger.info(f"DataFrame columns: {list(df.columns)}")
+        if not df.empty:
+            first_row = df.iloc[0]
+            logger.info(f"First row category: {first_row.get('category', 'NOT_FOUND')}")
+            logger.info(f"First row province: {first_row.get('province', 'NOT_FOUND')}")
+            logger.info(f"First row industry: {first_row.get('industry', 'NOT_FOUND')}")
+        
+        # Apply filters
+        if keyword:
+            mask = df['名称'].str.contains(keyword, na=False, case=False) | df['内容'].str.contains(keyword, na=False, case=False)
+            df = df[mask]
+            logger.info(f"After keyword filter: {len(df)} cases")
+        
+        if docNumber:
+            df = df[df['文号'].str.contains(docNumber, na=False, case=False)]
+            logger.info(f"After docNumber filter: {len(df)} cases")
+        
+        if org:
+            df = df[df['机构'] == org]
+            logger.info(f"After organization filter: {len(df)} cases")
+        
+        if party:
+            df = df[df['内容'].str.contains(party, na=False, case=False)]
+            logger.info(f"After party filter: {len(df)} cases")
+        
+        if minAmount is not None:
+            df = df[pd.to_numeric(df['罚款金额'], errors='coerce') >= minAmount]
+            logger.info(f"After minAmount filter: {len(df)} cases")
+        
+        if legalBasis:
+            df = df[df['内容'].str.contains(legalBasis, na=False, case=False)]
+            logger.info(f"After legalBasis filter: {len(df)} cases")
+        
+        if dateFrom:
+            try:
+                df = df[pd.to_datetime(df['发文日期'], errors='coerce') >= pd.to_datetime(dateFrom)]
+                logger.info(f"After dateFrom filter: {len(df)} cases")
+            except Exception as date_error:
+                logger.warning(f"Date filtering error for dateFrom: {date_error}")
+        
+        if dateTo:
+            try:
+                df = df[pd.to_datetime(df['发文日期'], errors='coerce') <= pd.to_datetime(dateTo)]
+                logger.info(f"After dateTo filter: {len(df)} cases")
+            except Exception as date_error:
+                logger.warning(f"Date filtering error for dateTo: {date_error}")
+        
+        total = len(df)
+        
+        # Pagination
+        start = (page - 1) * pageSize
+        end = start + pageSize
+        paginated_df = df.iloc[start:end]
+        
+        # Convert to list of dicts
+        cases = []
+        for _, row in paginated_df.iterrows():
+            # Extract name and docNumber from the combined field
+            name_field = str(row.get('名称', ''))
+            doc_field = str(row.get('文号', ''))
+            
+            case_detail = CaseDetail(
+                id=str(row.get('链接', '')),
+                title=name_field,
+                name=name_field,
+                docNumber=doc_field,
+                date=str(row.get('发文日期', '')),
+                org=row.get('机构', ''),
+                content=row.get('内容', ''),
+                penalty=row.get('处罚类型', ''),
+                amount=row.get('罚款金额', 0),
+                party=row.get('people', ''),
+                violationFacts=row.get('event', ''),
+                penaltyBasis=row.get('law', ''),
+                penaltyDecision=row.get('penalty', ''),
+                category=row.get('category', ''),
+                region=row.get('province', ''),
+                industry=row.get('industry', '')
+            )
+            logger.info(f"Case data: category={case_detail.category}, region={case_detail.region}, industry={case_detail.industry}")
+            cases.append(case_detail)
+        
+        logger.info(f"Enhanced search completed: returning {len(cases)} cases out of {total} total matches")
+        return SearchResponse(
+            data=cases,
+            total=total,
+            page=page,
+            pageSize=pageSize
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Enhanced search error: {str(e)}", exc_info=True)
         return SearchResponse(data=[], total=0, page=page, pageSize=pageSize)
 
 
