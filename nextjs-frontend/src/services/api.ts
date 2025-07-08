@@ -153,7 +153,7 @@ export interface EnhancedSearchParams {
   keyword?: string;        // 案件关键词
   docNumber?: string;      // 文号
   party?: string;          // 当事人
-  org?: string;           // 发文机构
+  org?: string;           // 发文地区
   minAmount?: number;     // 最低罚款金额
   legalBasis?: string;    // 处罚依据
   startDate?: string;     // 开始日期
@@ -517,6 +517,15 @@ export const caseApi = {
   savePenaltyAnalysisResults: async (penaltyResults: any[]): Promise<any> => {
     const response = await apiClient.post('/api/save-penalty-analysis-results', {
       penaltyResults
+    });
+    return response.data;
+  },
+
+  // Download search results
+  downloadSearchResults: async (params: EnhancedSearchParams): Promise<Blob> => {
+    const response = await downloadClient.get('/api/download/search-results', {
+      params,
+      responseType: 'blob'
     });
     return response.data;
   },

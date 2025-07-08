@@ -41,13 +41,7 @@ const { Option } = Select;
 const { Text, Paragraph, Title } = Typography;
 const { TextArea } = Input;
 
-const orgOptions = [
-  '山西', '四川', '新疆', '山东', '大连', '湖北', '湖南', '陕西',
-  '天津', '宁夏', '安徽', '总部', '北京', '江苏', '黑龙江', '甘肃',
-  '宁波', '深圳', '河北', '广东', '厦门', '福建', '西藏', '青岛',
-  '贵州', '河南', '广西', '内蒙古', '海南', '浙江', '云南', '辽宁',
-  '吉林', '江西', '重庆', '上海', '青海'
-];
+
 
 // 扩展的案例详情接口已从api.ts导入
 
@@ -81,16 +75,45 @@ const CaseSearch: React.FC = () => {
   const [searchStats, setSearchStats] = useState<SearchStats | null>(null);
   const [advancedSearch, setAdvancedSearch] = useState(false);
 
-  // 机构选项
+  // 机构选项 - 修正为实际数据中的地区机构（基于web_crawler.py的org2id）
   const orgOptions = [
-    '证监会',
-    '银保监会', 
-    '央行',
-    '上交所',
-    '深交所',
-    '北交所',
-    '中证协',
-    '基金业协会'
+    '总部',
+    '北京',
+    '上海',
+    '深圳',
+    '广东',
+    '浙江',
+    '江苏',
+    '山东',
+    '四川',
+    '湖北',
+    '湖南',
+    '河南',
+    '河北',
+    '安徽',
+    '福建',
+    '江西',
+    '辽宁',
+    '吉林',
+    '黑龙江',
+    '内蒙古',
+    '山西',
+    '陕西',
+    '甘肃',
+    '青海',
+    '新疆',
+    '西藏',
+    '宁夏',
+    '广西',
+    '海南',
+    '贵州',
+    '云南',
+    '重庆',
+    '天津',
+    '大连',
+    '青岛',
+    '宁波',
+    '厦门'
   ];
 
   const columns = [
@@ -99,7 +122,7 @@ const CaseSearch: React.FC = () => {
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
-      width: '18%',
+      width: 200,
       render: (text: string) => (
         <Tooltip title={text}>
           <Text ellipsis>{text}</Text>
@@ -111,22 +134,22 @@ const CaseSearch: React.FC = () => {
       dataIndex: 'docNumber',
       key: 'docNumber',
       ellipsis: true,
-      width: '12%',
+      width: 140,
     },
     {
       title: '发文日期',
       dataIndex: 'date',
       key: 'date',
-      width: '10%',
+      width: 110,
       render: (date: string) => dayjs(date).format('YYYY-MM-DD'),
       sorter: (a: any, b: any) => 
         dayjs(a.date).unix() - dayjs(b.date).unix(),
     },
     {
-      title: '发文机构',
+      title: '发文地区',
       dataIndex: 'org',
       key: 'org',
-      width: '8%',
+      width: 80,
       render: (org: string) => <Tag color="blue">{org}</Tag>,
     },
     {
@@ -134,13 +157,13 @@ const CaseSearch: React.FC = () => {
       dataIndex: 'party',
       key: 'party',
       ellipsis: true,
-      width: '10%',
+      width: 120,
     },
     {
       title: '罚款金额',
       dataIndex: 'amount',
       key: 'amount',
-      width: '10%',
+      width: 120,
       render: (amount: number) => {
         if (!amount || amount === 0) return '-';
         return (
@@ -156,27 +179,28 @@ const CaseSearch: React.FC = () => {
       title: '案件类型',
       dataIndex: 'category',
       key: 'category',
-      width: '8%',
+      width: 100,
       render: (type: string) => type ? <Tag color="green">{type}</Tag> : '-',
     },
     {
       title: '地区',
       dataIndex: 'region',
       key: 'region',
-      width: '6%',
+      width: 80,
       render: (region: string) => region ? <Tag color="orange">{region}</Tag> : '-',
     },
     {
       title: '行业',
       dataIndex: 'industry',
       key: 'industry',
-      width: '8%',
+      width: 100,
       render: (industry: string) => industry ? <Tag color="purple">{industry}</Tag> : '-',
     },
     {
       title: '操作',
       key: 'action',
-      width: '10%',
+      width: 80,
+      fixed: 'right' as const,
       render: (_: any, record: any) => (
         <Space>
           <Button
@@ -286,11 +310,42 @@ const CaseSearch: React.FC = () => {
   const handleDownload = async () => {
     try {
       message.info('正在准备下载...');
-      // 这里可以调用下载API
-      // await caseApi.downloadSearchResults(data);
+      
+      const formValues = form.getFieldsValue();
+       const downloadParams = {
+         keyword: formValues.keyword || undefined,
+         docNumber: formValues.docNumber || undefined,
+         org: formValues.org || undefined,
+         dateFrom: formValues.dateRange?.[0]?.format('YYYY-MM-DD') || undefined,
+         dateTo: formValues.dateRange?.[1]?.format('YYYY-MM-DD') || undefined,
+         party: formValues.party || undefined,
+         minAmount: formValues.minAmount || undefined,
+         legalBasis: formValues.legalBasis || undefined
+       };
+      
+      const blob = await caseApi.downloadSearchResults(downloadParams);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '').replace('T', '_');
+      link.download = `search_results_${timestamp}.csv`;
+      
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
       message.success('下载完成');
     } catch (error) {
-      message.error('下载失败');
+      console.error('Download failed:', error);
+      message.error('下载失败，请检查搜索条件或稍后重试');
     }
   };
 
@@ -348,8 +403,8 @@ const CaseSearch: React.FC = () => {
               </Col>
             )}
             <Col span={advancedSearch ? 6 : 8}>
-              <Form.Item label="发文机构" name="org">
-                <Select placeholder="请选择发文机构" allowClear>
+              <Form.Item label="发文地区" name="org">
+                <Select placeholder="请选择发文地区" allowClear>
                   {orgOptions.map(org => (
                     <Option key={org} value={org}>{org}</Option>
                   ))}
@@ -386,13 +441,7 @@ const CaseSearch: React.FC = () => {
               </Col>
               <Col span={6}>
                 <Form.Item label="处罚依据" name="legalBasis">
-                  <Select placeholder="请选择处罚依据" allowClear>
-                    <Option value="证券法">证券法</Option>
-                    <Option value="公司法">公司法</Option>
-                    <Option value="基金法">基金法</Option>
-                    <Option value="期货条例">期货条例</Option>
-                    <Option value="上市公司信息披露管理办法">上市公司信息披露管理办法</Option>
-                  </Select>
+                  <Input placeholder="请输入处罚依据" allowClear />
                 </Form.Item>
               </Col>
               <Col span={6}>
@@ -476,7 +525,7 @@ const CaseSearch: React.FC = () => {
             </Col>
             <Col span={6}>
               <Statistic
-                title="涉及机构"
+                title="涉及地区"
                 value={Object.keys(searchStats.orgDistribution).length}
                 suffix="个"
                 valueStyle={{ color: '#722ed1' }}
@@ -489,7 +538,7 @@ const CaseSearch: React.FC = () => {
           <Row gutter={[16, 16]}>
             <Col span={12}>
               <div>
-                <Text strong>机构分布：</Text>
+                <Text strong>地区分布：</Text>
                 <div style={{ marginTop: '8px' }}>
                   {Object.entries(searchStats.orgDistribution)
                     .sort(([,a], [,b]) => b - a)
@@ -539,19 +588,22 @@ const CaseSearch: React.FC = () => {
         }
         styles={{ body: { padding: '0' } }}
       >
-        <Table
-          columns={columns}
-          dataSource={data}
-          rowKey={(record) => record.id || record.docNumber || Math.random().toString(36)}
-          loading={loading}
-          pagination={false}
-          scroll={{ x: 1400 }}
-          size="middle"
-          bordered
-          rowClassName={(record, index) => 
-            index % 2 === 0 ? 'table-row-light' : 'table-row-dark'
-          }
-        />
+        <div style={{ overflowX: 'auto', width: '100%' }}>
+          <Table
+            columns={columns}
+            dataSource={data}
+            rowKey={(record) => record.id || record.docNumber || Math.random().toString(36)}
+            loading={loading}
+            pagination={false}
+            scroll={{ x: 1130, y: 600 }}
+            size="middle"
+            bordered
+            tableLayout="fixed"
+            rowClassName={(record, index) => 
+              index % 2 === 0 ? 'table-row-light' : 'table-row-dark'
+            }
+          />
+        </div>
         
         {total > 0 && (
           <div style={{ padding: '16px', textAlign: 'center', borderTop: '1px solid #f0f0f0' }}>

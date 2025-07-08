@@ -1989,6 +1989,144 @@ async def download_split_data():
         logger.error(f"Split data CSV download failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/download/search-results")
+async def download_search_results(
+    keyword: str = Query(None, max_length=200),
+    docNumber: str = Query(None, max_length=100),
+    org: str = Query(None, max_length=100),
+    dateFrom: str = Query(None),
+    dateTo: str = Query(None),
+    party: str = Query(None, max_length=100),
+    minAmount: float = Query(None, ge=0),
+    legalBasis: str = Query(None, max_length=200)
+):
+    """Download search results as CSV file"""
+    try:
+        logger.info(f"Starting search results download with filters: keyword={keyword}, docNumber={docNumber}, org={org}")
+        
+        # Validate date formats
+        if dateFrom:
+            try:
+                datetime.strptime(dateFrom, '%Y-%m-%d')
+            except ValueError:
+                raise HTTPException(status_code=400, detail="dateFrom must be in YYYY-MM-DD format")
+        
+        if dateTo:
+            try:
+                datetime.strptime(dateTo, '%Y-%m-%d')
+            except ValueError:
+                raise HTTPException(status_code=400, detail="dateTo must be in YYYY-MM-DD format")
+        
+        try:
+            from data_service import get_csrc2_intersection
+            df = get_csrc2_intersection()
+        except Exception as db_error:
+            logger.error(f"Database access error: {db_error}")
+            raise HTTPException(status_code=500, detail="Database access failed")
+        
+        if df.empty:
+            logger.warning("No data found in database")
+            raise HTTPException(status_code=404, detail="No data found")
+        
+        # Apply the same filters as in search_cases_enhanced
+        if keyword:
+            mask = df['名称'].str.contains(keyword, na=False, case=False) | df['内容'].str.contains(keyword, na=False, case=False)
+            df = df[mask]
+        
+        if docNumber:
+            df = df[df['文号'].str.contains(docNumber, na=False, case=False)]
+        
+        if org:
+            df = df[df['机构'] == org]
+        
+        if party:
+            df = df[df['内容'].str.contains(party, na=False, case=False)]
+        
+        if minAmount is not None:
+            df = df[pd.to_numeric(df['罚款金额'], errors='coerce') >= minAmount]
+        
+        if legalBasis:
+            df = df[df['内容'].str.contains(legalBasis, na=False, case=False)]
+        
+        if dateFrom:
+            try:
+                df = df[pd.to_datetime(df['发文日期'], errors='coerce') >= pd.to_datetime(dateFrom)]
+            except Exception as date_error:
+                logger.warning(f"Date filtering error for dateFrom: {date_error}")
+        
+        if dateTo:
+            try:
+                df = df[pd.to_datetime(df['发文日期'], errors='coerce') <= pd.to_datetime(dateTo)]
+            except Exception as date_error:
+                logger.warning(f"Date filtering error for dateTo: {date_error}")
+        
+        if df.empty:
+            logger.warning("No data found after applying filters")
+            raise HTTPException(status_code=404, detail="No data found matching the search criteria")
+        
+        # Select relevant columns for export (including detailed case information)
+        export_columns = [
+            '名称', '文号', '发文日期', '机构', '罚款金额', '内容',  # Basic info
+            'people', 'category', 'province', 'industry',  # Classification info
+            'event', 'law', 'penalty', 'org', 'date',  # Detailed case info
+            'wenhao', '序列号', '链接'  # Additional identifiers
+        ]
+        available_columns = [col for col in export_columns if col in df.columns]
+        
+        if available_columns:
+            df_export = df[available_columns].copy()
+        else:
+            df_export = df.copy()
+        
+        # Rename columns to Chinese for better readability
+        column_mapping = {
+            '名称': '发文名称',
+            '文号': '文号',
+            '发文日期': '发文日期',
+            '机构': '发文地区',
+            '罚款金额': '罚款金额',
+            '内容': '案例详情',
+            'people': '当事人',
+            'category': '案件类型',
+            'province': '地区',
+            'industry': '行业',
+            'event': '违法事实',
+            'law': '法律依据',
+            'penalty': '处罚决定',
+            'org': '处罚机构',
+            'date': '处罚日期',
+            'wenhao': '文件编号',
+            '序列号': '序列号',
+            '链接': '案例链接'
+        }
+        
+        df_export = df_export.rename(columns=column_mapping)
+        
+        # Convert to CSV
+        csv_buffer = io.StringIO()
+        df_export.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+        csv_content = csv_buffer.getvalue()
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"search_results_{timestamp}.csv"
+        
+        # Create response
+        response = StreamingResponse(
+            io.BytesIO(csv_content.encode('utf-8-sig')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+        logger.info(f"Search results download completed: {len(df_export)} records exported")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Search results download failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Case upload endpoints
 # Simple in-memory cache for upload data with expiration
 upload_data_cache = {
