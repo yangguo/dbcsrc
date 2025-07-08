@@ -227,25 +227,28 @@ def main():
         convert_button = st.sidebar.button("word格式转换")
         if convert_button:
             # docxconvertion(tempdir)
-
-            try:
-                url = backendurl + "/docxconvert"
-                r = requests.get(url)
-                st.success("word格式转换完成")
-                st.write(r.text)
-            except Exception as e:
-                st.error(e)
+            # Backend API disabled - no backend service available
+            # try:
+            #     url = backendurl + "/docxconvert"
+            #     r = requests.get(url)
+            #     st.success("word格式转换完成")
+            #     st.write(r.text)
+            # except Exception as e:
+            #     st.error(e)
+            st.warning("后端服务不可用，word格式转换功能已禁用")
 
         # button for convert ofd files
         ofdconvert = st.sidebar.button("ofd格式转换")
         if ofdconvert:
-            try:
-                url = backendurl + "/ofdconvert"
-                r = requests.get(url)
-                st.success("ofd格式转换完成")
-                st.write(r.text)
-            except Exception as e:
-                st.error(e)
+            # Backend API disabled - no backend service available
+            # try:
+            #     url = backendurl + "/ofdconvert"
+            #     r = requests.get(url)
+            #     st.success("ofd格式转换完成")
+            #     st.write(r.text)
+            # except Exception as e:
+            #     st.error(e)
+            st.warning("后端服务不可用，ofd格式转换功能已禁用")
 
         downdf = get_csrcdownload()
         # if lendf is empty:
@@ -728,13 +731,22 @@ def main():
         # get csrc2 detail
         # df = get_csrc2detail()
         df = get_csrc2analysis()
-        # get org list
-        org_list = df["机构"].unique()
+        # get org list - check if column exists
+        if "机构" in df.columns:
+            org_list = df["机构"].unique()
+        else:
+            org_list = []
         # get length of old eventdf
         # oldlen2 = len(df)
-        # get min and max date of old eventdf
-        min_date2 = df["发文日期"].min()
-        max_date2 = df["发文日期"].max()
+        # get min and max date of old eventdf - check if column exists
+        if "发文日期" in df.columns and not df.empty:
+            min_date2 = df["发文日期"].min()
+            max_date2 = df["发文日期"].max()
+        else:
+            # Use default dates if column doesn't exist
+            from datetime import datetime, timedelta
+            max_date2 = datetime.now().date()
+            min_date2 = max_date2 - timedelta(days=365)
         # get amtdf
         csrc2amt = get_csrc2cat()
 
@@ -748,10 +760,15 @@ def main():
         # csrc2label = get_csrc2label()
         # get labellist
         # labellist = csrc2label["label"].unique()
-        # merge df and csrc2amt with id
-        dfl = pd.merge(df, csrc2amt, left_on="链接", right_on="id", how="left")
-        # merge dfl and csrc2split with id
-        dfl = pd.merge(dfl, csrc2split, left_on="链接", right_on="id", how="left")
+        # merge df and csrc2amt with id - check if columns exist
+        if "链接" in df.columns and "id" in csrc2amt.columns:
+            dfl = pd.merge(df, csrc2amt, left_on="链接", right_on="id", how="left")
+        else:
+            dfl = df.copy()
+        
+        # merge dfl and csrc2split with id - check if columns exist
+        if "链接" in dfl.columns and "id" in csrc2split.columns:
+            dfl = pd.merge(dfl, csrc2split, left_on="链接", right_on="id", how="left")
 
         # st.write(dfl)
         # merge dfl and csrc2law with url

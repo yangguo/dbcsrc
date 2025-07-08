@@ -29,9 +29,13 @@ from utils import split_words
 # from streamlit_echarts import st_pyecharts
 
 
-pencsrc2 = "../data/penalty/csrc2"
-tempdir = "../data/penalty/csrc2/temp"
-mappath = "../data/map/chinageo.json"
+# Use absolute paths to ensure data loading works from any working directory
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+pencsrc2 = os.path.join(project_root, "data", "penalty", "csrc2")
+tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+mappath = os.path.join(project_root, "data", "map", "chinageo.json")
 # backendurl = "http://backend.docker:8000"
 backendurl = "http://localhost:8000"
 
@@ -157,10 +161,12 @@ city2province = {
 # @st.cache(allow_output_mutation=True)
 def get_csrc2detail():
     pendf = get_csvdf(pencsrc2, "csrcdtlall")
-    # format date
-    pendf["发文日期"] = pd.to_datetime(pendf["发文日期"]).dt.date
-    # fillna
-    pendf = pendf.fillna("")
+    if not pendf.empty:
+        # format date with error handling
+        if "发文日期" in pendf.columns:
+            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
+        # fillna
+        pendf = pendf.fillna("")
     return pendf
 
 
@@ -216,8 +222,9 @@ def get_csrc2analysis():
     # collection = get_collection('pencsrc2', 'csrc2analysis')
     # pendf= get_data(collection)
     if not pendf.empty:
-        # format date
-        pendf["发文日期"] = pd.to_datetime(pendf["发文日期"]).dt.date
+        # format date with error handling
+        if "发文日期" in pendf.columns:
+            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
         # fillna
         pendf = pendf.fillna("")
     return pendf
@@ -308,28 +315,43 @@ def display_summary2():
     oldsum2 = get_csrc2detail()
     # get length of old eventdf
     oldlen2 = len(oldsum2)
-    # get min and max date of old eventdf
-    min_date2 = oldsum2["发文日期"].min()
-    max_date2 = oldsum2["发文日期"].max()
+    
+    # Check if date column exists before processing
+    if "发文日期" in oldsum2.columns and not oldsum2.empty:
+        # get min and max date of old eventdf
+        min_date2 = oldsum2["发文日期"].min()
+        max_date2 = oldsum2["发文日期"].max()
+        date_range = f"{min_date2} - {max_date2}"
+        
+        # sum max,min date and size by org
+        if "机构" in oldsum2.columns:
+            sumdf2 = (
+                oldsum2.groupby("机构")["发文日期"].agg(["max", "min", "count"]).reset_index()
+            )
+            sumdf2.columns = ["机构", "最近发文日期", "最早发文日期", "案例总数"]
+            # sort by date
+            sumdf2.sort_values(by=["最近发文日期"], ascending=False, inplace=True)
+            # reset index
+            sumdf2.reset_index(drop=True, inplace=True)
+        else:
+            sumdf2 = pd.DataFrame()
+    else:
+        date_range = "无日期数据"
+        sumdf2 = pd.DataFrame()
+    
     # use metric
     col1, col2 = st.columns([1, 3])
     with col1:
         st.metric("案例总数", oldlen2)
     with col2:
-        st.metric("案例日期范围", f"{min_date2} - {max_date2}")
+        st.metric("案例日期范围", date_range)
 
-    # sum max,min date and size by org
-    sumdf2 = (
-        oldsum2.groupby("机构")["发文日期"].agg(["max", "min", "count"]).reset_index()
-    )
-    sumdf2.columns = ["机构", "最近发文日期", "最早发文日期", "案例总数"]
-    # sort by date
-    sumdf2.sort_values(by=["最近发文日期"], ascending=False, inplace=True)
-    # reset index
-    sumdf2.reset_index(drop=True, inplace=True)
     # display
-    st.markdown("#### 按机构统计")
-    st.table(sumdf2)
+    if not sumdf2.empty:
+        st.markdown("#### 按机构统计")
+        st.table(sumdf2)
+    else:
+        st.warning("无法生成机构统计数据")
 
     return sumdf2
 
@@ -358,22 +380,35 @@ def searchcsrc2(
     if case != "":
         case = split_words(case)
 
-    searchdf = df[
-        # (df["名称"].str.contains(filename))
-        (df["发文日期"] >= start_date)
-        & (df["发文日期"] <= end_date)
-        & (df["wenhao"].str.contains(wenhao))
-        & (df["event"].str.contains(case))
-        & (df["机构"].isin(org))
-        & (df["amount"] >= min_penalty)
-        & (df["law"].str.contains(law_select))
-        & (df["people"].str.contains(people))
-    ]  # [col]
-    # set column name
-    # searchdf.columns = ["名称", "发文日期", "文号", "内容", "链接", "机构", "处罚金额", "违规类型"]
+    # Start with all rows as True
+    mask = pd.Series([True] * len(df), index=df.index)
+    
+    # Date filter - only apply if date column exists
+    if "发文日期" in df.columns:
+        mask = mask & (df["发文日期"] >= start_date) & (df["发文日期"] <= end_date)
+    
+    # Other filters - check column existence
+    if "wenhao" in df.columns:
+        mask = mask & df["wenhao"].str.contains(wenhao)
+    if "event" in df.columns:
+        mask = mask & df["event"].str.contains(case)
+    if "机构" in df.columns:
+        mask = mask & df["机构"].isin(org)
+    if "amount" in df.columns:
+        mask = mask & (df["amount"] >= min_penalty)
+    if "law" in df.columns:
+        mask = mask & df["law"].str.contains(law_select)
+    if "people" in df.columns:
+        mask = mask & df["people"].str.contains(people)
+    
+    # Apply the mask
+    searchdf = df[mask]
 
-    # sort by date desc
-    sorteddf = searchdf.sort_values(by=["发文日期"], ascending=False)
+    # sort by date desc if date column exists
+    if "发文日期" in searchdf.columns:
+        sorteddf = searchdf.sort_values(by=["发文日期"], ascending=False)
+    else:
+        sorteddf = searchdf.copy()
     # drop duplicates
     unidf = sorteddf.drop_duplicates(subset=["链接"])
     # reset index
@@ -402,12 +437,26 @@ def display_eventdetail2(search_df):
         data=search_dfnew.to_csv().encode("utf_8_sig"),
         file_name="搜索结果.csv",
     )
-    # display columns
+    # display columns - check if columns exist
     discols = ["发文日期", "名称", "机构", "category", "链接"]
+    available_discols = [col for col in discols if col in search_dfnew.columns]
+    
+    if not available_discols:
+        st.error("没有找到可显示的列")
+        return
+    
     # get display df
-    display_df = search_dfnew[discols]
-    # update columns name
-    display_df.columns = ["发文日期", "发文名称", "发文机构", "案例类型", "链接"]
+    display_df = search_dfnew[available_discols]
+    # update columns name - map original to new names
+    column_mapping = {
+        "发文日期": "发文日期",
+        "名称": "发文名称", 
+        "机构": "发文机构",
+        "category": "案例类型",
+        "链接": "链接"
+    }
+    new_column_names = [column_mapping.get(col, col) for col in available_discols]
+    display_df.columns = new_column_names
 
     # reset index
     display_df.reset_index(drop=True, inplace=True)
@@ -439,42 +488,49 @@ def display_eventdetail2(search_df):
     st.markdown("##### 案情经过")
     # update columns name
     # selected_rows_df.columns = ["发文名称", "发文日期", "文号", "内容", "链接", "发文机构"]
-    # select display columns
-    selected_rows_df = selected_rows_df[
-        [
-            "发文日期",
-            "summary",
-            "wenhao",
-            "people",
-            "event",
-            "law",
-            "penalty",
-            "机构",
-            "date",
-            "category",
-            "amount",
-            "province",
-            "industry",
-            "内容",
-        ]
-    ]
-    # rename columns
-    selected_rows_df.columns = [
-        "发布日期",
-        "摘要",
-        "文号",
-        "当事人",
-        "违法事实",
-        "处罚依据",
-        "处罚决定",
-        "处罚机关",
-        "处罚日期",
-        "案件类型",
-        "罚款金额",
-        "处罚地区",
-        "行业类型",
+    # select display columns - check if columns exist
+    detail_cols = [
+        "发文日期",
+        "summary",
+        "wenhao",
+        "people",
+        "event",
+        "law",
+        "penalty",
+        "机构",
+        "date",
+        "category",
+        "amount",
+        "province",
+        "industry",
         "内容",
     ]
+    available_detail_cols = [col for col in detail_cols if col in selected_rows_df.columns]
+    
+    if not available_detail_cols:
+        st.error("没有找到可显示的详细信息列")
+        return
+    
+    selected_rows_df = selected_rows_df[available_detail_cols]
+    # rename columns - map original to new names
+    detail_column_mapping = {
+        "发文日期": "发布日期",
+        "summary": "摘要",
+        "wenhao": "文号",
+        "people": "当事人",
+        "event": "违法事实",
+        "law": "处罚依据",
+        "penalty": "处罚决定",
+        "机构": "处罚机关",
+        "date": "处罚日期",
+        "category": "案件类型",
+        "amount": "罚款金额",
+        "province": "处罚地区",
+        "industry": "行业类型",
+        "内容": "内容",
+    }
+    new_detail_column_names = [detail_column_mapping.get(col, col) for col in available_detail_cols]
+    selected_rows_df.columns = new_detail_column_names
     # transpose dataframe
     selected_rows_df = selected_rows_df.T
     # set column name
@@ -710,9 +766,13 @@ def savedf2(df, basename):
 # display bar chart in plotly
 def display_search_df(searchdf):
     df_month = searchdf.copy()
-    df_month["发文日期"] = pd.to_datetime(df_month["发文日期"]).dt.date
-    # count by month
-    df_month["month"] = df_month["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
+    if "发文日期" in df_month.columns:
+        df_month["发文日期"] = pd.to_datetime(df_month["发文日期"], errors='coerce').dt.date
+        # count by month
+        df_month["month"] = df_month["发文日期"].apply(lambda x: x.strftime("%Y-%m") if pd.notna(x) else "")
+    else:
+        # If no date column, create empty month column
+        df_month["month"] = ""
     df_month_count = df_month.groupby(["month"]).size().reset_index(name="count")
     # count by month
     # fig = go.Figure(
@@ -816,7 +876,11 @@ def display_search_df(searchdf):
     more_than_100 = 0  # 把案件金额大于100的数量进行统计
     case_total = 0  # 把案件的总数量进行统计
 
-    penaltycount = df_sigle_penalty["amount"].tolist()
+    # Check if amount column exists before processing
+    if "amount" in df_sigle_penalty.columns:
+        penaltycount = df_sigle_penalty["amount"].tolist()
+    else:
+        penaltycount = []
     for i in penaltycount:
         sum_data_number = sum_data_number + i / 10000
         if i > 100 * 10000:
@@ -1474,21 +1538,26 @@ def update_csrc2text():
     txtls = downdf["filename"].tolist()
     # resls = convert_uploadfiles(txtls, tempdir)
 
-    try:
-        url = backendurl + "/convertuploadfiles"
-        payload = {
-            "txtls": txtls,
-            "dirpath": tempdir,
-        }
-        headers = {}
-        res = requests.post(url, headers=headers, params=payload)
-        st.write(res)
-        result = res.json()
-        resls = result["resls"]
-        st.success("文件转换成功")
-    except Exception as e:
-        st.error("转换错误: " + str(e))
-        resls = []
+    # Backend API disabled - no backend service available
+    # try:
+    #     url = backendurl + "/convertuploadfiles"
+    #     payload = {
+    #         "txtls": txtls,
+    #         "dirpath": tempdir,
+    #     }
+    #     headers = {}
+    #     res = requests.post(url, headers=headers, params=payload)
+    #     st.write(res)
+    #     result = res.json()
+    #     resls = result["resls"]
+    #     st.success("文件转换成功")
+    # except Exception as e:
+    #     st.error("转换错误: " + str(e))
+    #     resls = []
+    
+    # Since no backend is available, return empty list
+    resls = []
+    st.warning("后端服务不可用，文件转换功能已禁用")
     downdf["text"] = resls
     savename = "csrc2textupdate"
     savetemp(downdf, savename)
@@ -1584,7 +1653,7 @@ def update_label():
     # labeldf = get_csrc2label()
     amtdf = get_csrc2cat()
     # if labeldf is not empty
-    if amtdf.empty:
+    if amtdf.empty or "id" not in amtdf.columns:
         oldamtls = []
     else:
         oldamtls = amtdf["id"].tolist()
@@ -1614,7 +1683,7 @@ def update_label():
 
     splitdf = get_csrc2split()
     # if labeldf is not empty
-    if splitdf.empty:
+    if splitdf.empty or "id" not in splitdf.columns:
         oldsplitls = []
     else:
         oldsplitls = splitdf["id"].tolist()
@@ -1719,10 +1788,14 @@ def download_csrcsum():
     amountlen = len(amountdf)
     st.write("分类数据量：" + str(amountlen))
     # get id nunique
-    amountidn = amountdf["id"].nunique()
-    st.write("分类数据id数：" + str(amountidn))
-    # drop duplicate by id
-    amountdf.drop_duplicates(subset=["id"], inplace=True)
+    if "id" in amountdf.columns:
+        amountidn = amountdf["id"].nunique()
+        st.write("分类数据id数：" + str(amountidn))
+        # drop duplicate by id
+        amountdf.drop_duplicates(subset=["id"], inplace=True)
+    else:
+        amountidn = 0
+        st.write("分类数据id数：" + str(amountidn))
 
     amountname = "csrccat" + get_nowdate() + ".csv"
     st.download_button(
@@ -1735,10 +1808,14 @@ def download_csrcsum():
     splitlen = len(splitdf)
     st.write("拆分数据量：" + str(splitlen))
     # get id nunique
-    splitidn = splitdf["id"].nunique()
-    st.write("拆分数据id数：" + str(splitidn))
-    # drop duplicate by id
-    splitdf.drop_duplicates(subset=["id"], inplace=True)
+    if "id" in splitdf.columns:
+        splitidn = splitdf["id"].nunique()
+        st.write("拆分数据id数：" + str(splitidn))
+        # drop duplicate by id
+        splitdf.drop_duplicates(subset=["id"], inplace=True)
+    else:
+        splitidn = 0
+        st.write("拆分数据id数：" + str(splitidn))
 
     splitname = "csrcsplit" + get_nowdate() + ".csv"
     st.download_button(
@@ -1749,9 +1826,11 @@ def download_csrcsum():
 def get_csrc2cat():
     amtdf = get_csvdf(pencsrc2, "csrccat")
     # process amount
-    amtdf["amount"] = amtdf["amount"].astype(float)
+    if "amount" in amtdf.columns:
+        amtdf["amount"] = amtdf["amount"].astype(float)
     # rename columns law to lawlist
-    amtdf.rename(columns={"law": "lawlist"}, inplace=True)
+    if "law" in amtdf.columns:
+        amtdf.rename(columns={"law": "lawlist"}, inplace=True)
 
     return amtdf
 
@@ -1764,11 +1843,23 @@ def sum_amount_by_month(df):
     #     df, amtdf.drop_duplicates("id"), left_on="链接", right_on="id", how="left"
     # )
     df1 = df
-    df1["发文日期"] = pd.to_datetime(df1["发文日期"]).dt.date
-    # df=df[df['发文日期']>=pd.to_datetime('2020-01-01')]
-    df1["month"] = df1["发文日期"].apply(lambda x: x.strftime("%Y-%m"))
-    df_month_sum = df1.groupby(["month"])["amount"].sum().reset_index(name="sum")
-    df_sigle_penalty = df1[["month", "amount"]]
+    if "发文日期" in df1.columns:
+        df1["发文日期"] = pd.to_datetime(df1["发文日期"], errors='coerce').dt.date
+        # df=df[df['发文日期']>=pd.to_datetime('2020-01-01')]
+        df1["month"] = df1["发文日期"].apply(lambda x: x.strftime("%Y-%m") if pd.notna(x) else "")
+    else:
+        # If no date column, create empty month column
+        df1["month"] = ""
+    
+    # Check if amount column exists before processing
+    if "amount" in df1.columns:
+        df_month_sum = df1.groupby(["month"])["amount"].sum().reset_index(name="sum")
+        df_sigle_penalty = df1[["month", "amount"]]
+    else:
+        # If no amount column, create empty dataframes
+        df_month_sum = pd.DataFrame(columns=["month", "sum"])
+        df_sigle_penalty = pd.DataFrame(columns=["month", "amount"])
+    
     return df_month_sum, df_sigle_penalty
 
 
@@ -1843,10 +1934,14 @@ def uplink_csrcsum():
         amountlen = len(amountdf)
         st.write("分类数据量：" + str(amountlen))
         # get id nunique
-        amountidn = amountdf["id"].nunique()
-        st.write("分类数据id数：" + str(amountidn))
-        # drop duplicate by id
-        amountdf.drop_duplicates(subset=["id"], inplace=True)
+        if "id" in amountdf.columns:
+            amountidn = amountdf["id"].nunique()
+            st.write("分类数据id数：" + str(amountidn))
+            # drop duplicate by id
+            amountdf.drop_duplicates(subset=["id"], inplace=True)
+        else:
+            amountidn = 0
+            st.write("分类数据id数：" + str(amountidn))
     except Exception as e:
         st.error(f"获取分类数据时出错: {str(e)}")
         amountdf = pd.DataFrame()
@@ -1862,10 +1957,14 @@ def uplink_csrcsum():
         splitlen = len(splitdf)
         st.write("拆分数据量：" + str(splitlen))
         # get id nunique
-        splitidn = splitdf["id"].nunique()
-        st.write("拆分数据id数：" + str(splitidn))
-        # drop duplicate by id
-        splitdf.drop_duplicates(subset=["id"], inplace=True)
+        if "id" in splitdf.columns:
+            splitidn = splitdf["id"].nunique()
+            st.write("拆分数据id数：" + str(splitidn))
+            # drop duplicate by id
+            splitdf.drop_duplicates(subset=["id"], inplace=True)
+        else:
+            splitidn = 0
+            st.write("拆分数据id数：" + str(splitidn))
     except Exception as e:
         st.error(f"获取拆分数据时出错: {str(e)}")
         splitdf = pd.DataFrame()
