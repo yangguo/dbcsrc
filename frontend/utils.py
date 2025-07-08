@@ -14,7 +14,7 @@ rulefolder = "../data/rules"
 
 # @st.cache
 def get_csvdf(rulefolder):
-    files2 = glob.glob(rulefolder + "**/*.csv", recursive=True)
+    files2 = glob.glob(rulefolder + "*.csv", recursive=False)
     dflist = []
     for filepath in files2:
         basename = os.path.basename(filepath)

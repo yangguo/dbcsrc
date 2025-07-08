@@ -44,7 +44,7 @@ jspath = "{}/".format(os.path.dirname(os.path.abspath("data/map/echarts.min.js")
 
 # @st.cache(allow_output_mutation=True)
 def get_csvdf(penfolder, beginwith):
-    files2 = glob.glob(penfolder + "**/" + beginwith + "*.csv", recursive=True)
+    files2 = glob.glob(penfolder + beginwith + "*.csv", recursive=False)
     dflist = []
     # filelist = []
     for filepath in files2:

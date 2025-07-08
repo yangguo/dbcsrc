@@ -1459,8 +1459,8 @@ def savetemp(df, basename):
 
 
 def remove_tempfiles():
-    path = os.path.join(tempdir, "**/*.*")
-    files = glob.glob(path, recursive=True)
+    path = os.path.join(tempdir, "*.*")
+    files = glob.glob(path, recursive=False)
     for f in files:
         try:
             os.remove(f)

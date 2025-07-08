@@ -180,7 +180,7 @@ def find_files(path: str, glob_pat: str, ignore_case: bool = False):
         else re.compile(fnmatch.translate(glob_pat))
     )
     return [
-        n for n in glob.glob(os.path.join(path, "*.*"), recursive=True) if rule.match(n)
+        n for n in glob.glob(os.path.join(path, "*.*"), recursive=False) if rule.match(n)
     ]
 
 
@@ -261,7 +261,7 @@ def docxconvertion(uploadpath):
 
 
 def get_uploadfiles(uploadpath):
-    fileslist = glob.glob(uploadpath + "/*.*", recursive=True)
+    fileslist = glob.glob(uploadpath + "/*.*", recursive=False)
     basenamels = []
     for file in fileslist:
         basenamels.append(os.path.basename(file))
@@ -269,7 +269,7 @@ def get_uploadfiles(uploadpath):
 
 
 def remove_uploadfiles(uploadpath):
-    files = glob.glob(uploadpath + "**/*.*", recursive=True)
+    files = glob.glob(uploadpath + "/*.*", recursive=False)
 
     for f in files:
         try:

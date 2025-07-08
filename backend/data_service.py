@@ -27,7 +27,7 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
     
     def search_files():
         """Search for CSV files with timeout protection"""
-        return glob.glob(os.path.join(penfolder, "**", f"{beginwith}*.csv"), recursive=True)
+        return glob.glob(os.path.join(penfolder, f"{beginwith}*.csv"), recursive=False)
     
     try:
         start_time = time.time()

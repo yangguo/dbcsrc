@@ -70,7 +70,7 @@ def get_now():
 
 def get_csvdf(penfolder, beginwith):
     """Get concatenated dataframe from CSV files."""
-    files2 = glob.glob(penfolder + "**/" + beginwith + "*.csv", recursive=True)
+    files2 = glob.glob(penfolder + beginwith + "*.csv", recursive=False)
     dflist = []
     for filepath in files2:
         try:
