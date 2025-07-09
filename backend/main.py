@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Union, Any
 import pandas as pd
 import json
@@ -325,27 +325,31 @@ from web_crawler import get_sumeventdf_backend, update_sumeventdf_backend, get_c
 
 
 
-app = FastAPI(
-    title="DBCSRC API", 
-    description="Enhanced Case Analysis System API with comprehensive logging, security, and monitoring",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize application on startup"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    # Startup
     global rate_limiter, metrics, start_time
     start_time = time.time()
     rate_limiter = RateLimiter(max_requests=100, window_seconds=60)
     metrics = Metrics()
     logger.info("DBCSRC API v1.0.0 started successfully")
     
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on application shutdown"""
+    yield
+    
+    # Shutdown
     logger.info("Shutting down DBCSRC API")
+
+app = FastAPI(
+    title="DBCSRC API", 
+    description="Enhanced Case Analysis System API with comprehensive logging, security, and monitoring",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan
+)
+
+
 
 # Add CORS middleware with configuration
 app.add_middleware(
@@ -474,11 +478,12 @@ class UpdateRequest(BaseModel):
     startPage: int = Field(..., ge=1, le=1000, description="Starting page number")
     endPage: int = Field(..., ge=1, le=1000, description="Ending page number")
     
-    @validator('endPage')
-    def validate_page_range(cls, v, values):
-        if 'startPage' in values and v < values['startPage']:
+    @field_validator('endPage')
+    @classmethod
+    def validate_page_range(cls, v, info):
+        if info.data.get('startPage') and v < info.data['startPage']:
             raise ValueError('endPage must be >= startPage')
-        if 'startPage' in values and v - values['startPage'] > 50:
+        if info.data.get('startPage') and v - info.data['startPage'] > 50:
             raise ValueError('Page range cannot exceed 50 pages')
         return v
 
@@ -502,7 +507,8 @@ class CaseSearchRequest(BaseModel):
     page: int = Field(default=1, ge=1, le=1000, description="Page number")
     pageSize: int = Field(default=10, ge=1, le=100, description="Items per page")
     
-    @validator('dateFrom', 'dateTo')
+    @field_validator('dateFrom', 'dateTo')
+    @classmethod
     def validate_date_format(cls, v):
         if v is not None:
             try:
@@ -1805,6 +1811,39 @@ async def refresh_data():
             count=0
         )
 
+@app.post("/update-analysis-data", response_model=APIResponse)
+async def update_analysis_data():
+    """Update analysis data by processing new case data and creating timestamped files"""
+    try:
+        logger.info("Starting analysis data update")
+        
+        # Import the update function from web_crawler
+        from web_crawler import update_csrc2analysis_backend
+        
+        # Call the update function
+        update_csrc2analysis_backend()
+        
+        # Get updated analysis data to return count
+        from data_service import get_csrc2analysis
+        updated_cases = get_csrc2analysis()
+        
+        logger.info(f"Analysis data update completed successfully")
+        return APIResponse(
+            success=True,
+            message="Analysis data updated successfully with new timestamped file",
+            count=len(updated_cases) if not updated_cases.empty else 0,
+            data={"totalCases": len(updated_cases) if not updated_cases.empty else 0}
+        )
+        
+    except Exception as e:
+        logger.error(f"Analysis data update failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to update analysis data",
+            error=str(e),
+            count=0
+        )
+
 # Download data endpoints
 @app.get("/download-data", response_model=APIResponse)
 @app.get("/api/download-data", response_model=APIResponse)
@@ -2576,6 +2615,17 @@ async def generate_labels():
                 "status": "pending_split_label",
                 "type": "split"
             })
+        
+        # Sort both category and split cases by date (newest first)
+        # Handle empty dates by treating them as very old dates
+        def sort_by_date(case):
+            date_str = case.get('date', '')
+            if not date_str or date_str == 'nan':
+                return '1900-01-01'  # Very old date for empty values
+            return date_str
+        
+        label_data["category_cases"].sort(key=sort_by_date, reverse=True)
+        label_data["split_cases"].sort(key=sort_by_date, reverse=True)
         
         total_cases = len(label_data["category_cases"]) + len(label_data["split_cases"])
         

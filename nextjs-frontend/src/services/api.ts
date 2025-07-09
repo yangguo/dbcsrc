@@ -514,6 +514,7 @@ export const caseApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 1800000, // 30 minutes timeout for batch penalty analysis
     });
     return response.data;
   },

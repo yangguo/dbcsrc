@@ -479,7 +479,8 @@ def update_csrc2analysis_backend():
     """Backend implementation to create/update csrc2analysis files.
     
     This function reads from csrcdtlall files and creates csrc2analysis files
-    by combining new data with existing analysis data.
+    by combining new data with existing analysis data. New records are saved
+    as a timestamped file (csrc2analysis+timedate).
     """
     try:
         # Get new detailed data from csrcdtlall files
@@ -497,24 +498,20 @@ def update_csrc2analysis_backend():
         else:
             oldurlls = olddf["链接"].tolist()
         
-        # Find new URLs not in existing analysis data
+        # Find new URLs not in existing analysis data (based on URL deduplication)
         newidls = [x for x in newurlls if x not in oldurlls]
         upddf = newdf[newdf["链接"].isin(newidls)]
         
-        # If there are new records, update the analysis file
+        # If there are new records, save them as a new timestamped file
         if not upddf.empty:
-            # Combine new data with existing analysis data
-            if not olddf.empty:
-                upddf1 = pd.concat([upddf, olddf])
-            else:
-                upddf1 = upddf.copy()
-                
-            upddf1.reset_index(drop=True, inplace=True)
+            # Only save new records (not combining with old data)
+            upddf.reset_index(drop=True, inplace=True)
             
-            # Save as csrc2analysis file
-            savename = "csrc2analysis"
-            savedf_backend(upddf1, savename)
-            # Updated csrc2analysis with new records
+            # Generate timestamped filename
+            nowstr = get_now()
+            savename = f"csrc2analysis{nowstr}"
+            savedf_backend(upddf, savename)
+            # Saved new csrc2analysis records with timestamp
         else:
             # No new records to add to csrc2analysis
             pass

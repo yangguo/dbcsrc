@@ -384,16 +384,44 @@ const CaseClassification: React.FC = () => {
       setBatchPenaltyLoading(true);
       const file = penaltyFileList[0].originFileObj as File;
       
+      // Show initial progress message
+      const hideLoading = message.loading('正在处理批量行政处罚分析，这可能需要较长时间，请耐心等待...', 0);
+      
       const result = await caseApi.batchAnalyzePenalty(file, {
         idCol: values.penaltyIdCol,
         contentCol: values.penaltyContentCol,
       });
       
+      hideLoading();
       setPenaltyBatchResults(result.data?.result?.data || []);
-      message.success(`批量行政处罚分析完成，处理了 ${result.data?.result?.data?.length || 0} 条记录`);
-    } catch (error) {
-      message.error('批量行政处罚分析失败');
+      
+      const processedCount = result.data?.result?.data?.length || 0;
+      const successCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'success')?.length || 0;
+      const failedCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'failed')?.length || 0;
+      const errorCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'error')?.length || 0;
+      
+      message.success(
+        `批量行政处罚分析完成！共处理 ${processedCount} 条记录，成功 ${successCount} 条，失败 ${failedCount} 条，异常 ${errorCount} 条`
+      );
+    } catch (error: any) {
       console.error('Batch penalty analysis error:', error);
+      
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        message.error({
+          content: '批量分析超时。这通常是因为数据量较大导致的。请尝试减少数据量或稍后重试。',
+          duration: 8,
+        });
+      } else if (error.name === 'BackendUnavailableError') {
+        message.error({
+          content: '后端服务不可用，请确保后端服务正在运行。',
+          duration: 6,
+        });
+      } else {
+        message.error({
+          content: `批量行政处罚分析失败: ${error.message || '未知错误'}`,
+          duration: 6,
+        });
+      }
     } finally {
       setBatchPenaltyLoading(false);
     }

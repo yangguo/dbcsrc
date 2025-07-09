@@ -108,15 +108,21 @@ const CaseUpdate: React.FC = () => {
     }
   };
 
-  const handleRefreshData = async () => {
+  const handleUpdateAnalysisData = async () => {
     try {
       setLoading(true);
-      // Call refresh API endpoint
-      await fetch('/api/refresh-data', { method: 'POST' });
-      message.success('数据刷新完成');
+      // Call update analysis data API endpoint
+      const response = await fetch('http://localhost:8000/update-analysis-data', { method: 'POST' });
+      const result = await response.json();
+      
+      if (result.success) {
+        message.success(`分析数据更新完成，共处理 ${result.count || 0} 条记录`);
+      } else {
+        message.error(`分析数据更新失败: ${result.error || '未知错误'}`);
+      }
     } catch (error) {
-      message.error('数据刷新失败');
-      console.error('Refresh error:', error);
+      message.error('分析数据更新失败');
+      console.error('Update analysis data error:', error);
     } finally {
       setLoading(false);
     }
@@ -207,10 +213,10 @@ const CaseUpdate: React.FC = () => {
               </Button>
               <Button
                 icon={<ReloadOutlined />}
-                onClick={handleRefreshData}
+                onClick={handleUpdateAnalysisData}
                 loading={loading}
               >
-                刷新数据
+                更新分析数据
               </Button>
               <Button onClick={handleReset}>
                 重置

@@ -172,37 +172,67 @@ def extract_penalty_info(text):
 
 def df2penalty_analysis(df, idcol, contentcol):
     """批量处理行政处罚决定书信息提取"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     artls = df[contentcol].tolist()
     urls = df[idcol].tolist()
+    total_records = len(artls)
+    
+    logger.info(f"开始批量处理 {total_records} 条行政处罚决定书记录")
     
     results = []
     
     for i, (article, url) in enumerate(zip(artls, urls)):
-        print(f"处理第 {i+1}/{len(artls)} 条记录: {url}")
+        current_progress = i + 1
+        logger.info(f"处理第 {current_progress}/{total_records} 条记录 ({(current_progress/total_records)*100:.1f}%): {url}")
         
-        # 提取信息
-        analysis_result = extract_penalty_info(str(article))
+        try:
+            # 提取信息
+            analysis_result = extract_penalty_info(str(article))
+            
+            if analysis_result["success"]:
+                # 成功提取信息
+                extracted_data = analysis_result["data"]
+                result_row = {
+                    "id": url,
+                    "行政处罚决定书文号": extracted_data.get("行政处罚决定书文号", ""),
+                    "被处罚当事人": extracted_data.get("被处罚当事人", ""),
+                    "主要违法违规事实": extracted_data.get("主要违法违规事实", ""),
+                    "行政处罚依据": extracted_data.get("行政处罚依据", ""),
+                    "行政处罚决定": extracted_data.get("行政处罚决定", ""),
+                    "作出处罚决定的机关名称": extracted_data.get("作出处罚决定的机关名称", ""),
+                    "作出处罚决定的日期": extracted_data.get("作出处罚决定的日期", ""),
+                    "行业": extracted_data.get("行业", ""),
+                    "罚没总金额": extracted_data.get("罚没总金额", ""),
+                    "违规类型": extracted_data.get("违规类型", ""),
+                    "监管地区": extracted_data.get("监管地区", ""),
+                    "analysis_status": "success"
+                }
+                logger.debug(f"记录 {url} 处理成功")
+            else:
+                # 提取失败
+                result_row = {
+                    "id": url,
+                    "行政处罚决定书文号": "",
+                    "被处罚当事人": "",
+                    "主要违法违规事实": "",
+                    "行政处罚依据": "",
+                    "行政处罚决定": "",
+                    "作出处罚决定的机关名称": "",
+                    "作出处罚决定的日期": "",
+                    "行业": "",
+                    "罚没总金额": "",
+                    "违规类型": "",
+                    "监管地区": "",
+                    "analysis_status": "failed",
+                    "error": analysis_result.get("error", "未知错误")
+                }
+                logger.warning(f"记录 {url} 处理失败: {analysis_result.get('error', '未知错误')}")
         
-        if analysis_result["success"]:
-            # 成功提取信息
-            extracted_data = analysis_result["data"]
-            result_row = {
-                "id": url,
-                "行政处罚决定书文号": extracted_data.get("行政处罚决定书文号", ""),
-                "被处罚当事人": extracted_data.get("被处罚当事人", ""),
-                "主要违法违规事实": extracted_data.get("主要违法违规事实", ""),
-                "行政处罚依据": extracted_data.get("行政处罚依据", ""),
-                "行政处罚决定": extracted_data.get("行政处罚决定", ""),
-                "作出处罚决定的机关名称": extracted_data.get("作出处罚决定的机关名称", ""),
-                "作出处罚决定的日期": extracted_data.get("作出处罚决定的日期", ""),
-                "行业": extracted_data.get("行业", ""),
-                "罚没总金额": extracted_data.get("罚没总金额", ""),
-                "违规类型": extracted_data.get("违规类型", ""),
-                "监管地区": extracted_data.get("监管地区", ""),
-                "analysis_status": "success"
-            }
-        else:
-            # 提取失败
+        except Exception as e:
+            # 处理异常情况
+            logger.error(f"处理记录 {url} 时发生异常: {str(e)}")
             result_row = {
                 "id": url,
                 "行政处罚决定书文号": "",
@@ -216,17 +246,34 @@ def df2penalty_analysis(df, idcol, contentcol):
                 "罚没总金额": "",
                 "违规类型": "",
                 "监管地区": "",
-                "analysis_status": "failed",
-                "error": analysis_result.get("error", "未知错误")
+                "analysis_status": "error",
+                "error": f"处理异常: {str(e)}"
             }
         
         results.append(result_row)
         
-        # 每处理10条记录保存一次临时结果
-        if (i + 1) % 10 == 0:
+        # 每处理10条记录保存一次临时结果并记录进度
+        if current_progress % 10 == 0:
             temp_df = pd.DataFrame(results)
-            savename = f"penalty_analysis_temp_{i + 1}"
+            savename = f"penalty_analysis_temp_{current_progress}"
             savetemp(temp_df, savename)
+            logger.info(f"已保存临时结果: {savename}, 当前进度: {current_progress}/{total_records}")
+        
+        # 每处理50条记录强制垃圾回收，释放内存
+        if current_progress % 50 == 0:
+            import gc
+            gc.collect()
+            logger.info(f"已完成 {current_progress} 条记录处理，执行内存清理")
+    
+    logger.info(f"批量处理完成，共处理 {total_records} 条记录")
+    
+    # 统计处理结果
+    final_df = pd.DataFrame(results)
+    success_count = len(final_df[final_df['analysis_status'] == 'success'])
+    failed_count = len(final_df[final_df['analysis_status'] == 'failed'])
+    error_count = len(final_df[final_df['analysis_status'] == 'error'])
+    
+    logger.info(f"处理结果统计: 成功 {success_count} 条, 失败 {failed_count} 条, 异常 {error_count} 条")
     
     # 返回最终结果
-    return pd.DataFrame(results)
+    return final_df
