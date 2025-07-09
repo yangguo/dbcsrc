@@ -350,7 +350,7 @@ async def shutdown_event():
 # Add CORS middleware with configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://localhost:8501"],
+    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://localhost:3001", "http://localhost:8501"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
@@ -1530,20 +1530,34 @@ async def analyze_attachments(request: AttachmentRequest):
     try:
         logger.info(f"Starting attachment analysis with contentLength={request.contentLength}, downloadFilter={request.downloadFilter}")
         
+        # Import here to avoid circular imports
+        from web_crawler import content_length_analysis
+        
         result = content_length_analysis(request.contentLength, request.downloadFilter)
         
-        logger.info("Attachment analysis completed successfully")
+        # Handle empty result gracefully
+        if not result or len(result) == 0:
+            logger.warning("No data found for attachment analysis - returning empty result")
+            return APIResponse(
+                success=True,
+                message="No attachments found matching the criteria. This may be because the data directory is not set up yet.",
+                data={"result": []},
+                count=0
+            )
+        
+        logger.info(f"Attachment analysis completed successfully with {len(result)} results")
         return APIResponse(
             success=True,
             message="Attachment analysis completed successfully",
-            data={"result": result}
+            data={"result": result},
+            count=len(result)
         )
         
     except Exception as e:
         logger.error(f"Attachment analysis failed: {str(e)}", exc_info=True)
         return APIResponse(
             success=False,
-            message="Attachment analysis failed",
+            message="Attachment analysis failed. Please ensure the data directory structure is set up correctly.",
             error=str(e)
         )
 

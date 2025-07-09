@@ -32,6 +32,7 @@ const { Text, Title } = Typography;
 interface AttachmentData {
   id: string;
   title: string;
+  content: string;
   contentLength: number;
   hasAttachment: boolean;
   downloadStatus: 'pending' | 'downloaded' | 'failed';
@@ -53,13 +54,25 @@ const AttachmentProcessing: React.FC = () => {
       dataIndex: 'title',
       key: 'title',
       ellipsis: true,
+      width: '25%',
+    },
+    {
+      title: '内容',
+      dataIndex: 'content',
+      key: 'content',
+      ellipsis: true,
       width: '30%',
+      render: (content: string) => (
+        <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {content || '暂无内容'}
+        </div>
+      ),
     },
     {
       title: '内容长度',
       dataIndex: 'contentLength',
       key: 'contentLength',
-      width: '12%',
+      width: '10%',
       render: (length: number) => (
         <Tag color={length < 100 ? 'red' : length < 500 ? 'orange' : 'green'}>
           {length}
@@ -120,13 +133,33 @@ const AttachmentProcessing: React.FC = () => {
       
       const result = await caseApi.analyzeAttachments({
         contentLength: values.contentLength,
-        downloadFilter: values.downloadFilter || '',
+        downloadFilter: values.downloadFilter || 'none',
       });
       
-      setAnalysisData(result.data || []);
-      message.success(`分析完成，找到 ${result.data?.length || 0} 条需要处理的案例`);
-    } catch (error) {
-      message.error('附件分析失败');
+      // Transform backend response to frontend interface
+      // Backend returns: { success: true, data: { result: [...] } }
+      const backendData = result.data?.result || [];
+      const transformedData: AttachmentData[] = backendData.map((item: any, index: number) => ({
+        id: `${item.链接 || 'unknown'}-${index}`, // Ensure unique ID by combining URL and index
+        title: item.名称 || '未知标题',
+        content: item.内容 || '',
+        contentLength: item.len || 0,
+        hasAttachment: item.filename ? true : false,
+        downloadStatus: 'pending' as const,
+        textExtracted: false,
+      }));
+      
+      setAnalysisData(transformedData);
+      message.success(`分析完成，找到 ${transformedData.length} 条需要处理的案例`);
+    } catch (error: any) {
+      if (error.name === 'BackendUnavailableError') {
+        message.error({
+          content: '后端服务器未启动，请确保后端服务器在端口8000上运行',
+          duration: 6,
+        });
+      } else {
+        message.error('附件分析失败');
+      }
       console.error('Analysis error:', error);
     } finally {
       setLoading(false);
@@ -162,8 +195,15 @@ const AttachmentProcessing: React.FC = () => {
       
       setProgress(100);
       message.success(`下载完成，共处理 ${selectedRows.length} 个附件`);
-    } catch (error) {
-      message.error('附件下载失败');
+    } catch (error: any) {
+      if (error.name === 'BackendUnavailableError') {
+        message.error({
+          content: '后端服务器未启动，请确保后端服务器在端口8000上运行',
+          duration: 6,
+        });
+      } else {
+        message.error('附件下载失败');
+      }
       console.error('Download error:', error);
     } finally {
       setLoading(false);
@@ -194,8 +234,15 @@ const AttachmentProcessing: React.FC = () => {
       
       const result = await caseApi.convertDocuments(fileList);
       message.success(`文件转换完成`);
-    } catch (error) {
-      message.error(`文件转换失败`);
+    } catch (error: any) {
+      if (error.name === 'BackendUnavailableError') {
+        message.error({
+          content: '后端服务器未启动，请确保后端服务器在端口8000上运行',
+          duration: 6,
+        });
+      } else {
+        message.error('文件转换失败');
+      }
       console.error('Convert error:', error);
     } finally {
       setLoading(false);

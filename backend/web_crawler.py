@@ -70,7 +70,9 @@ def get_now():
 
 def get_csvdf(penfolder, beginwith):
     """Get concatenated dataframe from CSV files."""
-    files2 = glob.glob(penfolder + beginwith + "*.csv", recursive=False)
+    import os
+    pattern = os.path.join(penfolder, beginwith + "*.csv")
+    files2 = glob.glob(pattern, recursive=False)
     dflist = []
     for filepath in files2:
         try:
@@ -306,7 +308,15 @@ def get_sumeventdf_backend(orgname, start, end):
 
 def get_csrc2analysis():
     """Get CSRC analysis data"""
-    pendf = get_csvdf(pencsrc2, "csrc2analysis")
+    # Use absolute path to ensure it works from any working directory
+    import os
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    pencsrc2_abs = os.path.join(project_root, "data", "penalty", "csrc2")
+    
+    pendf = get_csvdf(pencsrc2_abs, "csrc2analysis")
     if not pendf.empty:
         # Format date with error handling
         try:
@@ -321,65 +331,92 @@ def get_csrc2analysis():
 
 def savetemp(df, basename):
     """Save dataframe to temp directory"""
-    tempdir = "../data/penalty/csrc2/temp"
+    # Use absolute path to ensure it works from any working directory
+    import os
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+    
     savename = basename + ".csv"
     savepath = os.path.join(tempdir, savename)
     os.makedirs(os.path.dirname(savepath), exist_ok=True)
     df.to_csv(savepath, index=False)
 
 def content_length_analysis(length, download_filter):
-    """Analyze content length and filter data"""
-    eventdf = get_csrc2analysis()
+    """Analyze content length and filter data
     
-    if eventdf.empty:
-        return pd.DataFrame()
+    Args:
+        length (int): Maximum content length (filters for content <= length)
+        download_filter (str): Filter for document names containing this text
     
-    # Ensure required columns exist
-    if "内容" not in eventdf.columns:
-        eventdf["内容"] = ""
-    if "名称" not in eventdf.columns:
-        eventdf["名称"] = ""
-    if "filename" not in eventdf.columns:
-        eventdf["filename"] = ""
-    
-    eventdf["内容"] = eventdf["内容"].str.replace(
-        r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "", regex=True
-    )
-    eventdf["len"] = eventdf["内容"].astype(str).apply(len)
-    misdf = eventdf[eventdf["len"] <= length]
+    Returns:
+        list: Records with content length <= specified length
+    """
+    try:
+        eventdf = get_csrc2analysis()
+        
+        if eventdf.empty:
+            return []
+        
+        # Ensure required columns exist
+        if "内容" not in eventdf.columns:
+            eventdf["内容"] = ""
+        if "名称" not in eventdf.columns:
+            eventdf["名称"] = ""
+        if "filename" not in eventdf.columns:
+            eventdf["filename"] = ""
+        
+        eventdf["内容"] = eventdf["内容"].str.replace(
+            r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "", regex=True
+        )
+        eventdf["len"] = eventdf["内容"].astype(str).apply(len)
+        
+        # Filter for content length <= specified length (short content)
+        misdf = eventdf[eventdf["len"] <= length]
 
-    # filter out name by download_filter
-    if download_filter and "名称" in misdf.columns:
-        misdf = misdf[~misdf["名称"].str.contains(download_filter, case=False, na=False)]
+        # filter by download_filter - include records that contain the filter
+        # Treat 'none' as no filter (same as None or empty string)
+        if download_filter and download_filter.lower() != 'none' and "名称" in misdf.columns:
+            misdf = misdf[misdf["名称"].str.contains(download_filter, case=False, na=False)]
 
-    # get df by column name - only include columns that exist
-    available_cols = ["发文日期", "名称", "链接", "内容", "len", "filename"]
-    select_cols = [col for col in available_cols if col in misdf.columns]
-    misdf1 = misdf[select_cols]
-    
-    # sort by 发文日期 if column exists
-    if "发文日期" in misdf1.columns:
-        misdf1 = misdf1.sort_values(by="发文日期", ascending=False)
-    
-    # reset index
-    misdf1.reset_index(drop=True, inplace=True)
-    
-    # Convert numpy data types to native Python types for JSON serialization
-    for col in misdf1.columns:
-        if misdf1[col].dtype == 'int64':
-            misdf1[col] = misdf1[col].astype(int)
-        elif misdf1[col].dtype == 'float64':
-            misdf1[col] = misdf1[col].astype(float)
-        elif misdf1[col].dtype == 'object':
-            misdf1[col] = misdf1[col].astype(str)
-    
-    # savename
-    savename = "csrclenanalysis"
-    # save misdf
-    savetemp(misdf1, savename)
-    
-    # Convert DataFrame to dict for JSON serialization
-    return misdf1.to_dict('records')
+        # get df by column name - only include columns that exist
+        available_cols = ["发文日期", "名称", "链接", "内容", "len", "filename"]
+        select_cols = [col for col in available_cols if col in misdf.columns]
+        misdf1 = misdf[select_cols]
+        
+        # sort by 发文日期 if column exists
+        if "发文日期" in misdf1.columns:
+            misdf1 = misdf1.sort_values(by="发文日期", ascending=False)
+        
+        # reset index
+        misdf1.reset_index(drop=True, inplace=True)
+        
+        # Convert numpy data types to native Python types for JSON serialization
+        for col in misdf1.columns:
+            if misdf1[col].dtype == 'int64':
+                misdf1[col] = misdf1[col].astype(int)
+            elif misdf1[col].dtype == 'float64':
+                misdf1[col] = misdf1[col].astype(float)
+            elif misdf1[col].dtype == 'object':
+                misdf1[col] = misdf1[col].astype(str)
+        
+        # Convert DataFrame to dict for JSON serialization
+        result = misdf1.to_dict('records')
+        
+        # savename
+        savename = "csrclenanalysis"
+        # save misdf
+        try:
+            savetemp(misdf1, savename)
+        except Exception as save_error:
+            pass
+        
+        return result
+        
+    except Exception as e:
+        return []
 
 
 def update_sumeventdf_backend(currentsum):
