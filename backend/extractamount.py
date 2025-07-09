@@ -5,8 +5,22 @@ from itertools import groupby
 from operator import itemgetter
 
 import chinese2digits as c2d
-import pandas as pd
 import openai
+
+# Lazy import pandas to reduce memory usage during startup
+pd = None
+
+def get_pandas():
+    """Lazy import pandas to reduce startup memory usage"""
+    global pd
+    if pd is None:
+        try:
+            import pandas as pandas_module
+            pd = pandas_module
+        except ImportError as e:
+            print(f"Failed to import pandas: {e}")
+            raise
+    return pd
 import os
 import json
 from utils import savetemp
@@ -1456,7 +1470,7 @@ def extract_money(
     if flag == 2:
         choose = "没收金额"
     temps = nlp_input([choose], cutted_contents)
-    result_罚款_df = pd.DataFrame(columns=["编号", "罚款详情"])
+    result_罚款_df = get_pandas().DataFrame(columns=["编号", "罚款详情"])
     for i in range(len(temps)):
         temp1s = []
         if len(temps[i]) == 0:
@@ -1464,8 +1478,8 @@ def extract_money(
         else:
             for temp1 in temps[i][choose]:
                 temp1s.append([temp1["start"], temp1["end"], temp1["text"]])
-        result_罚款_df = pd.concat(
-            [result_罚款_df, pd.DataFrame({"编号": [str(i)], "罚款详情": [temp1s]})]
+        result_罚款_df = get_pandas().concat(
+            [result_罚款_df, get_pandas().DataFrame({"编号": [str(i)], "罚款详情": [temp1s]})]
         )
     # 调整result_罚款_df,使[['','' ,'' ]]为空值
     for i in range(len(result_罚款_df)):
@@ -1617,14 +1631,14 @@ def df2amount(df, idcol, contentcol):
         confisls.append(confiscate)
 
         if (i + 1) % 100 == 0 and i > start:
-            tempdf = pd.DataFrame({"id": idls, "finels": finels, "confisls": confisls})
+            tempdf = get_pandas().DataFrame({"id": idls, "finels": finels, "confisls": confisls})
             tempdf["fine"] = tempdf["finels"].apply(lambda x: x[0])
             tempdf["confiscate"] = tempdf["confisls"].apply(lambda x: x[0])
             tempdf["amount"] = tempdf["fine"] + tempdf["confiscate"]
             savename = "tempamt-" + str(i)
             savetemp(tempdf, savename)
 
-    resdf = pd.DataFrame({"id": idls, "finels": finels, "confisls": confisls})
+    resdf = get_pandas().DataFrame({"id": idls, "finels": finels, "confisls": confisls})
     resdf["fine"] = resdf["finels"].apply(lambda x: x[0])
     resdf["confiscate"] = resdf["confisls"].apply(lambda x: x[0])
     resdf["amount"] = resdf["fine"] + resdf["confiscate"]

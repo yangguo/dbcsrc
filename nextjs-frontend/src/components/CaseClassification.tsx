@@ -247,12 +247,16 @@ const CaseClassification: React.FC = () => {
 
   const [csvColumns, setCsvColumns] = useState<string[]>([]);
   
-
+  // 上传分析结果文件相关状态
+  const [uploadResultsFileList, setUploadResultsFileList] = useState<UploadFile[]>([]);
+  const [uploadResultsLoading, setUploadResultsLoading] = useState(false);
+  const [uploadedResults, setUploadedResults] = useState<any[]>([]);
   
   // 表格行选择状态
   const [selectedCategoryRows, setSelectedCategoryRows] = useState<string[]>([]);
   const [selectedSplitRows, setSelectedSplitRows] = useState<string[]>([]);
   const [selectedPenaltyRows, setSelectedPenaltyRows] = useState<string[]>([]);
+  const [selectedUploadedRows, setSelectedUploadedRows] = useState<string[]>([]);
 
 
 
@@ -595,6 +599,124 @@ const CaseClassification: React.FC = () => {
       console.error('保存分析结果失败:', error);
       message.error('保存分析结果失败');
     }
+  };
+
+  // 处理上传分析结果文件
+  const handleUploadResultsFileChange = async (info: any) => {
+    console.log('上传分析结果文件信息:', info);
+    
+    setUploadResultsFileList(info.fileList);
+    
+    // 当有文件时解析内容
+    if (info.fileList.length > 0) {
+      const latestFile = info.fileList[info.fileList.length - 1];
+      const file = latestFile.originFileObj || latestFile;
+      
+      if (file && file instanceof File) {
+        try {
+          const columns = await parseCsvColumns(file);
+          message.success(`文件上传成功，已解析${columns.length}个列名`);
+          
+          // 解析文件内容
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const text = e.target?.result as string;
+              const lines = text.split('\n').filter(line => line.trim());
+              const headers = lines[0].split(',').map(col => col.trim().replace(/^["']|["']$/g, ''));
+              
+              const data = lines.slice(1).map((line, index) => {
+                const values = line.split(',').map(val => val.trim().replace(/^["']|["']$/g, ''));
+                const row: any = { id: `upload-${index}` };
+                headers.forEach((header, i) => {
+                  row[header] = values[i] || '';
+                });
+                return row;
+              });
+              
+              setUploadedResults(data);
+              console.log('解析的上传结果数据:', data);
+            } catch (error) {
+              console.error('解析文件内容失败:', error);
+              message.error('解析文件内容失败');
+            }
+          };
+          reader.readAsText(file, 'utf-8');
+        } catch (error) {
+          console.error('解析CSV列名失败:', error);
+          message.error(`解析CSV列名失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+      }
+    } else {
+      setUploadedResults([]);
+    }
+  };
+
+  // 保存上传的分析结果
+  const saveUploadedAnalysisResults = async () => {
+    if (uploadResultsFileList.length === 0) {
+      message.error('请先上传分析结果文件');
+      return;
+    }
+
+    try {
+      setUploadResultsLoading(true);
+      
+      // Use the uploaded file to call the new API
+      const file = uploadResultsFileList[0].originFileObj;
+      const response = await caseApi.uploadAnalysisResultsFile(file);
+      
+      if (response.success) {
+        message.success(`上传的分析结果已成功保存为 ${response.data.cat_filename} 和 ${response.data.split_filename}`);
+      } else {
+        message.error(response.message || '保存上传的分析结果失败');
+      }
+    } catch (error) {
+      console.error('保存上传的分析结果失败:', error);
+      message.error('保存上传的分析结果失败');
+    } finally {
+      setUploadResultsLoading(false);
+    }
+  };
+
+  // 下载上传的分析结果
+  const downloadUploadedResults = (selectedOnly = false) => {
+    const dataToDownload = selectedOnly 
+      ? uploadedResults.filter((item, index) => selectedUploadedRows.includes(`upload-${index}`))
+      : uploadedResults;
+      
+    if (!dataToDownload || dataToDownload.length === 0) {
+      message.warning(selectedOnly ? '请先选择要下载的记录' : '没有可下载的数据');
+      return;
+    }
+    
+    // 获取所有列名（除了id）
+    const allKeys = Object.keys(dataToDownload[0]).filter(key => key !== 'id');
+    
+    const csvContent = [
+      // CSV 头部
+      allKeys.join(','),
+      // CSV 数据行
+      ...dataToDownload.map(result => 
+        allKeys.map(key => 
+          `"${(result[key] || '').toString().replace(/"/g, '""')}"`
+        ).join(',')
+      )
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const fileName = selectedOnly 
+      ? `上传的分析结果_选中${dataToDownload.length}条_${new Date().toISOString().split('T')[0]}.csv`
+      : `上传的分析结果_${new Date().toISOString().split('T')[0]}.csv`;
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    message.success(`下载成功：${dataToDownload.length} 条记录`);
   };
 
 
@@ -1068,7 +1190,103 @@ const CaseClassification: React.FC = () => {
           </div>
         )}
       </Card>
-      
+
+      {/* Upload Analysis Results */}
+      <Card title="上传批量分析结果文件">
+        <div className="mb-4">
+          <Text type="secondary">
+            上传已有的批量分析结果文件（CSV格式），系统将解析并保存为csrccat和csrcsplit文件
+          </Text>
+        </div>
+        
+        <Upload
+          fileList={uploadResultsFileList}
+          onChange={handleUploadResultsFileChange}
+          beforeUpload={() => false}
+          accept=".csv"
+          maxCount={1}
+        >
+          <Button icon={<UploadOutlined />}>选择分析结果 CSV 文件</Button>
+        </Upload>
+        
+        {/* Upload Results Display */}
+        {uploadedResults && uploadedResults.length > 0 && (
+          <div className="mt-6">
+            <Divider />
+            <div className="flex justify-between items-center mb-4">
+              <Title level={4}>上传的分析结果 ({uploadedResults.length} 条)</Title>
+              <Space>
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={() => downloadUploadedResults(true)}
+                  disabled={selectedUploadedRows.length === 0}
+                >
+                  下载选中 ({selectedUploadedRows.length})
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<DownloadOutlined />}
+                  onClick={() => downloadUploadedResults(false)}
+                >
+                  下载全部
+                </Button>
+                <Button
+                  type="default"
+                  icon={<DownloadOutlined />}
+                  onClick={() => saveUploadedAnalysisResults()}
+                  loading={uploadResultsLoading}
+                  disabled={uploadedResults.length === 0}
+                >
+                  保存分析结果
+                </Button>
+              </Space>
+            </div>
+            <Table
+              columns={[
+                {
+                  title: 'ID',
+                  dataIndex: 'id',
+                  key: 'id',
+                  width: '8%',
+                  fixed: 'left',
+                },
+                ...Object.keys(uploadedResults[0] || {})
+                  .filter(key => key !== 'id')
+                  .map(key => ({
+                    title: key,
+                    dataIndex: key,
+                    key: key,
+                    width: '12%',
+                    ellipsis: true,
+                    render: (text: any) => (
+                      <div title={String(text || '')} style={{ maxHeight: '60px', overflow: 'hidden' }}>
+                        {String(text || '-')}
+                      </div>
+                    ),
+                  }))
+              ]}
+              dataSource={uploadedResults}
+              rowKey={(record) => record.id || `row-${Math.random()}`}
+              rowSelection={{
+                selectedRowKeys: selectedUploadedRows,
+                onChange: (selectedRowKeys) => {
+                  setSelectedUploadedRows(selectedRowKeys as string[]);
+                },
+                getCheckboxProps: (record) => ({
+                  name: record.id,
+                }),
+              }}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showTotal: (total, range) =>
+                  `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+              }}
+              scroll={{ x: 1400, y: 400 }}
+            />
+          </div>
+        )}
+      </Card>
 
     </div>
   );

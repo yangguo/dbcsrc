@@ -1,7 +1,21 @@
-import pandas as pd
 import openai
 import os
 import json
+
+# Lazy import pandas to reduce memory usage during startup
+pd = None
+
+def get_pandas():
+    """Lazy import pandas to reduce startup memory usage"""
+    global pd
+    if pd is None:
+        try:
+            import pandas as pandas_module
+            pd = pandas_module
+        except ImportError as e:
+            print(f"Failed to import pandas: {e}")
+            raise
+    return pd
 
 # Initialize OpenAI client
 client = openai.OpenAI(
@@ -106,7 +120,7 @@ def df2part1loc(df, idcol, contentcol):
         res = llm_parse_location(str(content))
         txtls.append(res)
         idls.append(id)
-    tempdf = pd.DataFrame({"result": txtls, "id": idls})
+    tempdf = get_pandas().DataFrame({"result": txtls, "id": idls})
     tempdf["province"] = tempdf["result"].apply(lambda x: x["province"])
     tempdf["city"] = tempdf["result"].apply(lambda x: x["city"])
     tempdf["county"] = tempdf["result"].apply(lambda x: x["county"])
@@ -146,16 +160,16 @@ def llm_transform_addresses(address_list):
         )
         
         result = json.loads(response.choices[0].message.content)
-        return pd.DataFrame(result)
+        return get_pandas().DataFrame(result)
     except Exception as e:
         # Error in LLM address transformation
         # Return empty dataframe with expected columns
-        return pd.DataFrame([{"省": "", "市": "", "区": ""} for _ in address_list])
+        return get_pandas().DataFrame([{"省": "", "市": "", "区": ""} for _ in address_list])
 
 def df2part2loc(df, idcol, contentcol):
     titls = df[contentcol].tolist()
     dfloc = llm_transform_addresses(titls)
-    df2 = pd.concat([df, dfloc], axis=1)
+    df2 = get_pandas().concat([df, dfloc], axis=1)
     d2 = df2[[idcol, "省", "市", "区"]]
     return d2
 
@@ -166,7 +180,7 @@ def df2location(df, idcol, titlecol, contentcol):
     # titlecol analysis
     d1 = df2part1loc(df1, idcol, titlecol)
     d2 = df2part2loc(df1, idcol, titlecol)
-    d12 = pd.merge(d2, d1, on=idcol, how="left")
+    d12 = get_pandas().merge(d2, d1, on=idcol, how="left")
     d12.loc[d12["省"] == "", ["省", "市", "区"]] = d12.loc[
         d12["省"] == "", ["province", "city", "county"]
     ].values
@@ -178,13 +192,13 @@ def df2location(df, idcol, titlecol, contentcol):
     # contentcol analysis on misdf
     d3 = df2part1loc(misdf, idcol, contentcol)
     d4 = df2part2loc(misdf, idcol, contentcol)
-    d34 = pd.merge(d4, d3, on=idcol, how="left")
+    d34 = get_pandas().merge(d4, d3, on=idcol, how="left")
     d34.loc[d34["省"] == "", ["省", "市", "区"]] = d34.loc[
         d34["省"] == "", ["province", "city", "county"]
     ].values
     part2 = d34[[idcol, "省", "市", "区"]].reset_index(drop=True)
 
-    allpart = pd.concat([part1, part2])
+    allpart = get_pandas().concat([part1, part2])
     allpart.columns = [idcol, "province", "city", "county"]
     # reset index
     allpart = allpart.reset_index(drop=True)

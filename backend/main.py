@@ -7,8 +7,17 @@ from dotenv import load_dotenv
 load_dotenv()
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Union, Any
-import pandas as pd
+from typing import List, Optional, Union, Any, TYPE_CHECKING
+
+# Import pandas type for type hints only
+if TYPE_CHECKING:
+    import pandas as pd
+else:
+    # Create a dummy class for runtime
+    class pd:
+        class DataFrame:
+            pass
+# Lazy import pandas to reduce memory usage during startup
 import json
 import os
 import io
@@ -24,6 +33,22 @@ import asyncio
 from collections import defaultdict
 from contextlib import asynccontextmanager
 
+# Global variable for pandas - will be imported when needed
+pd = None
+
+def get_pandas():
+    """Lazy import pandas to reduce startup memory usage"""
+    global pd
+    if pd is None:
+        try:
+            import pandas as pandas_module
+            pd = pandas_module
+            logger.info("Pandas imported successfully")
+        except ImportError as e:
+            logger.error(f"Failed to import pandas: {e}")
+            raise
+    return pd
+
 # Import your existing modules
 try:
     from classifier import df2label, get_class, extract_penalty_info, df2penalty_analysis
@@ -31,11 +56,11 @@ except ImportError:
     def get_class(*args, **kwargs):
         return {"labels": ["未分类"], "scores": [1.0]}
     def df2label(*args, **kwargs):
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
     def extract_penalty_info(*args, **kwargs):
         return {"success": False, "error": "LLM analysis not available"}
     def df2penalty_analysis(*args, **kwargs):
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
 
 try:
     from doc2text import convert_uploadfiles, docxconvertion, ofdconvertion
@@ -47,19 +72,19 @@ try:
     from extractamount import df2amount
 except ImportError:
     def df2amount(*args, **kwargs):
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
 
 try:
     from locationanalysis import df2location
 except ImportError:
     def df2location(*args, **kwargs):
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
 
 try:
     from peopleanalysis import df2people
 except ImportError:
     def df2people(*args, **kwargs):
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
 
 # Configure logging
 logging.basicConfig(
@@ -234,16 +259,16 @@ def get_online_data():
             cursor = collection.find({}, {"_id": 0}).max_time_ms(15000)  # 15 second timeout
             data = list(cursor)
             logger.info(f"Retrieved {len(data)} records from MongoDB")
-            return pd.DataFrame(data)
+            return get_pandas().DataFrame(data)
         else:
             logger.warning("MongoDB collection not available")
-            return pd.DataFrame()
+            return get_pandas().DataFrame()
     except Exception as e:
         logger.error(f"Failed to get online data: {str(e)}")
         # Return empty DataFrame on error to prevent complete failure
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
 
-def insert_online_data(df: pd.DataFrame):
+def insert_online_data(df: "pd.DataFrame"):
     """Insert data to MongoDB - following frontend logic"""
     import datetime
     
@@ -257,7 +282,7 @@ def insert_online_data(df: pd.DataFrame):
                     # Check if column contains date objects
                     sample_value = df_copy[col].dropna().iloc[0] if not df_copy[col].dropna().empty else None
                     if isinstance(sample_value, datetime.date) and not isinstance(sample_value, datetime.datetime):
-                        df_copy[col] = pd.to_datetime(df_copy[col])
+                        df_copy[col] = get_pandas().to_datetime(df_copy[col])
             
             records = df_copy.to_dict("records")
             batch_size = 10000  # Use same batch size as frontend
@@ -1220,14 +1245,14 @@ def search_cases(
         
         if dateFrom:
             try:
-                df = df[pd.to_datetime(df['发文日期'], errors='coerce') >= pd.to_datetime(dateFrom)]
+                df = df[get_pandas().to_datetime(df['发文日期'], errors='coerce') >= get_pandas().to_datetime(dateFrom)]
                 logger.info(f"After dateFrom filter: {len(df)} cases")
             except Exception as date_error:
                 logger.warning(f"Date filtering error for dateFrom: {date_error}")
         
         if dateTo:
             try:
-                df = df[pd.to_datetime(df['发文日期'], errors='coerce') <= pd.to_datetime(dateTo)]
+                df = df[get_pandas().to_datetime(df['发文日期'], errors='coerce') <= get_pandas().to_datetime(dateTo)]
                 logger.info(f"After dateTo filter: {len(df)} cases")
             except Exception as date_error:
                 logger.warning(f"Date filtering error for dateTo: {date_error}")
@@ -1350,7 +1375,7 @@ def search_cases_enhanced(
             logger.info(f"After party filter: {len(df)} cases")
         
         if minAmount is not None:
-            df = df[pd.to_numeric(df['罚款金额'], errors='coerce') >= minAmount]
+            df = df[get_pandas().to_numeric(df['罚款金额'], errors='coerce') >= minAmount]
             logger.info(f"After minAmount filter: {len(df)} cases")
         
         if legalBasis:
@@ -1359,14 +1384,14 @@ def search_cases_enhanced(
         
         if dateFrom:
             try:
-                df = df[pd.to_datetime(df['发文日期'], errors='coerce') >= pd.to_datetime(dateFrom)]
+                df = df[get_pandas().to_datetime(df['发文日期'], errors='coerce') >= get_pandas().to_datetime(dateFrom)]
                 logger.info(f"After dateFrom filter: {len(df)} cases")
             except Exception as date_error:
                 logger.warning(f"Date filtering error for dateFrom: {date_error}")
         
         if dateTo:
             try:
-                df = df[pd.to_datetime(df['发文日期'], errors='coerce') <= pd.to_datetime(dateTo)]
+                df = df[get_pandas().to_datetime(df['发文日期'], errors='coerce') <= get_pandas().to_datetime(dateTo)]
                 logger.info(f"After dateTo filter: {len(df)} cases")
             except Exception as date_error:
                 logger.warning(f"Date filtering error for dateTo: {date_error}")
@@ -1510,19 +1535,28 @@ async def batch_classify(
         # Read uploaded file
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj, encoding='utf-8-sig')
+        df = get_pandas().read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for batch classification")
         
         # Perform batch classification
         result_df = df2label(df, idcol, contentcol, candidate_labels, multi_label)
         
-        logger.info(f"Batch classification completed successfully for {len(result_df)} records")
+        # Limit results to prevent memory issues
+        MAX_RESULTS = 1000  # Limit to prevent memory overflow
+        total_count = len(result_df)
+        limited_df = result_df.head(MAX_RESULTS)
+        
+        logger.info(f"Batch classification completed successfully for {total_count} records (showing {len(limited_df)})")
         return APIResponse(
             success=True,
-            message=f"Batch classification completed for {len(result_df)} records",
-            data={"results": result_df.to_dict('records')},
-            count=len(result_df)
+            message=f"Batch classification completed for {total_count} records (showing {len(limited_df)})",
+            data={
+                "results": limited_df.to_dict('records'),
+                "hasMore": total_count > MAX_RESULTS,
+                "showing": len(limited_df)
+            },
+            count=total_count
         )
         
     except Exception as e:
@@ -1608,17 +1642,26 @@ async def amount_analysis(
         
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj, encoding='utf-8-sig')
+        df = get_pandas().read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for amount analysis")
         result_df = df2amount(df, idcol, contentcol)
         
-        logger.info(f"Amount analysis completed successfully for {len(result_df)} records")
+        # Limit results to prevent memory issues
+        MAX_RESULTS = 1000  # Limit to prevent memory overflow
+        total_count = len(result_df)
+        limited_df = result_df.head(MAX_RESULTS)
+        
+        logger.info(f"Amount analysis completed successfully for {total_count} records (showing {len(limited_df)})")
         return APIResponse(
             success=True,
-            message=f"Amount analysis completed for {len(result_df)} records",
-            data={"results": result_df.to_dict('records')},
-            count=len(result_df)
+            message=f"Amount analysis completed for {total_count} records (showing {len(limited_df)})",
+            data={
+                "results": limited_df.to_dict('records'),
+                "hasMore": total_count > MAX_RESULTS,
+                "showing": len(limited_df)
+            },
+            count=total_count
         )
         
     except Exception as e:
@@ -1641,17 +1684,26 @@ async def location_analysis(
         
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj, encoding='utf-8-sig')
+        df = get_pandas().read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for location analysis")
         result_df = df2location(df, idcol, contentcol)
         
-        logger.info(f"Location analysis completed successfully for {len(result_df)} records")
+        # Limit results to prevent memory issues
+        MAX_RESULTS = 1000  # Limit to prevent memory overflow
+        total_count = len(result_df)
+        limited_df = result_df.head(MAX_RESULTS)
+        
+        logger.info(f"Location analysis completed successfully for {total_count} records (showing {len(limited_df)})")
         return APIResponse(
             success=True,
-            message=f"Location analysis completed for {len(result_df)} records",
-            data={"results": result_df.to_dict('records')},
-            count=len(result_df)
+            message=f"Location analysis completed for {total_count} records (showing {len(limited_df)})",
+            data={
+                "results": limited_df.to_dict('records'),
+                "hasMore": total_count > MAX_RESULTS,
+                "showing": len(limited_df)
+            },
+            count=total_count
         )
         
     except Exception as e:
@@ -1674,17 +1726,26 @@ async def people_analysis(
         
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj, encoding='utf-8-sig')
+        df = get_pandas().read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for people analysis")
         result_df = df2people(df, idcol, contentcol)
         
-        logger.info(f"People analysis completed successfully for {len(result_df)} records")
+        # Limit results to prevent memory issues
+        MAX_RESULTS = 1000  # Limit to prevent memory overflow
+        total_count = len(result_df)
+        limited_df = result_df.head(MAX_RESULTS)
+        
+        logger.info(f"People analysis completed successfully for {total_count} records (showing {len(limited_df)})")
         return APIResponse(
             success=True,
-            message=f"People analysis completed for {len(result_df)} records",
-            data={"results": result_df.to_dict('records')},
-            count=len(result_df)
+            message=f"People analysis completed for {total_count} records (showing {len(limited_df)})",
+            data={
+                "results": limited_df.to_dict('records'),
+                "hasMore": total_count > MAX_RESULTS,
+                "showing": len(limited_df)
+            },
+            count=total_count
         )
         
     except Exception as e:
@@ -1732,7 +1793,7 @@ async def batch_penalty_analysis(
         
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj, encoding='utf-8-sig')
+        df = get_pandas().read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for penalty analysis")
         result_df = df2penalty_analysis(df, idcol, contentcol)
@@ -1865,7 +1926,7 @@ async def get_download_data():
                 dflist = []
                 for filepath in files:
                     try:
-                        df = pd.read_csv(filepath, encoding='utf-8-sig')
+                        df = get_pandas().read_csv(filepath, encoding='utf-8-sig')
                         dflist.append(df)
                     except Exception as e:
                         # Skip files that can't be read
@@ -1873,7 +1934,7 @@ async def get_download_data():
                 
                 if dflist:
                     # Combine all dataframes like get_csvdf does
-                    combined_df = pd.concat(dflist)
+                    combined_df = get_pandas().concat(dflist)
                     combined_df.reset_index(drop=True, inplace=True)
                     count = len(combined_df)
                     unique_count = combined_df[unique_id_column].nunique() if unique_id_column in combined_df.columns else count
@@ -2102,7 +2163,7 @@ async def download_search_results(
             df = df[df['内容'].str.contains(party, na=False, case=False)]
         
         if minAmount is not None:
-            df = df[pd.to_numeric(df['罚款金额'], errors='coerce') >= minAmount]
+            df = df[get_pandas().to_numeric(df['罚款金额'], errors='coerce') >= minAmount]
         
         if legalBasis:
             df = df[df['内容'].str.contains(legalBasis, na=False, case=False)]
@@ -2239,7 +2300,7 @@ async def get_upload_data():
                 logger.info(f"Starting three-table intersection: analysis({len(analysis_df)}), category({len(category_df)}), split({len(split_df)})")
                 
                 # Step 1: Inner join analysis with category data
-                intersection_df = pd.merge(
+                intersection_df = get_pandas().merge(
                     analysis_df,
                     category_df,
                     left_on="链接",
@@ -2254,7 +2315,7 @@ async def get_upload_data():
                     if 'org' in intersection_df.columns:
                         intersection_df = intersection_df.drop(columns=['org'])
                     
-                    intersection_df = pd.merge(
+                    intersection_df = get_pandas().merge(
                         intersection_df,
                         split_df,
                         left_on="链接",
@@ -2300,11 +2361,11 @@ async def get_upload_data():
                         logger.info(f"Final diff data with selected columns: {len(diff_df)} records")
                 else:
                     logger.warning("No data after analysis+category merge")
-                    diff_df = pd.DataFrame()
+                    diff_df = get_pandas().DataFrame()
             else:
                 logger.warning("Missing required datasets for three-table intersection")
                 logger.info(f"Data availability: analysis={not analysis_df.empty}, category={not category_df.empty}, split={not split_df.empty}")
-                diff_df = pd.DataFrame()
+                diff_df = get_pandas().DataFrame()
                 
         except Exception as e:
             logger.error(f"Error calculating three-table intersection: {str(e)}")
@@ -2316,37 +2377,42 @@ async def get_upload_data():
             diff_df['uploadProgress'] = 0
             diff_df['errorMessage'] = None
         
-        data = {
-            "caseDetail": {
-                "data": case_detail_df.to_dict('records') if not case_detail_df.empty else [],
-                "count": len(case_detail_df),
-                "uniqueCount": case_detail_df['链接'].nunique() if not case_detail_df.empty and '链接' in case_detail_df.columns else 0
-            },
-            "analysisData": {
-                "data": analysis_df.to_dict('records') if not analysis_df.empty else [],
-                "count": len(analysis_df),
-                "uniqueCount": analysis_df['链接'].nunique() if not analysis_df.empty and '链接' in analysis_df.columns else 0
-            },
-            "categoryData": {
-                "data": category_df.to_dict('records') if not category_df.empty else [],
-                "count": len(category_df),
-                "uniqueCount": category_df['id'].nunique() if not category_df.empty and 'id' in category_df.columns else 0
-            },
-            "splitData": {
-                "data": split_df.to_dict('records') if not split_df.empty else [],
-                "count": len(split_df),
-                "uniqueCount": split_df['id'].nunique() if not split_df.empty and 'id' in split_df.columns else 0
-            },
-            "onlineData": {
-                "data": online_df.to_dict('records') if not online_df.empty else [],
-                "count": len(online_df),
-                "uniqueCount": online_df['链接'].nunique() if not online_df.empty and '链接' in online_df.columns else 0
-            },
-            "diffData": {
-                "data": diff_df.to_dict('records') if not diff_df.empty else [],
-                "count": len(diff_df),
-                "uniqueCount": diff_df['链接'].nunique() if not diff_df.empty and '链接' in diff_df.columns else 0
+        # Limit data size to prevent memory issues - only return summary info and limited records
+        MAX_RECORDS_PER_DATASET = 100  # Limit to prevent memory overflow
+        
+        def get_limited_data(df, max_records=MAX_RECORDS_PER_DATASET):
+            """Get limited data with summary info to prevent memory issues"""
+            if df.empty:
+                return {"data": [], "count": 0, "uniqueCount": 0, "hasMore": False}
+            
+            # Get basic counts
+            total_count = len(df)
+            unique_count = 0
+            
+            # Calculate unique count based on available columns
+            if '链接' in df.columns:
+                unique_count = df['链接'].nunique()
+            elif 'id' in df.columns:
+                unique_count = df['id'].nunique()
+            
+            # Return limited records
+            limited_df = df.head(max_records)
+            
+            return {
+                "data": limited_df.to_dict('records'),
+                "count": total_count,
+                "uniqueCount": unique_count,
+                "hasMore": total_count > max_records,
+                "showing": len(limited_df)
             }
+        
+        data = {
+            "caseDetail": get_limited_data(case_detail_df),
+            "analysisData": get_limited_data(analysis_df),
+            "categoryData": get_limited_data(category_df),
+            "splitData": get_limited_data(split_df),
+            "onlineData": get_limited_data(online_df),
+            "diffData": get_limited_data(diff_df)
         }
         
         logger.info(f"Upload data retrieved successfully")
@@ -2763,7 +2829,7 @@ async def download_diff_data():
             # Merge with category and split data (inner join for intersection)
             if not category_df.empty and not split_df.empty and not diff_analysis.empty:
                 # Step 1: Inner join with category data
-                diff_df = pd.merge(
+                diff_df = get_pandas().merge(
                     diff_analysis,
                     category_df,
                     left_on="链接",
@@ -2777,7 +2843,7 @@ async def download_diff_data():
                     if 'org' in diff_df.columns:
                         diff_df = diff_df.drop(columns=['org'])
                     
-                    diff_df = pd.merge(
+                    diff_df = get_pandas().merge(
                         diff_df,
                         split_df,
                         left_on="链接",
@@ -2881,10 +2947,8 @@ async def save_penalty_analysis_results(request: Request):
             })
         
         # Convert to DataFrames and save as CSV
-        import pandas as pd
-        
-        cat_df = pd.DataFrame(cat_data)
-        split_df = pd.DataFrame(split_data)
+        cat_df = get_pandas().DataFrame(cat_data)
+        split_df = get_pandas().DataFrame(split_data)
         
         cat_df.to_csv(cat_filepath, index=False, encoding='utf-8-sig')
         split_df.to_csv(split_filepath, index=False, encoding='utf-8-sig')
@@ -2908,6 +2972,114 @@ async def save_penalty_analysis_results(request: Request):
         return APIResponse(
             success=False,
             message="保存分析结果失败",
+            error=str(e)
+        )
+
+@app.post("/api/upload-analysis-results", response_model=APIResponse)
+async def upload_analysis_results(file: UploadFile = File(...)):
+    """Upload and save analysis results file as csrccat and csrcsplit files"""
+    try:
+        logger.info(f"Starting upload analysis results from file: {file.filename}")
+        
+        # Validate file type
+        if not file.filename.endswith('.csv'):
+            return APIResponse(
+                success=False,
+                message="只支持CSV文件格式"
+            )
+        
+        # Read and parse CSV file
+        contents = await file.read()
+        file_obj = io.BytesIO(contents)
+        df = get_pandas().read_csv(file_obj, encoding='utf-8-sig')
+        
+        if df.empty:
+            return APIResponse(
+                success=False,
+                message="上传的文件为空"
+            )
+        
+        # Convert DataFrame to list of dictionaries with size limit to prevent memory issues
+        MAX_UPLOAD_RECORDS = 5000  # Limit to prevent memory overflow during upload
+        total_records = len(df)
+        limited_df = df.head(MAX_UPLOAD_RECORDS)
+        penalty_results = limited_df.to_dict('records')
+        
+        if total_records > MAX_UPLOAD_RECORDS:
+            logger.warning(f"Upload file has {total_records} records, processing only first {MAX_UPLOAD_RECORDS} to prevent memory issues")
+        
+        # Generate datetime string for filenames
+        datetime_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Define file paths in the same directory as csrc2analysis.csv
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(base_dir, "..", "data", "penalty", "csrc2")
+        data_dir = os.path.abspath(data_dir)  # Normalize the path
+        
+        # Ensure directory exists
+        os.makedirs(data_dir, exist_ok=True)
+        
+        cat_filename = f"csrccat_{datetime_str}.csv"
+        split_filename = f"csrcsplit_{datetime_str}.csv"
+        
+        cat_filepath = os.path.join(data_dir, cat_filename)
+        split_filepath = os.path.join(data_dir, split_filename)
+        
+        # Prepare data for csrc2cat (id, amount, category, province, industry)
+        cat_data = []
+        for result in penalty_results:
+            cat_data.append({
+                'id': result.get('id', '') or result.get('ID', '') or result.get('链接', ''),
+                'amount': result.get('amount', '') or result.get('罚没总金额', ''),
+                'category': result.get('category', '') or result.get('违规类型', ''),
+                'province': result.get('province', '') or result.get('监管地区', ''),
+                'industry': result.get('industry', '') or result.get('行业', '')
+            })
+        
+        # Prepare data for csrc2split (id, wenhao, people, event, law, penalty, org, date)
+        split_data = []
+        for result in penalty_results:
+            split_data.append({
+                'id': result.get('id', '') or result.get('ID', '') or result.get('链接', ''),
+                'wenhao': result.get('wenhao', '') or result.get('行政处罚决定书文号', ''),
+                'people': result.get('people', '') or result.get('被处罚当事人', ''),
+                'event': result.get('event', '') or result.get('主要违法违规事实', ''),
+                'law': result.get('law', '') or result.get('行政处罚依据', ''),
+                'penalty': result.get('penalty', '') or result.get('行政处罚决定', ''),
+                'org': result.get('org', '') or result.get('作出处罚决定的机关名称', ''),
+                'date': result.get('date', '') or result.get('作出处罚决定的日期', '')
+            })
+        
+        # Convert to DataFrames and save as CSV
+        cat_df = get_pandas().DataFrame(cat_data)
+        split_df = get_pandas().DataFrame(split_data)
+        
+        cat_df.to_csv(cat_filepath, index=False, encoding='utf-8-sig')
+        split_df.to_csv(split_filepath, index=False, encoding='utf-8-sig')
+        
+        logger.info(f"Successfully saved uploaded analysis results to {cat_filename} and {split_filename}")
+        
+        return APIResponse(
+            success=True,
+            message=f"上传的分析结果已成功保存为 {cat_filename} 和 {split_filename}",
+            data={
+                'cat_filename': cat_filename,
+                'split_filename': split_filename,
+                'cat_filepath': cat_filepath,
+                'split_filepath': split_filepath,
+                'records_count': len(penalty_results),
+                'total_records_in_file': total_records,
+                'records_processed': len(penalty_results),
+                'has_more_records': total_records > MAX_UPLOAD_RECORDS,
+                'uploaded_data': penalty_results if len(penalty_results) <= 100 else penalty_results[:100]  # Only return first 100 for display
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Upload analysis results failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="上传分析结果失败",
             error=str(e)
         )
 

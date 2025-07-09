@@ -6,8 +6,22 @@ import glob
 import random
 import time
 import requests
-import pandas as pd
 from datetime import datetime
+
+# Lazy import pandas to reduce memory usage during startup
+pd = None
+
+def get_pandas():
+    """Lazy import pandas to reduce startup memory usage"""
+    global pd
+    if pd is None:
+        try:
+            import pandas as pandas_module
+            pd = pandas_module
+        except ImportError as e:
+            print(f"Failed to import pandas: {e}")
+            raise
+    return pd
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -80,17 +94,17 @@ def get_csvdf(penfolder, beginwith):
     dflist = []
     for filepath in files2:
         try:
-            pendf = pd.read_csv(filepath, encoding='utf-8-sig')
+            pendf = get_pandas().read_csv(filepath, encoding='utf-8-sig')
             dflist.append(pendf)
         except Exception as e:
             # Error reading file
             pass
     
     if len(dflist) > 0:
-        df = pd.concat(dflist)
+        df = get_pandas().concat(dflist)
         df.reset_index(drop=True, inplace=True)
     else:
-        df = pd.DataFrame()
+        df = get_pandas().DataFrame()
     return df
 
 
@@ -100,11 +114,11 @@ def get_csrc2detail():
     if not pendf.empty:
         # Format date with error handling
         try:
-            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], format='mixed', errors='coerce').dt.date
+            pendf["发文日期"] = get_pandas().to_datetime(pendf["发文日期"], format='mixed', errors='coerce').dt.date
         except Exception as e:
             # Date formatting warning
             # Try alternative format
-            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
+            pendf["发文日期"] = get_pandas().to_datetime(pendf["发文日期"], errors='coerce').dt.date
         # Fill na
         pendf = pendf.fillna("")
     return pendf
@@ -223,7 +237,7 @@ def get_sumeventdf_backend(orgname, start, end):
                         continue
                         
                     headerls = item["domainMetaList"][0]["resultList"]
-                    headerdf = pd.DataFrame(headerls)
+                    headerdf = get_pandas().DataFrame(headerls)
                     
                     # Extract fields with error handling
                     wenhao_rows = headerdf[headerdf["key"] == "wh"]
@@ -265,7 +279,7 @@ def get_sumeventdf_backend(orgname, start, end):
                     continue
 
             if titlels:  # Only create DataFrame if we have data
-                csrceventdf = pd.DataFrame({
+                csrceventdf = get_pandas().DataFrame({
                     "名称": titlels,
                     "文号": wenhaols,
                     "发文日期": datels,
@@ -291,7 +305,7 @@ def get_sumeventdf_backend(orgname, start, end):
         # Save temporary results every 5 pages
         mod = (count + 1) % 5
         if mod == 0 and count > 0 and resultls:
-            tempdf = pd.concat(resultls)
+            tempdf = get_pandas().concat(resultls)
             savename = "temp-" + orgname + "-0-" + str(count + 1)
             savedf_backend(tempdf, savename)
 
@@ -301,13 +315,13 @@ def get_sumeventdf_backend(orgname, start, end):
         count += 1
 
     if resultls:
-        resultsum = pd.concat(resultls).reset_index(drop=True)
+        resultsum = get_pandas().concat(resultls).reset_index(drop=True)
         savedf_backend(resultsum, "tempall-" + orgname)
         # Scraping completed
         return resultsum
     else:
         # Scraping completed
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
 
 
 def get_csrc2analysis():
@@ -324,11 +338,11 @@ def get_csrc2analysis():
     if not pendf.empty:
         # Format date with error handling
         try:
-            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], format='mixed', errors='coerce').dt.date
+            pendf["发文日期"] = get_pandas().to_datetime(pendf["发文日期"], format='mixed', errors='coerce').dt.date
         except Exception as e:
             # Date formatting warning
             # Try alternative format
-            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
+            pendf["发文日期"] = get_pandas().to_datetime(pendf["发文日期"], errors='coerce').dt.date
         # Fill na
         pendf = pendf.fillna("")
     return pendf

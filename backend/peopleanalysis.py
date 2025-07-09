@@ -1,9 +1,22 @@
-import pandas as pd
 import openai
 import os
 import json
-import pandas as pd
 from utils import savetemp
+
+# Lazy import pandas to reduce memory usage during startup
+pd = None
+
+def get_pandas():
+    """Lazy import pandas to reduce startup memory usage"""
+    global pd
+    if pd is None:
+        try:
+            import pandas as pandas_module
+            pd = pandas_module
+        except ImportError as e:
+            print(f"Failed to import pandas: {e}")
+            raise
+    return pd
 
 # Initialize OpenAI client
 client = openai.OpenAI(
@@ -76,11 +89,11 @@ def df2people(df, idcol, peoplecol):
         orgls.append(org)
 
         if (i + 1) % 10 == 0 and i > start:
-            tempdf = pd.DataFrame({"id": idls, "peoplels": peoplels, "orgls": orgls})
+            tempdf = get_pandas().DataFrame({"id": idls, "peoplels": peoplels, "orgls": orgls})
             savename = "temppeople-" + str(i) + ".csv"
             savetemp(tempdf, savename)
 
-    resdf = pd.DataFrame({"id": idls, "peoplels": peoplels, "orgls": orgls})
+    resdf = get_pandas().DataFrame({"id": idls, "peoplels": peoplels, "orgls": orgls})
     resdf["org"] = resdf["orgls"].apply(lambda x: x[0] if len(x) > 0 else "")
     # savename = "temppeople-" + str(i)+'.csv'
     return resdf

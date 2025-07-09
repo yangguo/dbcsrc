@@ -1,11 +1,25 @@
 import glob
-import pandas as pd
 import os
 import glob
 from typing import Optional
 
+# Lazy import pandas to reduce memory usage during startup
+pd = None
 
-def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
+def get_pandas():
+    """Lazy import pandas to reduce startup memory usage"""
+    global pd
+    if pd is None:
+        try:
+            import pandas as pandas_module
+            pd = pandas_module
+        except ImportError as e:
+            print(f"Failed to import pandas: {e}")
+            raise
+    return pd
+
+
+def get_csvdf(penfolder: str, beginwith: str):
     """
     Load and concatenate CSV files from a folder that begin with a specific string.
     
@@ -23,7 +37,7 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
     # Check if directory exists first to avoid long waits
     if not os.path.exists(penfolder):
         print(f"Directory does not exist: {penfolder}")
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
     
     def search_files():
         """Search for CSV files with timeout protection"""
@@ -39,14 +53,14 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
                 files = future.result(timeout=30)  # Increased to 30 second timeout for file search
             except FutureTimeoutError:
                 print(f"File search timed out after 30 seconds in {penfolder}")
-                return pd.DataFrame()
+                return get_pandas().DataFrame()
         
         search_time = time.time() - start_time
         print(f"File search took {search_time:.2f} seconds, found {len(files)} files")
         
         if not files:
             print(f"No CSV files found matching pattern: {beginwith}*.csv in {penfolder}")
-            return pd.DataFrame()
+            return get_pandas().DataFrame()
         
         dflist = []
         
@@ -56,7 +70,7 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
                 
                 # Use ThreadPoolExecutor with timeout for individual file reading
                 def read_single_file():
-                    return pd.read_csv(filepath, encoding='utf-8-sig')
+                    return get_pandas().read_csv(filepath, encoding='utf-8-sig')
                 
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(read_single_file)
@@ -72,19 +86,19 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
                 continue
         
         if len(dflist) > 0:
-            result_df = pd.concat(dflist, ignore_index=True)
+            result_df = get_pandas().concat(dflist, ignore_index=True)
             print(f"Successfully loaded {len(result_df)} rows from {len(dflist)} files")
             return result_df
         else:
             print("No data loaded from any files")
-            return pd.DataFrame()
+            return get_pandas().DataFrame()
             
     except Exception as e:
         print(f"Error accessing directory {penfolder}: {e}")
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
 
 
-def get_csrc2detail() -> pd.DataFrame:
+def get_csrc2detail():
     """
     Get CSRC2 detail data from CSV files.
     
@@ -104,14 +118,14 @@ def get_csrc2detail() -> pd.DataFrame:
     if not pendf.empty:
         # Format date
         if "发文日期" in pendf.columns:
-            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
+            pendf["发文日期"] = get_pandas().to_datetime(pendf["发文日期"], errors='coerce').dt.date
         # Fill NaN values
         pendf = pendf.fillna("")
     
     return pendf
 
 
-def get_csrc2label() -> pd.DataFrame:
+def get_csrc2label():
     """
     Get CSRC2 label data from CSV files.
     
@@ -135,7 +149,7 @@ def get_csrc2label() -> pd.DataFrame:
     return labeldf
 
 
-def get_csrc2analysis() -> pd.DataFrame:
+def get_csrc2analysis():
     """
     Get CSRC2 analysis data from CSV files.
     
@@ -155,14 +169,14 @@ def get_csrc2analysis() -> pd.DataFrame:
     if not pendf.empty:
         # Format date
         if "发文日期" in pendf.columns:
-            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
+            pendf["发文日期"] = get_pandas().to_datetime(pendf["发文日期"], errors='coerce').dt.date
         # Fill NaN values
         pendf = pendf.fillna("")
     
     return pendf
 
 
-def get_csrc2cat() -> pd.DataFrame:
+def get_csrc2cat():
     """
     Get CSRC2 category data from CSV files.
     
@@ -182,7 +196,7 @@ def get_csrc2cat() -> pd.DataFrame:
     if not amtdf.empty:
         # Process amount column
         if "amount" in amtdf.columns:
-            amtdf["amount"] = pd.to_numeric(amtdf["amount"], errors='coerce')
+            amtdf["amount"] = get_pandas().to_numeric(amtdf["amount"], errors='coerce')
         # Rename columns law to lawlist
         if "law" in amtdf.columns:
             amtdf.rename(columns={"law": "lawlist"}, inplace=True)
@@ -192,7 +206,7 @@ def get_csrc2cat() -> pd.DataFrame:
     return amtdf
 
 
-def get_csrc2split() -> pd.DataFrame:
+def get_csrc2split():
     """
     Get CSRC2 split data from CSV files.
     
@@ -216,7 +230,7 @@ def get_csrc2split() -> pd.DataFrame:
     return pendf
 
 
-def get_csrc2_intersection() -> pd.DataFrame:
+def get_csrc2_intersection():
     """
     Get intersection of csrc2analysis, csrccat, and csrcsplit data.
     
@@ -232,7 +246,7 @@ def get_csrc2_intersection() -> pd.DataFrame:
     
     if analysis_df.empty or cat_df.empty or split_df.empty:
         print("One or more data sources are empty, returning empty DataFrame")
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
     
     print(f"Analysis data: {len(analysis_df)} rows")
     print(f"Category data: {len(cat_df)} rows")
@@ -242,13 +256,13 @@ def get_csrc2_intersection() -> pd.DataFrame:
     # Analysis uses '链接', others use 'id'
     if '链接' not in analysis_df.columns:
         print("Missing '链接' column in analysis data")
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
     if 'id' not in cat_df.columns:
         print("Missing 'id' column in category data")
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
     if 'id' not in split_df.columns:
         print("Missing 'id' column in split data")
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
     
     # Get common IDs across all three datasets
     # Convert analysis '链接' to match 'id' format

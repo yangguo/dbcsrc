@@ -1,8 +1,22 @@
 import datetime
 import os
 import glob
-import pandas as pd
 import datetime
+
+# Lazy import pandas to reduce memory usage during startup
+pd = None
+
+def get_pandas():
+    """Lazy import pandas to reduce startup memory usage"""
+    global pd
+    if pd is None:
+        try:
+            import pandas as pandas_module
+            pd = pandas_module
+        except ImportError as e:
+            print(f"Failed to import pandas: {e}")
+            raise
+    return pd
 
 pencsrc2 = "../data/penalty/csrc2"
 tempdir = "../data/penalty/csrc2/temp"
@@ -36,12 +50,12 @@ def get_csvdf(rulefolder):
         filename = os.path.splitext(basename)[0]
         newdf = rule2df(filename, filepath)[["监管要求", "结构", "条款"]]
         dflist.append(newdf)
-    alldf = pd.concat(dflist, axis=0)
+    alldf = get_pandas().concat(dflist, axis=0)
     return alldf
 
 
 def rule2df(filename, filepath):
-    docdf = pd.read_csv(filepath, encoding='utf-8-sig')
+    docdf = get_pandas().read_csv(filepath, encoding='utf-8-sig')
     docdf["监管要求"] = filename
     return docdf
 

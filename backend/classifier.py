@@ -1,5 +1,19 @@
-import pandas as pd
 import openai
+
+# Lazy import pandas to reduce memory usage during startup
+pd = None
+
+def get_pandas():
+    """Lazy import pandas to reduce startup memory usage"""
+    global pd
+    if pd is None:
+        try:
+            import pandas as pandas_module
+            pd = pandas_module
+        except ImportError as e:
+            print(f"Failed to import pandas: {e}")
+            raise
+    return pd
 import os
 import json
 from utils import savetemp
@@ -83,7 +97,7 @@ def df2label(df, idcol, contentcol, candidate_labels, multi_label=False):
         scorels.append(score)
         mod = (i + 1) % 10
         if mod == 0 and i > 0:
-            tempdf = pd.DataFrame({"label": labells, "score": scorels, "id": idls})
+            tempdf = get_pandas().DataFrame({"label": labells, "score": scorels, "id": idls})
             # tempdf["labels"] = tempdf["result"].apply(lambda x: x["labels"][:3])
             # tempdf["scores"] = tempdf["result"].apply(lambda x: x["scores"][:3])
             # tempdf["label"] = tempdf["labels"].apply(lambda x: x[0])
@@ -96,7 +110,7 @@ def df2label(df, idcol, contentcol, candidate_labels, multi_label=False):
     # tempdf["labels"] = tempdf["result"].apply(lambda x: x["labels"][:3])
     # tempdf["scores"] = tempdf["result"].apply(lambda x: x["scores"][:3])
     # tempdf["label"] = tempdf["labels"].apply(lambda x: x[0])
-    tempdf = pd.DataFrame({"label": labells, "score": scorels, "id": idls})
+    tempdf = get_pandas().DataFrame({"label": labells, "score": scorels, "id": idls})
     # tempdf1 = tempdf[["id", "labels", "scores", "label"]]
     # savename = "csrc2label" + get_nowdate()
     # savedf2(tempdf1, savename)
@@ -254,7 +268,7 @@ def df2penalty_analysis(df, idcol, contentcol):
         
         # 每处理10条记录保存一次临时结果并记录进度
         if current_progress % 10 == 0:
-            temp_df = pd.DataFrame(results)
+            temp_df = get_pandas().DataFrame(results)
             savename = f"penalty_analysis_temp_{current_progress}"
             savetemp(temp_df, savename)
             logger.info(f"已保存临时结果: {savename}, 当前进度: {current_progress}/{total_records}")
@@ -268,7 +282,7 @@ def df2penalty_analysis(df, idcol, contentcol):
     logger.info(f"批量处理完成，共处理 {total_records} 条记录")
     
     # 统计处理结果
-    final_df = pd.DataFrame(results)
+    final_df = get_pandas().DataFrame(results)
     success_count = len(final_df[final_df['analysis_status'] == 'success'])
     failed_count = len(final_df[final_df['analysis_status'] == 'failed'])
     error_count = len(final_df[final_df['analysis_status'] == 'error'])

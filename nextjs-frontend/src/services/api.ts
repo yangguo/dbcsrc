@@ -573,6 +573,19 @@ export const caseApi = {
     return response.data;
   },
 
+  // Upload and save analysis results file
+  uploadAnalysisResultsFile: async (file: File): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await apiClient.post('/api/upload-analysis-results', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   // Download search results
   downloadSearchResults: async (params: EnhancedSearchParams): Promise<Blob> => {
     const response = await downloadClient.get('/api/download/search-results', {
