@@ -491,6 +491,9 @@ class AttachmentRequest(BaseModel):
     contentLength: int = Field(..., ge=0, description="Content length threshold")
     downloadFilter: str = Field(..., min_length=1, description="Download filter criteria")
 
+class AttachmentDownloadRequest(BaseModel):
+    positions: List[int] = Field(..., description="List of positions/indices to download")
+
 class CaseSearchRequest(BaseModel):
     keyword: Optional[str] = Field(None, max_length=200, description="Search keyword")
     org: Optional[str] = Field(None, max_length=100, description="Organization filter")
@@ -1501,7 +1504,7 @@ async def batch_classify(
         # Read uploaded file
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj)
+        df = pd.read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for batch classification")
         
@@ -1562,12 +1565,15 @@ async def analyze_attachments(request: AttachmentRequest):
         )
 
 @app.post("/download-attachments", response_model=APIResponse)
-async def download_attachments(request: AttachmentRequest):
+async def download_attachments(request: AttachmentDownloadRequest):
     """Download case attachments"""
     try:
-        logger.info(f"Starting attachment download with contentLength={request.contentLength}, downloadFilter={request.downloadFilter}")
+        logger.info(f"Starting attachment download with positions={request.positions}")
         
-        result = download_attachment(request.contentLength, request.downloadFilter)
+        # Import here to avoid circular imports
+        from web_crawler import download_attachment
+        
+        result = download_attachment(request.positions)
         
         logger.info("Attachment download completed successfully")
         return APIResponse(
@@ -1596,7 +1602,7 @@ async def amount_analysis(
         
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj)
+        df = pd.read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for amount analysis")
         result_df = df2amount(df, idcol, contentcol)
@@ -1629,7 +1635,7 @@ async def location_analysis(
         
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj)
+        df = pd.read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for location analysis")
         result_df = df2location(df, idcol, contentcol)
@@ -1662,7 +1668,7 @@ async def people_analysis(
         
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj)
+        df = pd.read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for people analysis")
         result_df = df2people(df, idcol, contentcol)
@@ -1720,7 +1726,7 @@ async def batch_penalty_analysis(
         
         contents = file.file.read()
         file_obj = io.BytesIO(contents)
-        df = pd.read_csv(file_obj)
+        df = pd.read_csv(file_obj, encoding='utf-8-sig')
         
         logger.info(f"Processing {len(df)} rows for penalty analysis")
         result_df = df2penalty_analysis(df, idcol, contentcol)
@@ -1820,7 +1826,7 @@ async def get_download_data():
                 dflist = []
                 for filepath in files:
                     try:
-                        df = pd.read_csv(filepath)
+                        df = pd.read_csv(filepath, encoding='utf-8-sig')
                         dflist.append(df)
                     except Exception as e:
                         # Skip files that can't be read

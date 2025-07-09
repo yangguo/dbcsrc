@@ -56,7 +56,7 @@ def get_csvdf(penfolder: str, beginwith: str) -> pd.DataFrame:
                 
                 # Use ThreadPoolExecutor with timeout for individual file reading
                 def read_single_file():
-                    return pd.read_csv(filepath)
+                    return pd.read_csv(filepath, encoding='utf-8-sig')
                 
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(read_single_file)

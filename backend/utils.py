@@ -19,13 +19,13 @@ def get_nowdate():
 def savetemp(df, basename):
     savename = basename + ".csv"
     savepath = os.path.join(tempdir, savename)
-    df.to_csv(savepath)
+    df.to_csv(savepath, encoding='utf-8-sig')
 
 
 def savedf2(df, basename):
     savename = basename + ".csv"
     savepath = os.path.join(pencsrc2, savename)
-    df.to_csv(savepath)
+    df.to_csv(savepath, encoding='utf-8-sig')
 
 
 def get_csvdf(rulefolder):
@@ -41,7 +41,7 @@ def get_csvdf(rulefolder):
 
 
 def rule2df(filename, filepath):
-    docdf = pd.read_csv(filepath)
+    docdf = pd.read_csv(filepath, encoding='utf-8-sig')
     docdf["监管要求"] = filename
     return docdf
 

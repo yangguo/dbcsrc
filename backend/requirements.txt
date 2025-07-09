@@ -82,6 +82,11 @@ mkdocs-material==9.4.8
 # Deployment and containerization
 gunicorn==21.2.0
 
+# Web automation and scraping
+selenium==4.15.2
+webdriver-manager==4.0.1
+beautifulsoup4==4.12.2
+
 # Additional utilities
 python-multipart==0.0.6  # For file uploads
 email-validator==2.1.0  # For email validation

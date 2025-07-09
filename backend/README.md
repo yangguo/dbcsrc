@@ -234,7 +234,7 @@ pytest --cov=. --cov-report=html
 pytest tests/test_endpoints.py::test_summary_endpoint
 
 # Run enhanced API tests
-python test_enhanced_api.py
+python run_tests.py --unit
 ```
 
 ### Performance Testing

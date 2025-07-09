@@ -12,9 +12,9 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 
 # Directory paths
 pencsrc2 = "../data/penalty/csrc2"
@@ -61,6 +61,10 @@ org2id = {
 }
 
 
+# Platform detection utilities removed - no longer needed with webdriver-manager
+# ChromeDriverManager automatically handles platform-specific driver management
+
+
 def get_now():
     """Get current timestamp string."""
     now = datetime.now()
@@ -76,7 +80,7 @@ def get_csvdf(penfolder, beginwith):
     dflist = []
     for filepath in files2:
         try:
-            pendf = pd.read_csv(filepath)
+            pendf = pd.read_csv(filepath, encoding='utf-8-sig')
             dflist.append(pendf)
         except Exception as e:
             # Error reading file
@@ -342,7 +346,7 @@ def savetemp(df, basename):
     savename = basename + ".csv"
     savepath = os.path.join(tempdir, savename)
     os.makedirs(os.path.dirname(savepath), exist_ok=True)
-    df.to_csv(savepath, index=False)
+    df.to_csv(savepath, index=False, encoding='utf-8-sig')
 
 def content_length_analysis(length, download_filter):
     """Analyze content length and filter data
@@ -520,21 +524,65 @@ def update_csrc2analysis_backend():
         pass
 
 
+# Chrome and ChromeDriver discovery functions removed - no longer needed
+# webdriver-manager automatically handles driver discovery and installation
+
 def get_chrome_driver():
-    """Get Chrome WebDriver with headless configuration."""
+    """Get Chrome WebDriver with automatic ChromeDriver management."""
+    print("Starting Chrome driver initialization...")
+    
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-web-security")
+    options.add_argument("--allow-running-insecure-content")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    options.add_argument("--disable-images")
+    options.add_argument("--disable-javascript")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-features=TranslateUI")
+    options.add_argument("--disable-ipc-flooding-protection")
     
-    service = ChromeService(executable_path=ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    return driver
+    try:
+        # Use ChromeDriverManager for automatic ChromeDriver management
+        print("Using ChromeDriverManager for automatic ChromeDriver setup...")
+        service = ChromeService(executable_path=ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        print("Successfully initialized Chrome driver with automatic management")
+        return driver
+    except Exception as e:
+        # Fallback to system chromedriver if automatic management fails
+        print(f"ChromeDriverManager failed: {e}")
+        try:
+            print("Attempting to use system chromedriver as fallback...")
+            driver = webdriver.Chrome(options=options)
+            print("Successfully initialized Chrome driver using system chromedriver")
+            return driver
+        except Exception as fallback_error:
+            error_msg = (
+                f"Failed to initialize Chrome driver. ChromeDriverManager error: {e}\n"
+                f"System chromedriver fallback error: {fallback_error}\n\n"
+                "Please ensure Chrome is installed and you have internet connectivity for automatic ChromeDriver setup.\n"
+                "Alternatively, install ChromeDriver manually and add it to your system PATH."
+            )
+            raise Exception(error_msg)
 
 
 def get_csrclenanalysis():
     """Get CSRC length analysis dataframe."""
+    # Define tempdir using absolute path
+    import os
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+    
     pendf = get_csvdf(tempdir, "csrclenanalysis")
     if not pendf.empty:
         pendf = pendf.fillna("")
@@ -549,6 +597,13 @@ def download_attachment(down_list=None):
     """
     if down_list is None:
         down_list = []
+    
+    # Define tempdir using absolute path
+    import os
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
     
     # get csrclenanalysis df
     lendf = get_csrclenanalysis()
@@ -587,19 +642,51 @@ def download_attachment(down_list=None):
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                     "Referer": url,
                 }
-                file_response = requests.get(datapath, headers=headers, stream=True)
-                file_response.raise_for_status()
-                savename = get_now() + os.path.basename(datapath)
-                filename = os.path.join(tempdir, savename)
-                with open(filename, "wb") as f:
-                    for chunk in file_response.iter_content(1024 * 1024 * 2):
-                        if chunk:
-                            f.write(chunk)
-                text = ""
+                
+                # Ensure tempdir exists
+                os.makedirs(tempdir, exist_ok=True)
+                
+                # Add timeout and retry logic for file download
+                max_retries = 3
+                retry_count = 0
+                
+                while retry_count < max_retries:
+                    try:
+                        file_response = requests.get(datapath, headers=headers, stream=True, timeout=30)
+                        file_response.raise_for_status()
+                        
+                        savename = get_now() + os.path.basename(datapath)
+                        filename = os.path.join(tempdir, savename)
+                        
+                        with open(filename, "wb") as f:
+                            for chunk in file_response.iter_content(1024 * 1024 * 2):
+                                if chunk:
+                                    f.write(chunk)
+                        
+                        # Verify file was downloaded successfully
+                        if os.path.exists(filename) and os.path.getsize(filename) > 0:
+                            text = ""
+                            break
+                        else:
+                            raise Exception("Downloaded file is empty or doesn't exist")
+                            
+                    except Exception as download_error:
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            print(f"Failed to download {datapath} after {max_retries} attempts: {str(download_error)}")
+                            raise download_error
+                        else:
+                            print(f"Download attempt {retry_count} failed for {datapath}, retrying...")
+                            time.sleep(2)  # Wait before retry
+                            
             except Exception as e:
-                # Error downloading file
+                # Error downloading file - log the specific error
+                print(f"Error downloading attachment from {url}: {str(e)}")
                 savename = ""
-                text = sd.find_all("div", class_="detail-news")[0].text
+                try:
+                    text = sd.find_all("div", class_="detail-news")[0].text
+                except Exception:
+                    text = "Failed to extract text content"
             datals = {"url": url, "filename": savename, "text": text}
             df = pd.DataFrame(datals, index=[0])
             resultls.append(df)
