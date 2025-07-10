@@ -496,7 +496,7 @@ export const caseApi = {
     return response.data;
   },
 
-  // Batch analyze penalty cases
+  // Batch analyze penalty cases (async job)
   batchAnalyzePenalty: async (file: File, params: {
     idCol: string;
     contentCol: string;
@@ -510,13 +510,93 @@ export const caseApi = {
       contentcol: params.contentCol
     });
     
+    // Start the job
     const response = await apiClient.post(`/batch-penalty-analysis?${queryParams}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      timeout: 1800000, // 30 minutes timeout for batch penalty analysis
     });
     return response.data;
+  },
+
+  // Get batch penalty analysis job status
+  getBatchPenaltyAnalysisStatus: async (jobId: string): Promise<any> => {
+    const response = await apiClient.get(`/batch-penalty-analysis/${jobId}/status`);
+    return response.data;
+  },
+
+  // Get batch penalty analysis job result
+  getBatchPenaltyAnalysisResult: async (jobId: string): Promise<any> => {
+    const response = await apiClient.get(`/batch-penalty-analysis/${jobId}/result`);
+    return response.data;
+  },
+
+  // List all batch penalty analysis jobs
+  listBatchPenaltyAnalysisJobs: async (): Promise<any> => {
+    const response = await apiClient.get('/batch-penalty-analysis/jobs');
+    return response.data;
+  },
+
+  // Delete batch penalty analysis job
+  deleteBatchPenaltyAnalysisJob: async (jobId: string): Promise<any> => {
+    const response = await apiClient.delete(`/batch-penalty-analysis/${jobId}`);
+    return response.data;
+  },
+
+  // Poll for job completion with progress updates
+  pollBatchPenaltyAnalysisJob: async (
+    jobId: string, 
+    onProgress?: (progress: any) => void,
+    maxWaitTime: number = 1800000 // 30 minutes default
+  ): Promise<any> => {
+    const startTime = Date.now();
+    const pollInterval = 2000; // Poll every 2 seconds
+    
+    return new Promise((resolve, reject) => {
+      const poll = async () => {
+        try {
+          // Check if we've exceeded max wait time
+          if (Date.now() - startTime > maxWaitTime) {
+            reject(new Error('Job polling timeout exceeded'));
+            return;
+          }
+
+          const statusResponse = await api.getBatchPenaltyAnalysisStatus(jobId);
+          
+          if (!statusResponse.success) {
+            reject(new Error(statusResponse.message || 'Failed to get job status'));
+            return;
+          }
+
+          const jobData = statusResponse.data;
+          
+          // Call progress callback if provided
+          if (onProgress) {
+            onProgress(jobData);
+          }
+
+          if (jobData.status === 'completed') {
+            // Job completed, get the result
+            try {
+              const resultResponse = await api.getBatchPenaltyAnalysisResult(jobId);
+              resolve(resultResponse);
+            } catch (error) {
+              reject(error);
+            }
+          } else if (jobData.status === 'failed') {
+            reject(new Error(jobData.error || 'Job failed'));
+          } else {
+            // Job still running, continue polling
+            setTimeout(poll, pollInterval);
+          }
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      // Start polling
+      poll();
+    });
   },
 
   // Download data functions

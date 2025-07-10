@@ -32,9 +32,35 @@ from functools import wraps
 import asyncio
 from collections import defaultdict
 from contextlib import asynccontextmanager
+import uuid
+from enum import Enum
+from datetime import datetime, timedelta
 
 # Global variable for pandas - will be imported when needed
 pd = None
+
+# Job management system
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class JobInfo(BaseModel):
+    job_id: str
+    status: JobStatus
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    progress: int = 0  # 0-100
+    total_records: Optional[int] = None
+    processed_records: int = 0
+    result: Optional[Any] = None
+    error: Optional[str] = None
+    filename: Optional[str] = None
+
+# Global job storage (in production, use Redis or database)
+job_storage = {}
 
 def get_pandas():
     """Lazy import pandas to reduce startup memory usage"""
@@ -1387,7 +1413,11 @@ def search_cases_enhanced(
             logger.info(f"After party filter: {len(df)} cases")
         
         if minAmount is not None:
-            df = df[get_pandas().to_numeric(df['罚款金额'], errors='coerce') >= minAmount]
+            # Ensure 罚款金额 is numeric and handle NaN values
+            df['罚款金额_numeric'] = get_pandas().to_numeric(df['罚款金额'], errors='coerce').fillna(0)
+            df = df[df['罚款金额_numeric'] >= minAmount]
+            # Drop the temporary column
+            df = df.drop('罚款金额_numeric', axis=1)
             logger.info(f"After minAmount filter: {len(df)} cases")
         
         if legalBasis:
@@ -1805,36 +1835,228 @@ async def penalty_analysis(request: PenaltyAnalysisRequest):
             error=str(e)
         )
 
+async def process_batch_penalty_analysis_background(job_id: str, file_content: bytes, filename: str, idcol: str, contentcol: str):
+    """Background task for batch penalty analysis"""
+    try:
+        # Update job status to running
+        job_storage[job_id].status = JobStatus.RUNNING
+        job_storage[job_id].started_at = datetime.now()
+        logger.info(f"Starting background batch penalty analysis for job {job_id}")
+        
+        # Process the file
+        file_obj = io.BytesIO(file_content)
+        df = get_pandas().read_csv(file_obj, encoding='utf-8-sig')
+        
+        # Update total records
+        job_storage[job_id].total_records = len(df)
+        logger.info(f"Processing {len(df)} rows for penalty analysis in job {job_id}")
+        
+        # Process the data
+        result_df = df2penalty_analysis(df, idcol, contentcol)
+        
+        # Update job as completed
+        job_storage[job_id].status = JobStatus.COMPLETED
+        job_storage[job_id].completed_at = datetime.now()
+        job_storage[job_id].progress = 100
+        job_storage[job_id].processed_records = len(result_df)
+        job_storage[job_id].result = {"data": result_df.to_dict('records')}
+        
+        logger.info(f"Batch penalty analysis completed successfully for job {job_id} with {len(result_df)} records")
+        
+    except Exception as e:
+        # Update job as failed
+        job_storage[job_id].status = JobStatus.FAILED
+        job_storage[job_id].completed_at = datetime.now()
+        job_storage[job_id].error = str(e)
+        logger.error(f"Batch penalty analysis failed for job {job_id}: {str(e)}", exc_info=True)
+
 @app.post("/batch-penalty-analysis", response_model=APIResponse)
 async def batch_penalty_analysis(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     idcol: str = Query(...),
     contentcol: str = Query(...)
 ):
-    """Batch extract key information from administrative penalty decisions using LLM"""
+    """Start batch penalty analysis as background job"""
     try:
-        logger.info(f"Starting batch penalty analysis from file: {file.filename}")
+        # Generate unique job ID
+        job_id = str(uuid.uuid4())
         
-        contents = file.file.read()
-        file_obj = io.BytesIO(contents)
-        df = get_pandas().read_csv(file_obj, encoding='utf-8-sig')
+        # Read file content
+        contents = await file.read()
         
-        logger.info(f"Processing {len(df)} rows for penalty analysis")
-        result_df = df2penalty_analysis(df, idcol, contentcol)
+        # Create job info
+        job_info = JobInfo(
+            job_id=job_id,
+            status=JobStatus.PENDING,
+            created_at=datetime.now(),
+            filename=file.filename
+        )
+        job_storage[job_id] = job_info
         
-        logger.info(f"Batch penalty analysis completed successfully for {len(result_df)} records")
+        # Add background task
+        background_tasks.add_task(
+            process_batch_penalty_analysis_background,
+            job_id,
+            contents,
+            file.filename,
+            idcol,
+            contentcol
+        )
+        
+        logger.info(f"Batch penalty analysis job {job_id} started for file: {file.filename}")
         return APIResponse(
             success=True,
-            message=f"Batch penalty analysis completed for {len(result_df)} records",
-            data={"result": {"data": result_df.to_dict('records')}},
-            count=len(result_df)
+            message=f"Batch penalty analysis job started",
+            data={"job_id": job_id, "status": "pending"}
         )
         
     except Exception as e:
-        logger.error(f"Batch penalty analysis failed: {str(e)}", exc_info=True)
+        logger.error(f"Failed to start batch penalty analysis: {str(e)}", exc_info=True)
+        return APIResponse(
+             success=False,
+             message="Failed to start batch penalty analysis",
+             error=str(e)
+         )
+
+@app.get("/batch-penalty-analysis/{job_id}/status", response_model=APIResponse)
+async def get_batch_penalty_analysis_status(job_id: str):
+    """Get status of batch penalty analysis job"""
+    try:
+        if job_id not in job_storage:
+            return APIResponse(
+                success=False,
+                message="Job not found",
+                error="Invalid job ID"
+            )
+        
+        job_info = job_storage[job_id]
+        
+        # Calculate elapsed time
+        elapsed_time = None
+        if job_info.started_at:
+            end_time = job_info.completed_at or datetime.now()
+            elapsed_time = (end_time - job_info.started_at).total_seconds()
+        
+        return APIResponse(
+            success=True,
+            message="Job status retrieved successfully",
+            data={
+                "job_id": job_info.job_id,
+                "status": job_info.status,
+                "progress": job_info.progress,
+                "total_records": job_info.total_records,
+                "processed_records": job_info.processed_records,
+                "filename": job_info.filename,
+                "created_at": job_info.created_at.isoformat(),
+                "started_at": job_info.started_at.isoformat() if job_info.started_at else None,
+                "completed_at": job_info.completed_at.isoformat() if job_info.completed_at else None,
+                "elapsed_time_seconds": elapsed_time,
+                "error": job_info.error
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get job status: {str(e)}", exc_info=True)
         return APIResponse(
             success=False,
-            message="Batch penalty analysis failed",
+            message="Failed to get job status",
+            error=str(e)
+        )
+
+@app.get("/batch-penalty-analysis/{job_id}/result", response_model=APIResponse)
+async def get_batch_penalty_analysis_result(job_id: str):
+    """Get result of completed batch penalty analysis job"""
+    try:
+        if job_id not in job_storage:
+            return APIResponse(
+                success=False,
+                message="Job not found",
+                error="Invalid job ID"
+            )
+        
+        job_info = job_storage[job_id]
+        
+        if job_info.status != JobStatus.COMPLETED:
+            return APIResponse(
+                success=False,
+                message=f"Job is not completed. Current status: {job_info.status}",
+                data={"status": job_info.status, "error": job_info.error}
+            )
+        
+        return APIResponse(
+            success=True,
+            message="Job result retrieved successfully",
+            data={
+                "job_id": job_info.job_id,
+                "result": job_info.result,
+                "processed_records": job_info.processed_records,
+                "filename": job_info.filename
+            },
+            count=job_info.processed_records
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get job result: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to get job result",
+            error=str(e)
+        )
+
+@app.get("/batch-penalty-analysis/jobs", response_model=APIResponse)
+async def list_batch_penalty_analysis_jobs():
+    """List all batch penalty analysis jobs"""
+    try:
+        jobs = []
+        for job_id, job_info in job_storage.items():
+            jobs.append({
+                "job_id": job_info.job_id,
+                "status": job_info.status,
+                "progress": job_info.progress,
+                "filename": job_info.filename,
+                "created_at": job_info.created_at.isoformat(),
+                "completed_at": job_info.completed_at.isoformat() if job_info.completed_at else None
+            })
+        
+        return APIResponse(
+            success=True,
+            message="Jobs listed successfully",
+            data={"jobs": jobs},
+            count=len(jobs)
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to list jobs: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to list jobs",
+            error=str(e)
+        )
+
+@app.delete("/batch-penalty-analysis/{job_id}", response_model=APIResponse)
+async def delete_batch_penalty_analysis_job(job_id: str):
+    """Delete a batch penalty analysis job"""
+    try:
+        if job_id not in job_storage:
+            return APIResponse(
+                success=False,
+                message="Job not found",
+                error="Invalid job ID"
+            )
+        
+        del job_storage[job_id]
+        
+        return APIResponse(
+            success=True,
+            message="Job deleted successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to delete job: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to delete job",
             error=str(e)
         )
 

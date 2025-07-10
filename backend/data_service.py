@@ -197,10 +197,12 @@ def get_csrc2cat():
         # Process amount column
         if "amount" in amtdf.columns:
             amtdf["amount"] = get_pandas().to_numeric(amtdf["amount"], errors='coerce')
+            # Fill NaN values in amount with 0 instead of empty string
+            amtdf["amount"] = amtdf["amount"].fillna(0)
         # Rename columns law to lawlist
         if "law" in amtdf.columns:
             amtdf.rename(columns={"law": "lawlist"}, inplace=True)
-        # Fill NaN values
+        # Fill NaN values for other columns
         amtdf = amtdf.fillna("")
     
     return amtdf

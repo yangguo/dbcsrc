@@ -321,14 +321,15 @@ const CaseClassification: React.FC = () => {
           const firstLine = text.split('\n')[0].trim();
           console.log('第一行内容:', firstLine);
           
-          // 处理不同的分隔符和引号格式
+          // 使用健壮的CSV解析器处理列名
           let columns: string[];
           if (firstLine.includes(',')) {
-            columns = firstLine.split(',').map(col => col.trim().replace(/^["']|["']$/g, ''));
+            columns = parseCSVLine(firstLine).map(col => col.replace(/^["']|["']$/g, ''));
           } else if (firstLine.includes(';')) {
+            // 对于分号分隔的文件，仍使用简单分割（较少遇到分号在引号内的情况）
             columns = firstLine.split(';').map(col => col.trim().replace(/^["']|["']$/g, ''));
           } else {
-            columns = [firstLine];
+            columns = [firstLine.replace(/^["']|["']$/g, '')];
           }
           
           console.log('解析出的列名:', columns);
@@ -388,31 +389,62 @@ const CaseClassification: React.FC = () => {
       setBatchPenaltyLoading(true);
       const file = penaltyFileList[0].originFileObj as File;
       
-      // Show initial progress message
-      const hideLoading = message.loading('正在处理批量行政处罚分析，这可能需要较长时间，请耐心等待...', 0);
-      
-      const result = await caseApi.batchAnalyzePenalty(file, {
+      // Start the batch analysis job
+      const jobResponse = await caseApi.batchAnalyzePenalty(file, {
         idCol: values.penaltyIdCol,
         contentCol: values.penaltyContentCol,
       });
       
-      hideLoading();
-      setPenaltyBatchResults(result.data?.result?.data || []);
+      if (!jobResponse.success) {
+        throw new Error(jobResponse.message || '启动批量分析任务失败');
+      }
       
-      const processedCount = result.data?.result?.data?.length || 0;
-      const successCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'success')?.length || 0;
-      const failedCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'failed')?.length || 0;
-      const errorCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'error')?.length || 0;
+      const jobId = jobResponse.data.job_id;
+      message.info(`批量分析任务已启动，任务ID: ${jobId}`);
       
-      message.success(
-        `批量行政处罚分析完成！共处理 ${processedCount} 条记录，成功 ${successCount} 条，失败 ${failedCount} 条，异常 ${errorCount} 条`
+      // Show progress message
+      let progressMessage = message.loading('正在处理批量行政处罚分析，请耐心等待...', 0);
+      
+      // Poll for job completion with progress updates
+      const result = await caseApi.pollBatchPenaltyAnalysisJob(
+        jobId,
+        (progress) => {
+          // Update progress message
+          progressMessage();
+          const progressPercent = progress.progress || 0;
+          const processedRecords = progress.processed_records || 0;
+          const totalRecords = progress.total_records || 0;
+          
+          progressMessage = message.loading(
+            `正在处理批量行政处罚分析... 进度: ${progressPercent.toFixed(1)}% (${processedRecords}/${totalRecords})`,
+            0
+          );
+        },
+        1800000 // 30 minutes timeout
       );
+      
+      progressMessage();
+      
+      if (result.success) {
+        setPenaltyBatchResults(result.data?.result?.data || []);
+        
+        const processedCount = result.data?.result?.data?.length || 0;
+        const successCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'success')?.length || 0;
+        const failedCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'failed')?.length || 0;
+        const errorCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'error')?.length || 0;
+        
+        message.success(
+          `批量行政处罚分析完成！共处理 ${processedCount} 条记录，成功 ${successCount} 条，失败 ${failedCount} 条，异常 ${errorCount} 条`
+        );
+      } else {
+        throw new Error(result.message || '批量分析失败');
+      }
     } catch (error: any) {
       console.error('Batch penalty analysis error:', error);
       
-      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      if (error.message?.includes('Job polling timeout exceeded')) {
         message.error({
-          content: '批量分析超时。这通常是因为数据量较大导致的。请尝试减少数据量或稍后重试。',
+          content: '批量分析超时。任务可能仍在后台运行，请稍后查看结果或重新启动任务。',
           duration: 8,
         });
       } else if (error.name === 'BackendUnavailableError') {
@@ -601,6 +633,43 @@ const CaseClassification: React.FC = () => {
     }
   };
 
+  // 健壮的CSV解析函数，正确处理包含逗号的字段
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    let i = 0;
+    
+    while (i < line.length) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          // 转义的引号
+          current += '"';
+          i += 2;
+        } else {
+          // 开始或结束引号
+          inQuotes = !inQuotes;
+          i++;
+        }
+      } else if (char === ',' && !inQuotes) {
+        // 字段分隔符
+        result.push(current.trim());
+        current = '';
+        i++;
+      } else {
+        current += char;
+        i++;
+      }
+    }
+    
+    // 添加最后一个字段
+    result.push(current.trim());
+    return result;
+  };
+
   // 处理上传分析结果文件
   const handleUploadResultsFileChange = async (info: any) => {
     console.log('上传分析结果文件信息:', info);
@@ -623,10 +692,18 @@ const CaseClassification: React.FC = () => {
             try {
               const text = e.target?.result as string;
               const lines = text.split('\n').filter(line => line.trim());
-              const headers = lines[0].split(',').map(col => col.trim().replace(/^["']|["']$/g, ''));
               
+              if (lines.length === 0) {
+                throw new Error('文件内容为空');
+              }
+              
+              // 使用健壮的CSV解析器解析标题行
+              const headers = parseCSVLine(lines[0]).map(col => col.replace(/^["']|["']$/g, ''));
+              console.log('解析的标题行:', headers);
+              
+              // 解析数据行
               const data = lines.slice(1).map((line, index) => {
-                const values = line.split(',').map(val => val.trim().replace(/^["']|["']$/g, ''));
+                const values = parseCSVLine(line).map(val => val.replace(/^["']|["']$/g, ''));
                 const row: any = { id: `upload-${index}` };
                 headers.forEach((header, i) => {
                   row[header] = values[i] || '';
@@ -636,9 +713,10 @@ const CaseClassification: React.FC = () => {
               
               setUploadedResults(data);
               console.log('解析的上传结果数据:', data);
+              message.success(`成功解析 ${data.length} 条记录`);
             } catch (error) {
               console.error('解析文件内容失败:', error);
-              message.error('解析文件内容失败');
+              message.error(`解析文件内容失败: ${error instanceof Error ? error.message : '未知错误'}`);
             }
           };
           reader.readAsText(file, 'utf-8');
