@@ -521,7 +521,10 @@ export const caseApi = {
 
   // Get batch penalty analysis job status
   getBatchPenaltyAnalysisStatus: async (jobId: string): Promise<any> => {
-    const response = await apiClient.get(`/batch-penalty-analysis/${jobId}/status`);
+    // Use a reasonable timeout for status checks - keep it short for quick polling
+    const response = await apiClient.get(`/batch-penalty-analysis/${jobId}/status`, {
+      timeout: 15000 // 15 seconds - quick status check only
+    });
     return response.data;
   },
 
@@ -543,32 +546,165 @@ export const caseApi = {
     return response.data;
   },
 
-  // Poll for job completion with progress updates
+  // Poll for job completion with progress updates - Async approach without timeout worries
+  // This function handles long-running batch penalty analysis jobs with a fire-and-forget approach
+  // It uses adaptive polling intervals and graceful error handling for maximum reliability
   pollBatchPenaltyAnalysisJob: async (
     jobId: string, 
     onProgress?: (progress: any) => void,
-    maxWaitTime: number = 1800000 // 30 minutes default
+    onComplete?: (result: any) => void,
+    onError?: (error: Error) => void,
+    options?: {
+      initialPollInterval?: number; // Initial poll interval in milliseconds
+      maxPollInterval?: number; // Maximum poll interval in milliseconds
+      maxConsecutiveFailures?: number; // Max consecutive failures before giving up
+    }
+  ): Promise<void> => {
+    const initialPollInterval = options?.initialPollInterval || 2000; // Start with 2 seconds
+    const maxPollInterval = options?.maxPollInterval || 30000; // Max 30 seconds between polls
+    const maxConsecutiveFailures = options?.maxConsecutiveFailures || 10; // Allow more failures
+    
+    let currentPollInterval = initialPollInterval;
+    let consecutiveFailures = 0;
+    let isPolling = true;
+    
+    const poll = async (): Promise<void> => {
+      if (!isPolling) return;
+      
+      try {
+        const statusResponse = await caseApi.getBatchPenaltyAnalysisStatus(jobId);
+        
+        // Reset on successful status check
+        consecutiveFailures = 0;
+        currentPollInterval = initialPollInterval; // Reset to fast polling on success
+        
+        // Handle different response formats more robustly
+        if (!statusResponse) {
+          const error = new Error('No response received from status check');
+          if (onError) onError(error);
+          return;
+        }
+
+        // Check if response has success property and it's false
+        if (statusResponse.hasOwnProperty('success') && !statusResponse.success) {
+          const error = new Error(statusResponse.message || 'Failed to get job status');
+          if (onError) onError(error);
+          return;
+        }
+
+        // Extract job data - handle both wrapped and direct response formats
+        const jobData = statusResponse.data || statusResponse;
+        
+        if (!jobData || !jobData.status) {
+          const error = new Error('Invalid response format: missing job status');
+          if (onError) onError(error);
+          return;
+        }
+        
+        // Call progress callback if provided
+        if (onProgress) {
+          onProgress(jobData);
+        }
+
+        if (jobData.status === 'completed') {
+          isPolling = false;
+          try {
+            const resultResponse = await caseApi.getBatchPenaltyAnalysisResult(jobId);
+            if (onComplete) onComplete(resultResponse);
+          } catch (error) {
+            if (onError) onError(error as Error);
+          }
+        } else if (jobData.status === 'failed') {
+          isPolling = false;
+          const error = new Error(jobData.error || 'Job failed');
+          if (onError) onError(error);
+        } else {
+          // Job still running, schedule next poll
+          setTimeout(poll, currentPollInterval);
+        }
+      } catch (error: any) {
+        consecutiveFailures++;
+        
+        console.warn(`Status check failed (attempt ${consecutiveFailures}/${maxConsecutiveFailures}):`, error.message);
+        
+        // Handle various error types gracefully
+        const isTimeoutError = error.code === 'ECONNABORTED' || error.message.includes('timeout');
+        const isNetworkError = error.code === 'NETWORK_ERROR' || error.message === 'Network Error';
+        const isServerError = error.response?.status >= 500;
+        
+        if ((isTimeoutError || isNetworkError || isServerError) && consecutiveFailures <= maxConsecutiveFailures) {
+          // Increase poll interval on failures to reduce server load
+          currentPollInterval = Math.min(currentPollInterval * 1.5, maxPollInterval);
+          console.warn(`Retrying status check in ${Math.round(currentPollInterval / 1000)}s... (backoff applied)`);
+          setTimeout(poll, currentPollInterval);
+        } else if (consecutiveFailures > maxConsecutiveFailures) {
+          isPolling = false;
+          const finalError = new Error(
+            `Status check failed after ${maxConsecutiveFailures} consecutive attempts. ` +
+            `The job may still be running on the server. Please check manually or try again later. ` +
+            `Last error: ${error.message}`
+          );
+          if (onError) onError(finalError);
+        } else {
+          // For other types of errors (like 4xx), fail immediately
+          isPolling = false;
+          if (onError) onError(error);
+        }
+      }
+    };
+    
+    // Start polling immediately
+    poll();
+  },
+
+  // Simplified polling method that returns a Promise (for backward compatibility)
+  pollBatchPenaltyAnalysisJobSync: async (
+    jobId: string, 
+    onProgress?: (progress: any) => void,
+    maxWaitTime: number = 3600000, // 1 hour default
+    options?: {
+      pollInterval?: number; // Poll interval in milliseconds
+      maxRetries?: number; // Max retries for failed status checks
+    }
   ): Promise<any> => {
     const startTime = Date.now();
-    const pollInterval = 2000; // Poll every 2 seconds
+    const pollInterval = options?.pollInterval || 5000; // Poll every 5 seconds
+    const maxRetries = options?.maxRetries || 20; // More retries for long jobs
+    let consecutiveFailures = 0;
     
     return new Promise((resolve, reject) => {
       const poll = async () => {
         try {
           // Check if we've exceeded max wait time
           if (Date.now() - startTime > maxWaitTime) {
-            reject(new Error('Job polling timeout exceeded'));
+            reject(new Error('Job polling timeout exceeded. The job may still be running on the server.'));
             return;
           }
 
           const statusResponse = await caseApi.getBatchPenaltyAnalysisStatus(jobId);
           
-          if (!statusResponse.success) {
+          // Reset consecutive failures on successful status check
+          consecutiveFailures = 0;
+          
+          // Handle different response formats more robustly
+          if (!statusResponse) {
+            reject(new Error('No response received from status check'));
+            return;
+          }
+
+          // Check if response has success property and it's false
+          if (statusResponse.hasOwnProperty('success') && !statusResponse.success) {
             reject(new Error(statusResponse.message || 'Failed to get job status'));
             return;
           }
 
-          const jobData = statusResponse.data;
+          // Extract job data - handle both wrapped and direct response formats
+          const jobData = statusResponse.data || statusResponse;
+          
+          if (!jobData || !jobData.status) {
+            reject(new Error('Invalid response format: missing job status'));
+            return;
+          }
           
           // Call progress callback if provided
           if (onProgress) {
@@ -589,8 +725,29 @@ export const caseApi = {
             // Job still running, continue polling
             setTimeout(poll, pollInterval);
           }
-        } catch (error) {
-          reject(error);
+        } catch (error: any) {
+          consecutiveFailures++;
+          
+          console.warn(`Status check failed (attempt ${consecutiveFailures}/${maxRetries}):`, error.message);
+          
+          // Handle timeout errors and network issues more gracefully
+          const isTimeoutError = error.code === 'ECONNABORTED' || error.message.includes('timeout');
+          const isNetworkError = error.code === 'NETWORK_ERROR' || error.message === 'Network Error';
+          
+          if ((isTimeoutError || isNetworkError) && consecutiveFailures <= maxRetries) {
+            console.warn(`Retrying status check in ${pollInterval}ms...`);
+            // Continue polling after a timeout/network error
+            setTimeout(poll, pollInterval);
+          } else if (consecutiveFailures > maxRetries) {
+            reject(new Error(
+              `Status check failed after ${maxRetries} consecutive attempts. ` +
+              `The job may still be running on the server. Please check manually. ` +
+              `Last error: ${error.message}`
+            ));
+          } else {
+            // For other types of errors, fail immediately
+            reject(error);
+          }
         }
       };
       

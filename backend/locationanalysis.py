@@ -121,9 +121,10 @@ def df2part1loc(df, idcol, contentcol):
         txtls.append(res)
         idls.append(id)
     tempdf = get_pandas().DataFrame({"result": txtls, "id": idls})
-    tempdf["province"] = tempdf["result"].apply(lambda x: x["province"])
-    tempdf["city"] = tempdf["result"].apply(lambda x: x["city"])
-    tempdf["county"] = tempdf["result"].apply(lambda x: x["county"])
+    # Use .loc to avoid SettingWithCopyWarning
+    tempdf.loc[:, "province"] = tempdf["result"].apply(lambda x: x["province"])
+    tempdf.loc[:, "city"] = tempdf["result"].apply(lambda x: x["city"])
+    tempdf.loc[:, "county"] = tempdf["result"].apply(lambda x: x["county"])
     # tempdf1 = tempdf[[idcol, "province", "city", "county"]].drop_duplicates()
     return tempdf
 

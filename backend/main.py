@@ -837,7 +837,7 @@ def get_data_coverage():
             df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
             df_copy = df_copy.dropna(subset=['发文日期'])
             if not df_copy.empty:
-                df_copy['month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
+                df_copy.loc[:, 'month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
                 month_counts = df_copy['month'].value_counts().sort_index()
                 coverage_info["time_periods"] = {
                     "total_unique_months": len(month_counts),
@@ -1151,7 +1151,7 @@ def _get_summary_impl(limit_orgs: int = None, limit_months: int = None):
                     df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
                     df_copy = df_copy.dropna(subset=['发文日期'])
                     if not df_copy.empty:
-                        df_copy['month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
+                        df_copy.loc[:, 'month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
                         # Get ALL months and sort chronologically
                         month_counts = df_copy['month'].value_counts().sort_index()
                         logger.info(f"Found {len(month_counts)} unique months from {month_counts.index.min()} to {month_counts.index.max()}")

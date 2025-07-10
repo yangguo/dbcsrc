@@ -358,7 +358,7 @@ def compare(
 
             # 去除重复项
         if strict == 1:
-            all["key"] = all["list1"].apply(lambda x: "".join(str(x)))
+            all.loc[:, "key"] = all["list1"].apply(lambda x: "".join(str(x)))
             all = all.drop_duplicates(subset=["key"], keep="first")
         all = all.drop(["key"], axis=1)
         all.reset_index(drop=True, inplace=True)
@@ -603,7 +603,7 @@ def list_small(list1, list2, strict=1):
             ]  # 求最小的距离
             all = pd.concat([all, temp1, temp2], axis=0, join="outer")
         if strict == 1:
-            all["key"] = all["list1"].apply(lambda x: "".join(str(x)))
+            all.loc[:, "key"] = all["list1"].apply(lambda x: "".join(str(x)))
             all = all.drop_duplicates(subset=["key"], keep="first")
         all = all[
             all["list2-list1"].astype(str).str.contains(r"list2包含list1", regex=True)
@@ -669,7 +669,7 @@ def list_split(list1, list2, strict=1):
             ]  # 求最小的距离
             all = pd.concat([all, temp1, temp2], axis=0, join="outer")
         if strict == 1:
-            all["key"] = all["list1"].apply(lambda x: "".join(str(x)))
+            all.loc[:, "key"] = all["list1"].apply(lambda x: "".join(str(x)))
             all = all.drop_duplicates(subset=["key"], keep="first")
         # all=all[all['list2-list1'].astype(str).str.contains(r'list2包含list1', regex= True)]
         if len(all[~all["list2-list1"].astype(str).str.contains(r"相交|list1包含list2|list2包含list1|相等", regex=True)]) != len(all[~all["list2-list1"].astype(str).str.contains(r"list2包含list1", regex=True)]):
@@ -734,7 +734,7 @@ def list_big(list1, list2, strict=1):
             ]  # 求最小的距离
             all = pd.concat([all, temp1, temp2], axis=0, join="outer")
         if strict == 1:
-            all["key"] = all["list1"].apply(lambda x: "".join(str(x)))
+            all.loc[:, "key"] = all["list1"].apply(lambda x: "".join(str(x)))
             all = all.drop_duplicates(subset=["key"], keep="first")
         all = all[
             all["list2-list1"].astype(str).str.contains(r"list1包含list2", regex=True)
@@ -798,7 +798,7 @@ def list_abs(list1, list2, n, strict=1):
             ]  # 求最小的距离
             all = pd.concat([all, temp1, temp2], axis=0, join="outer")
         if strict == 1:
-            all["key"] = all["list1"].apply(lambda x: "".join(str(x)))
+            all.loc[:, "key"] = all["list1"].apply(lambda x: "".join(str(x)))
             all = all.drop_duplicates(subset=["key"], keep="first")
         # all=all[all['list2-list1'].astype(str).str.contains(r'list1包含list2', regex= True)]
         all = all[
@@ -866,7 +866,7 @@ def list_distance(list1, list2, n, strict=1):
             ]  # 求最小的距离
             all = pd.concat([all, temp1, temp2], axis=0, join="outer")
         if strict == 1:
-            all["key"] = all["list1"].apply(lambda x: "".join(str(x)))
+            all.loc[:, "key"] = all["list1"].apply(lambda x: "".join(str(x)))
             all = all.drop_duplicates(subset=["key"], keep="first")
         all = all[
             ~all["list2-list1"]
@@ -1628,15 +1628,15 @@ def df2amount(df, idcol, contentcol):
 
         if (i + 1) % 100 == 0 and i > start:
             tempdf = get_pandas().DataFrame({"id": idls, "finels": finels, "confisls": confisls})
-            tempdf["fine"] = tempdf["finels"].apply(lambda x: x[0])
-            tempdf["confiscate"] = tempdf["confisls"].apply(lambda x: x[0])
+            tempdf.loc[:, "fine"] = tempdf["finels"].apply(lambda x: x[0])
+            tempdf.loc[:, "confiscate"] = tempdf["confisls"].apply(lambda x: x[0])
             tempdf["amount"] = tempdf["fine"] + tempdf["confiscate"]
             savename = "tempamt-" + str(i)
             savetemp(tempdf, savename)
 
     resdf = get_pandas().DataFrame({"id": idls, "finels": finels, "confisls": confisls})
-    resdf["fine"] = resdf["finels"].apply(lambda x: x[0])
-    resdf["confiscate"] = resdf["confisls"].apply(lambda x: x[0])
+    resdf.loc[:, "fine"] = resdf["finels"].apply(lambda x: x[0])
+    resdf.loc[:, "confiscate"] = resdf["confisls"].apply(lambda x: x[0])
     resdf["amount"] = resdf["fine"] + resdf["confiscate"]
     # savename = "csrc2amt" + get_nowdate()+".csv"
     # savedf2(resdf, savename)

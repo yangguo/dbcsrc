@@ -94,6 +94,6 @@ def df2people(df, idcol, peoplecol):
             savetemp(tempdf, savename)
 
     resdf = get_pandas().DataFrame({"id": idls, "peoplels": peoplels, "orgls": orgls})
-    resdf["org"] = resdf["orgls"].apply(lambda x: x[0] if len(x) > 0 else "")
+    resdf.loc[:, "org"] = resdf["orgls"].apply(lambda x: x[0] if len(x) > 0 else "")
     # savename = "temppeople-" + str(i)+'.csv'
     return resdf

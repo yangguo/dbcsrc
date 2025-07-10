@@ -389,7 +389,7 @@ def content_length_analysis(length, download_filter):
         eventdf["内容"] = eventdf["内容"].str.replace(
             r"\r|\n|\t|\xa0|\u3000|\s|\xa0", "", regex=True
         )
-        eventdf["len"] = eventdf["内容"].astype(str).apply(len)
+        eventdf.loc[:, "len"] = eventdf["内容"].astype(str).apply(len)
         
         # Filter for content length <= specified length (short content)
         misdf = eventdf[eventdf["len"] <= length]
@@ -412,13 +412,14 @@ def content_length_analysis(length, download_filter):
         misdf1.reset_index(drop=True, inplace=True)
         
         # Convert numpy data types to native Python types for JSON serialization
+        # Use .loc to avoid SettingWithCopyWarning
         for col in misdf1.columns:
             if misdf1[col].dtype == 'int64':
-                misdf1[col] = misdf1[col].astype(int)
+                misdf1.loc[:, col] = misdf1[col].astype(int)
             elif misdf1[col].dtype == 'float64':
-                misdf1[col] = misdf1[col].astype(float)
+                misdf1.loc[:, col] = misdf1[col].astype(float)
             elif misdf1[col].dtype == 'object':
-                misdf1[col] = misdf1[col].astype(str)
+                misdf1.loc[:, col] = misdf1[col].astype(str)
         
         # Convert DataFrame to dict for JSON serialization
         result = misdf1.to_dict('records')
@@ -477,13 +478,14 @@ def update_sumeventdf_backend(currentsum):
     # Convert DataFrame to dict for JSON serialization
     if not newdf.empty:
         # Convert numpy data types to native Python types
+        # Use .loc to avoid SettingWithCopyWarning
         for col in newdf.columns:
             if newdf[col].dtype == 'int64':
-                newdf[col] = newdf[col].astype(int)
+                newdf.loc[:, col] = newdf[col].astype(int)
             elif newdf[col].dtype == 'float64':
-                newdf[col] = newdf[col].astype(float)
+                newdf.loc[:, col] = newdf[col].astype(float)
             elif newdf[col].dtype == 'object':
-                newdf[col] = newdf[col].astype(str)
+                newdf.loc[:, col] = newdf[col].astype(str)
         return newdf.to_dict('records')
     else:
         return []

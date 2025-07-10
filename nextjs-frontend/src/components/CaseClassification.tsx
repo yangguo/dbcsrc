@@ -307,7 +307,7 @@ const CaseClassification: React.FC = () => {
       let progressMessage = message.loading('正在处理批量行政处罚分析，请耐心等待...', 0);
       
       // Poll for job completion with progress updates
-      const result = await caseApi.pollBatchPenaltyAnalysisJob(
+      const result = await caseApi.pollBatchPenaltyAnalysisJobSync(
         jobId,
         (progress) => {
           // Update progress message
@@ -326,19 +326,21 @@ const CaseClassification: React.FC = () => {
       
       progressMessage();
       
-      if (result.success) {
-        setPenaltyBatchResults(result.data?.result?.data || []);
+      // Handle both success/data format and direct data format
+      if (result && (result.success !== false)) {
+        const resultData = result.data?.result?.data || result.data || result;
+        setPenaltyBatchResults(Array.isArray(resultData) ? resultData : []);
         
-        const processedCount = result.data?.result?.data?.length || 0;
-        const successCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'success')?.length || 0;
-        const failedCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'failed')?.length || 0;
-        const errorCount = result.data?.result?.data?.filter((item: any) => item.analysis_status === 'error')?.length || 0;
+        const processedCount = Array.isArray(resultData) ? resultData.length : 0;
+        const successCount = Array.isArray(resultData) ? resultData.filter((item: any) => item.analysis_status === 'success')?.length : 0;
+        const failedCount = Array.isArray(resultData) ? resultData.filter((item: any) => item.analysis_status === 'failed')?.length : 0;
+        const errorCount = Array.isArray(resultData) ? resultData.filter((item: any) => item.analysis_status === 'error')?.length : 0;
         
         message.success(
           `批量行政处罚分析完成！共处理 ${processedCount} 条记录，成功 ${successCount} 条，失败 ${failedCount} 条，异常 ${errorCount} 条`
         );
       } else {
-        throw new Error(result.message || '批量分析失败');
+        throw new Error(result?.message || '批量分析失败');
       }
     } catch (error: any) {
       console.error('Batch penalty analysis error:', error);
