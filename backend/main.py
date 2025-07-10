@@ -1257,6 +1257,18 @@ def search_cases(
             except Exception as date_error:
                 logger.warning(f"Date filtering error for dateTo: {date_error}")
         
+        # Sort by date in descending order (newest first)
+        try:
+            # Convert date column to datetime for proper sorting
+            df['发文日期_datetime'] = get_pandas().to_datetime(df['发文日期'], errors='coerce')
+            # Sort by date descending, with NaT (invalid dates) at the end
+            df = df.sort_values('发文日期_datetime', ascending=False, na_position='last')
+            # Drop the temporary datetime column
+            df = df.drop('发文日期_datetime', axis=1)
+            logger.info(f"Data sorted by date in descending order")
+        except Exception as sort_error:
+            logger.warning(f"Date sorting error: {sort_error}, proceeding without sorting")
+        
         total = len(df)
         
         # Pagination
@@ -1395,6 +1407,18 @@ def search_cases_enhanced(
                 logger.info(f"After dateTo filter: {len(df)} cases")
             except Exception as date_error:
                 logger.warning(f"Date filtering error for dateTo: {date_error}")
+        
+        # Sort by date in descending order (newest first)
+        try:
+            # Convert date column to datetime for proper sorting
+            df['发文日期_datetime'] = get_pandas().to_datetime(df['发文日期'], errors='coerce')
+            # Sort by date descending, with NaT (invalid dates) at the end
+            df = df.sort_values('发文日期_datetime', ascending=False, na_position='last')
+            # Drop the temporary datetime column
+            df = df.drop('发文日期_datetime', axis=1)
+            logger.info(f"Data sorted by date in descending order")
+        except Exception as sort_error:
+            logger.warning(f"Date sorting error: {sort_error}, proceeding without sorting")
         
         total = len(df)
         

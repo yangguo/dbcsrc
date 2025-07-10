@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
   Form,
@@ -74,6 +74,15 @@ const CaseSearch: React.FC = () => {
   const [statsVisible, setStatsVisible] = useState(false);
   const [searchStats, setSearchStats] = useState<SearchStats | null>(null);
   const [advancedSearch, setAdvancedSearch] = useState(false);
+  const isMountedRef = useRef(true);
+
+  // Cleanup effect to prevent CSS-in-JS warnings
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // 机构选项 - 修正为实际数据中的地区机构（基于web_crawler.py的org2id）
   const orgOptions = [
@@ -238,6 +247,10 @@ const CaseSearch: React.FC = () => {
       };
       
       const response = await caseApi.searchCasesEnhanced(params);
+      
+      // Check if component is still mounted before updating state
+      if (!isMountedRef.current) return;
+      
       setData(response.data);
       setTotal(response.total);
       setCurrentPage(1);
@@ -263,9 +276,13 @@ const CaseSearch: React.FC = () => {
       message.success(`搜索完成，共找到 ${response.total} 条记录`);
     } catch (error) {
       console.error('搜索失败:', error);
-      message.error('搜索失败，请重试');
+      if (isMountedRef.current) {
+        message.error('搜索失败，请重试');
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -287,15 +304,23 @@ const CaseSearch: React.FC = () => {
       };
 
       const response = await caseApi.searchCasesEnhanced(searchParams);
+      
+      // Check if component is still mounted before updating state
+      if (!isMountedRef.current) return;
+      
       setData(response.data);
       setTotal(response.total);
       setCurrentPage(page);
       if (size) setPageSize(size);
     } catch (error) {
       console.error('Page change failed:', error);
-      message.error('加载数据失败，请重试');
+      if (isMountedRef.current) {
+        message.error('加载数据失败，请重试');
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -309,7 +334,9 @@ const CaseSearch: React.FC = () => {
 
   const handleDownload = async () => {
     try {
-      message.info('正在准备下载...');
+      if (isMountedRef.current) {
+        message.info('正在准备下载...');
+      }
       
       const formValues = form.getFieldsValue();
        const downloadParams = {
@@ -324,6 +351,9 @@ const CaseSearch: React.FC = () => {
        };
       
       const blob = await caseApi.downloadSearchResults(downloadParams);
+      
+      // Check if component is still mounted before proceeding
+      if (!isMountedRef.current) return;
       
       // Create download link
       const url = window.URL.createObjectURL(blob);
@@ -342,10 +372,14 @@ const CaseSearch: React.FC = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      message.success('下载完成');
+      if (isMountedRef.current) {
+        message.success('下载完成');
+      }
     } catch (error) {
       console.error('Download failed:', error);
-      message.error('下载失败，请检查搜索条件或稍后重试');
+      if (isMountedRef.current) {
+        message.error('下载失败，请检查搜索条件或稍后重试');
+      }
     }
   };
 
@@ -759,4 +793,4 @@ const CaseSearch: React.FC = () => {
   );
 };
 
-export default CaseSearch;
+export default React.memo(CaseSearch);
