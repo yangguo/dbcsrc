@@ -238,7 +238,7 @@ def wash_data(data):
         2,
     )
     try:
-        temp = pd.DataFrame(columns=["数字", "中文", "长度"])
+        temp = get_pandas().DataFrame(columns=["数字", "中文", "长度"])
         temp["数字"] = result[1]
         temp["中文"] = result[0]
         # print(temp['中文'])
@@ -293,7 +293,7 @@ def get_position_and_str(
 def compare(
     list1, list2, strict=1
 ):  # list需要是[[1,2,str]]这样的综合list，计算各元素的最小距离,默认出的结果list1不重复且保留带文字的distance
-    all = pd.DataFrame(columns=["list1", "list2", "list2-list1"])
+    all = get_pandas().DataFrame(columns=["list1", "list2", "list2-list1"])
     if list1 == []:
         # print(temp)
         # all1 = all
@@ -306,7 +306,7 @@ def compare(
         return all
     else:
         for i in list1:
-            temp = pd.DataFrame(columns=["list1", "list2", "list2-list1"])
+            temp = get_pandas().DataFrame(columns=["list1", "list2", "list2-list1"])
             for j in list2:
                 if (j[0] <= i[1] - 1 and j[1] - 1 > i[1] - 1 and i[0] < j[0]) or (
                     j[1] - 1 >= i[0] and j[0] < i[0] and i[1] - 1 > j[1] - 1
@@ -324,10 +324,10 @@ def compare(
                     distance = (j[1] - 1) - i[0]
                 # print(i)
                 # print(j)
-                temp = pd.concat(
+                temp = get_pandas().concat(
                     [
                         temp,
-                        pd.DataFrame(
+                        get_pandas().DataFrame(
                             {
                                 "list1": [[i[0], i[1], i[2]]],
                                 "list2": [[j[0], j[1], j[2]]],
@@ -354,7 +354,7 @@ def compare(
             temp2 = temp2[
                 temp2["list2-list1"].abs() == temp2["list2-list1"].abs().min()
             ]  # 求最小的距离
-            all = pd.concat([all, temp1, temp2], axis=0, join="outer")
+            all = get_pandas().concat([all, temp1, temp2], axis=0, join="outer")
 
             # 去除重复项
         if strict == 1:
@@ -369,7 +369,7 @@ def compare(
 
 
 def jieya1(dataframe):
-    result = pd.DataFrame(
+    result = get_pandas().DataFrame(
         columns=[
             "list1首",
             "list1尾",
@@ -381,10 +381,10 @@ def jieya1(dataframe):
         ]
     )
     for i in range(len(dataframe)):
-        result = pd.concat(
+        result = get_pandas().concat(
             [
                 result,
-                pd.DataFrame(
+                get_pandas().DataFrame(
                     {
                         "list1首": [dataframe["list1"][i][0]],
                         "list1尾": [dataframe["list1"][i][1]],
@@ -413,12 +413,12 @@ def jieya1(dataframe):
 
 
 def jieya(list):
-    result = pd.DataFrame(columns=["list1首", "list1尾", "list1"])
+    result = get_pandas().DataFrame(columns=["list1首", "list1尾", "list1"])
     for i in range(len(list)):
-        result = pd.concat(
+        result = get_pandas().concat(
             [
                 result,
-                pd.DataFrame(
+                get_pandas().DataFrame(
                     {
                         "list1首": [list[i][0]],
                         "list1尾": [list[i][1]],
@@ -539,7 +539,7 @@ def multi_relation(
 ):  # 这是判断一堆点关系的函数list1为主list2为被比较list,list1为行坐标,list2为列坐标
     list1 = [str(i) for i in list1]
     list2 = [str(i) for i in list2]
-    df = pd.DataFrame(index=list1, columns=list2)
+    df = get_pandas().DataFrame(index=list1, columns=list2)
     for i in list1:
         for j in list2:
             df.loc[i, j] = get_relation(eval(i), eval(j))
@@ -551,14 +551,14 @@ def multi_relation(
 def list_small(list1, list2, strict=1):
     # print('list1:',list1)
     # print('list2:',list2)
-    all = pd.DataFrame(columns=["list1", "list2", "list2-list1"])
+    all = get_pandas().DataFrame(columns=["list1", "list2", "list2-list1"])
     if list1 == []:
         return list1
     elif list2 == []:
         return []
     else:
         for i in list1:
-            temp = pd.DataFrame(columns=["list1", "list2", "list2-list1"])
+            temp = get_pandas().DataFrame(columns=["list1", "list2", "list2-list1"])
             for j in list2:
                 if (j[0] <= i[1] - 1 and j[1] - 1 > i[1] - 1 and i[0] < j[0]) or (
                     j[1] - 1 >= i[0] and j[0] < i[0] and i[1] - 1 > j[1] - 1
@@ -1209,8 +1209,6 @@ def calculate_similar(
     import math
     import re
 
-    import pandas as pd
-
 
     def split_santence(string, s=128):  # string是要分的句子，s为阈值
         n = math.ceil(len(string) / s)
@@ -1235,7 +1233,7 @@ def calculate_similar(
         # print(result)
         return result
 
-    db_outcome = pd.DataFrame(columns=["文字", "相似度"])
+    db_outcome = get_pandas().DataFrame(columns=["文字", "相似度"])
     result_句子 = get_position_and_str(r"[\s\S]*?[：:；;。\n]", string)
     # print(result_句子)
     temp = []
@@ -1297,10 +1295,10 @@ Respond with only a JSON object:
     
     result = similarity_results
     for j in result:
-        db_outcome = pd.concat(
+        db_outcome = get_pandas().concat(
             [
                 db_outcome,
-                pd.DataFrame(
+                get_pandas().DataFrame(
                     columns=["文字", "相似度"], data=[[j["text2"], j["similarity"]]]
                 ),
             ]
@@ -1323,15 +1321,13 @@ def calculate_similar_batch(
     import math
     import re
 
-    import pandas as pd
-
 
     def split_santence(string, s=128):  # string是要分的句子，s为阈值
         n = math.ceil(len(string) / s)
         num = math.floor(len(string) / n)
         return re.findall(r"[\s\S]{1," + str(num) + "}", string)
 
-    db_outcome = pd.DataFrame(columns=["query", "文字", "相似度"])
+    db_outcome = get_pandas().DataFrame(columns=["query", "文字", "相似度"])
     result = []
     result_query = []
     for i in key:
@@ -1388,10 +1384,10 @@ Respond with only a JSON object:
     
     result = similarity_results
     for j in result:
-        db_outcome = pd.concat(
+        db_outcome = get_pandas().concat(
             [
                 db_outcome,
-                pd.DataFrame(
+                get_pandas().DataFrame(
                     columns=["文字", "相似度"], data=[[j["text2"], j["similarity"]]]
                 ),
             ]

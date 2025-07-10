@@ -275,7 +275,7 @@ def get_csrc2_intersection():
     
     if not common_ids:
         print("No common IDs found, returning empty DataFrame")
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
     
     # Filter datasets to only include common IDs
     analysis_filtered = analysis_df[analysis_df['链接'].isin(common_ids)].copy()

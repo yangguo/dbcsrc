@@ -448,7 +448,7 @@ def update_sumeventdf_backend(currentsum):
     """
     if currentsum.empty:
         # No current data to update
-        return pd.DataFrame()
+        return get_pandas().DataFrame()
         
     oldsum2 = get_csrc2detail()
     if oldsum2.empty:
@@ -699,7 +699,7 @@ def download_attachment(down_list=None):
                 except Exception:
                     text = "Failed to extract text content"
             datals = {"url": url, "filename": savename, "text": text}
-            df = pd.DataFrame(datals, index=[0])
+            df = get_pandas().DataFrame(datals, index=[0])
             resultls.append(df)
         except Exception as e:
             # Error processing URL
@@ -726,4 +726,4 @@ def download_attachment(down_list=None):
         savetemp(misdf, savecsv)
         return misdf
     else:
-        return pd.DataFrame()
+        return get_pandas().DataFrame()

@@ -573,19 +573,19 @@ def get_summary_working(
         def load_csv_data():
             return get_csrc2detail()
         
-        df = pd.DataFrame()
+        df = get_pandas().DataFrame()
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(load_csv_data)
                 df = future.result(timeout=120)  # Increased to 120 second timeout
                 if df is None:
-                    df = pd.DataFrame()
+                    df = get_pandas().DataFrame()
         except FutureTimeoutError:
             logger.warning("CSV loading timed out after 120 seconds")
-            df = pd.DataFrame()
+            df = get_pandas().DataFrame()
         except Exception as e:
             logger.warning(f"CSV loading failed: {e}")
-            df = pd.DataFrame()
+            df = get_pandas().DataFrame()
         
         # Process data simply
         total = len(df) if not df.empty else 0
@@ -873,7 +873,7 @@ def get_org_chart_data():
         logger.info("Fetching organization chart data with consistent filtering")
         
         # Get case detail data from CSV files
-        df = pd.DataFrame()
+        df = get_pandas().DataFrame()
         try:
             from data_service import get_csrc2detail
             from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
@@ -887,16 +887,16 @@ def get_org_chart_data():
                     df = future.result(timeout=120)
                     if df is None or df.empty:
                         logger.warning("No CSV data found")
-                        df = pd.DataFrame()
+                        df = get_pandas().DataFrame()
                     else:
                         logger.info(f"Loaded {len(df)} rows from CSV data")
                 except FutureTimeoutError:
                     logger.warning("CSV data loading timed out after 120 seconds")
-                    df = pd.DataFrame()
+                    df = get_pandas().DataFrame()
                     
         except Exception as csv_error:
             logger.warning(f"Failed to load CSV data: {csv_error}")
-            df = pd.DataFrame()
+            df = get_pandas().DataFrame()
         
         org_chart_data = {}
         
@@ -962,16 +962,16 @@ def get_org_summary():
                     df = future.result(timeout=120)
                     if df is None or df.empty:
                         logger.warning("No CSV data found")
-                        df = pd.DataFrame()
+                        df = get_pandas().DataFrame()
                     else:
                         logger.info(f"Loaded {len(df)} rows from CSV data")
                 except FutureTimeoutError:
                     logger.warning("CSV data loading timed out after 120 seconds")
-                    df = pd.DataFrame()
+                    df = get_pandas().DataFrame()
                     
         except Exception as csv_error:
             logger.warning(f"Failed to load CSV data: {csv_error}")
-            df = pd.DataFrame()
+            df = get_pandas().DataFrame()
         
         org_summary = []
         
@@ -1041,7 +1041,7 @@ def _get_summary_impl(limit_orgs: int = None, limit_months: int = None):
         logger.info("Fetching case summary statistics")
         
         # Get case detail data from CSV files with timeout protection
-        df = pd.DataFrame()
+        df = get_pandas().DataFrame()
         try:
             logger.info("Loading CSV data...")
             from data_service import get_csrc2detail
@@ -1056,12 +1056,12 @@ def _get_summary_impl(limit_orgs: int = None, limit_months: int = None):
                     df = future.result(timeout=120)  # Increased to 120 second timeout
                     if df is None or df.empty:
                         logger.warning("No CSV data found")
-                        df = pd.DataFrame()
+                        df = get_pandas().DataFrame()
                     else:
                         logger.info(f"Loaded {len(df)} rows from CSV data")
                 except FutureTimeoutError:
                     logger.warning("CSV data loading timed out after 120 seconds")
-                    df = pd.DataFrame()
+                    df = get_pandas().DataFrame()
                     
         except Exception as csv_error:
             logger.warning(f"Failed to load CSV data: {csv_error}")
@@ -2369,7 +2369,7 @@ async def get_upload_data():
                 
         except Exception as e:
             logger.error(f"Error calculating three-table intersection: {str(e)}")
-            diff_df = pd.DataFrame()
+            diff_df = get_pandas().DataFrame()
         
         # Add upload status fields
         if not diff_df.empty:
@@ -2865,9 +2865,9 @@ async def download_diff_data():
                 if selected_columns:
                     diff_df = diff_df[selected_columns]
             else:
-                diff_df = pd.DataFrame()
+                diff_df = get_pandas().DataFrame()
         else:
-            diff_df = pd.DataFrame()
+            diff_df = get_pandas().DataFrame()
         
         # Convert to CSV
         csv_buffer = io.StringIO()
