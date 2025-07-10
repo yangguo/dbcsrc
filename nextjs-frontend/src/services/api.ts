@@ -561,7 +561,7 @@ export const caseApi = {
             return;
           }
 
-          const statusResponse = await api.getBatchPenaltyAnalysisStatus(jobId);
+          const statusResponse = await caseApi.getBatchPenaltyAnalysisStatus(jobId);
           
           if (!statusResponse.success) {
             reject(new Error(statusResponse.message || 'Failed to get job status'));
@@ -578,7 +578,7 @@ export const caseApi = {
           if (jobData.status === 'completed') {
             // Job completed, get the result
             try {
-              const resultResponse = await api.getBatchPenaltyAnalysisResult(jobId);
+              const resultResponse = await caseApi.getBatchPenaltyAnalysisResult(jobId);
               resolve(resultResponse);
             } catch (error) {
               reject(error);

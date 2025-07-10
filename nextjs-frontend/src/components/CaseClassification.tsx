@@ -43,31 +43,26 @@ const CaseClassification: React.FC = () => {
   const { message } = App.useApp();
   const [penaltyForm] = Form.useForm();
 
-  // Label results table columns - 参考frontend实现，显示所有字段信息
+  // Label results table columns - 只保留csrc2analysis中存在的字段
   const labelColumns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 80,
-      ellipsis: true,
-      fixed: 'left' as const,
-    },
-    {
-      title: '发文日期',
-      dataIndex: 'date',
-      key: 'date',
-      width: 100,
-      ellipsis: true,
-    },
-    {
-      title: '发文名称',
+      title: '名称',
       dataIndex: 'title',
       key: 'title',
       width: 200,
       ellipsis: true,
       render: (text: string) => (
         <span title={text}>{text}</span>
+      ),
+    },
+    {
+      title: '内容',
+      dataIndex: 'content',
+      key: 'content',
+      width: 300,
+      ellipsis: true,
+      render: (text: string) => (
+        <span title={text}>{text?.substring(0, 100)}...</span>
       ),
     },
     {
@@ -81,131 +76,25 @@ const CaseClassification: React.FC = () => {
       ),
     },
     {
-      title: '发文机构',
+      title: '发文日期',
+      dataIndex: 'date',
+      key: 'date',
+      width: 100,
+      ellipsis: true,
+    },
+    {
+      title: '序列号',
+      dataIndex: 'serialNumber',
+      key: 'serialNumber',
+      width: 150,
+      ellipsis: true,
+    },
+    {
+      title: '机构',
       dataIndex: 'organization',
       key: 'organization',
       width: 120,
       ellipsis: true,
-    },
-    {
-      title: '摘要',
-      dataIndex: 'summary',
-      key: 'summary',
-      width: 200,
-      ellipsis: true,
-      render: (text: string) => (
-        <span title={text}>{text?.substring(0, 50)}...</span>
-      ),
-    },
-    {
-      title: '当事人',
-      dataIndex: 'people',
-      key: 'people',
-      width: 120,
-      ellipsis: true,
-    },
-    {
-      title: '违法事实',
-      dataIndex: 'event',
-      key: 'event',
-      width: 200,
-      ellipsis: true,
-      render: (text: string) => (
-        <span title={text}>{text?.substring(0, 50)}...</span>
-      ),
-    },
-    {
-      title: '处罚依据',
-      dataIndex: 'law',
-      key: 'law',
-      width: 150,
-      ellipsis: true,
-      render: (text: string) => (
-        <span title={text}>{text?.substring(0, 30)}...</span>
-      ),
-    },
-    {
-      title: '处罚决定',
-      dataIndex: 'penalty',
-      key: 'penalty',
-      width: 150,
-      ellipsis: true,
-      render: (text: string) => (
-        <span title={text}>{text?.substring(0, 30)}...</span>
-      ),
-    },
-    {
-      title: '处罚日期',
-      dataIndex: 'penaltyDate',
-      key: 'penaltyDate',
-      width: 100,
-      ellipsis: true,
-    },
-    {
-      title: '案件类型',
-      dataIndex: 'category',
-      key: 'category',
-      width: 100,
-      ellipsis: true,
-    },
-    {
-      title: '罚款金额',
-      dataIndex: 'amount',
-      key: 'amount',
-      width: 100,
-      render: (amount: any) => {
-        if (amount === undefined || amount === null || amount === '' || isNaN(Number(amount))) {
-          return '0';
-        }
-        return Number(amount).toLocaleString();
-      },
-    },
-    {
-      title: '处罚地区',
-      dataIndex: 'province',
-      key: 'province',
-      width: 100,
-      ellipsis: true,
-    },
-    {
-      title: '行业类型',
-      dataIndex: 'industry',
-      key: 'industry',
-      width: 100,
-      ellipsis: true,
-    },
-    {
-      title: '内容',
-      dataIndex: 'content',
-      key: 'content',
-      width: 300,
-      ellipsis: true,
-      render: (text: string) => (
-        <span title={text}>{text?.substring(0, 100)}...</span>
-      ),
-    },
-    {
-      title: '链接',
-      dataIndex: 'url',
-      key: 'url',
-      width: 100,
-      ellipsis: true,
-      render: (url: string) => (
-        <a href={url} target="_blank" rel="noopener noreferrer" title={url}>
-          查看详情
-        </a>
-      ),
-    },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 80,
-      render: (type: string) => (
-        <Tag color={type === 'category' ? 'blue' : 'green'}>
-          {type === 'category' ? '分类' : '拆分'}
-        </Tag>
-      ),
     },
     {
        title: '状态',
@@ -230,6 +119,18 @@ const CaseClassification: React.FC = () => {
          return <Tag color={color}>{text}</Tag>;
        },
      },
+    {
+      title: '链接',
+      dataIndex: 'url',
+      key: 'url',
+      width: 100,
+      ellipsis: true,
+      render: (url: string) => (
+        <a href={url} target="_blank" rel="noopener noreferrer" title={url}>
+          查看详情
+        </a>
+      ),
+    },
   ];
 
   // 为每个功能创建独立的loading状态
@@ -345,7 +246,7 @@ const CaseClassification: React.FC = () => {
         }
       };
       reader.onerror = () => reject(new Error('文件读取失败'));
-      reader.readAsText(file, 'utf-8');
+      reader.readAsText(file, 'utf-8-sig');
     });
   };
 
@@ -497,7 +398,7 @@ const CaseClassification: React.FC = () => {
     ].join('\n');
 
     // 创建下载链接
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8-sig;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
@@ -547,7 +448,7 @@ const CaseClassification: React.FC = () => {
     ].join('\n');
 
     // 创建下载链接
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8-sig;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     const fileName = selectedOnly 
@@ -597,7 +498,7 @@ const CaseClassification: React.FC = () => {
     
     console.log('CSV内容生成完成，长度:', csvContent.length);
     
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8-sig;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     const fileName = selectedOnly 
@@ -719,7 +620,7 @@ const CaseClassification: React.FC = () => {
               message.error(`解析文件内容失败: ${error instanceof Error ? error.message : '未知错误'}`);
             }
           };
-          reader.readAsText(file, 'utf-8');
+          reader.readAsText(file, 'utf-8-sig');
         } catch (error) {
           console.error('解析CSV列名失败:', error);
           message.error(`解析CSV列名失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -782,7 +683,7 @@ const CaseClassification: React.FC = () => {
       )
     ].join('\n');
     
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8-sig;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     const fileName = selectedOnly 
