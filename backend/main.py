@@ -629,7 +629,7 @@ def get_summary_working(
                     if '发文日期' in df.columns:
                         # Only count organizations with valid dates for consistency
                         df_filtered = df.copy()
-                        df_filtered['发文日期'] = pd.to_datetime(df_filtered['发文日期'], errors='coerce')
+                        df_filtered['发文日期'] = get_pandas().to_datetime(df_filtered['发文日期'], errors='coerce')
                         df_filtered = df_filtered.dropna(subset=['发文日期', '机构'])
                         df_filtered = df_filtered[df_filtered['机构'].str.strip() != '']
                         
@@ -651,7 +651,7 @@ def get_summary_working(
             if '发文日期' in df.columns:
                 try:
                     df_copy = df[['发文日期']].copy()
-                    df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+                    df_copy['发文日期'] = get_pandas().to_datetime(df_copy['发文日期'], errors='coerce')
                     df_copy = df_copy.dropna()
                     if not df_copy.empty:
                         df_copy['month'] = df_copy['发文日期'].dt.strftime('%Y-%m')
@@ -931,7 +931,7 @@ def get_org_chart_data():
             df_copy = df.copy()
             
             # Clean and parse dates
-            df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+            df_copy['发文日期'] = get_pandas().to_datetime(df_copy['发文日期'], errors='coerce')
             df_copy = df_copy.dropna(subset=['发文日期', '机构'])
             df_copy = df_copy[df_copy['机构'].str.strip() != '']
             
@@ -974,7 +974,7 @@ def get_org_summary():
         logger.info("Fetching organization summary with date ranges")
         
         # Get case detail data from CSV files
-        df = pd.DataFrame()
+        df = get_pandas().DataFrame()
         try:
             from data_service import get_csrc2detail
             from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
@@ -1029,9 +1029,9 @@ def get_org_summary():
                         'orgName': row['orgName'],
                         'caseCount': int(row['caseCount']),
                         'percentage': round((row['caseCount'] / total_cases) * 100, 2),
-                        'minDate': row['minDate'].strftime('%Y-%m') if pd.notna(row['minDate']) else '',
-                        'maxDate': row['maxDate'].strftime('%Y-%m') if pd.notna(row['maxDate']) else '',
-                        'dateRange': f"{row['minDate'].strftime('%Y-%m')} 至 {row['maxDate'].strftime('%Y-%m')}" if pd.notna(row['minDate']) and pd.notna(row['maxDate']) else '暂无数据'
+                        'minDate': row['minDate'].strftime('%Y-%m') if get_pandas().notna(row['minDate']) else '',
+                        'maxDate': row['maxDate'].strftime('%Y-%m') if get_pandas().notna(row['maxDate']) else '',
+                        'dateRange': f"{row['minDate'].strftime('%Y-%m')} 至 {row['maxDate'].strftime('%Y-%m')}" if get_pandas().notna(row['minDate']) and get_pandas().notna(row['maxDate']) else '暂无数据'
                     }
                     org_summary.append(org_data)
         
@@ -1091,7 +1091,7 @@ def _get_summary_impl(limit_orgs: int = None, limit_months: int = None):
                     
         except Exception as csv_error:
             logger.warning(f"Failed to load CSV data: {csv_error}")
-            df = pd.DataFrame()
+            df = get_pandas().DataFrame()
         
         # Simplified processing - skip MongoDB for now to avoid timeout issues
         logger.info("Skipping MongoDB data for simplified processing")
@@ -2305,9 +2305,9 @@ async def download_category_data():
     try:
         logger.info("Starting category data CSV download")
         
-        from data_service import get_csrc2label
+        from data_service import get_csrc2cat
         
-        df = get_csrc2label()
+        df = get_csrc2cat()
         
         # Convert to CSV
         csv_buffer = io.StringIO()
