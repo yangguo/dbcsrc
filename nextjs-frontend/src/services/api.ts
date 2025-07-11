@@ -775,28 +775,28 @@ export const caseApi = {
 
   // Download CSV files
   downloadCaseDetail: async (): Promise<Blob> => {
-    const response = await apiClient.get('/api/download/case-detail', {
+    const response = await apiClient.get('/download/case-detail', {
       responseType: 'blob',
     });
     return response.data;
   },
 
   downloadAnalysisData: async (): Promise<Blob> => {
-    const response = await apiClient.get('/api/download/analysis-data', {
+    const response = await apiClient.get('/download/analysis-data', {
       responseType: 'blob',
     });
     return response.data;
   },
 
   downloadCategoryData: async (): Promise<Blob> => {
-    const response = await apiClient.get('/api/download/category-data', {
+    const response = await apiClient.get('/download/category-data', {
       responseType: 'blob',
     });
     return response.data;
   },
 
   downloadSplitData: async (): Promise<Blob> => {
-    const response = await apiClient.get('/api/download/split-data', {
+    const response = await apiClient.get('/download/split-data', {
       responseType: 'blob',
     });
     return response.data;
