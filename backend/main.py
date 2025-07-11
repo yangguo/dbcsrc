@@ -1835,13 +1835,13 @@ async def penalty_analysis(request: PenaltyAnalysisRequest):
             error=str(e)
         )
 
-async def process_batch_penalty_analysis_background(job_id: str, file_content: bytes, filename: str, idcol: str, contentcol: str):
-    """Background task for batch penalty analysis"""
+async def process_batch_penalty_analysis_background(job_id: str, file_content: bytes, filename: str, idcol: str, contentcol: str, max_workers: int = None):
+    """Background task for batch penalty analysis with parallel processing support"""
     try:
         # Update job status to running
         job_storage[job_id].status = JobStatus.RUNNING
         job_storage[job_id].started_at = datetime.now()
-        logger.info(f"Starting background batch penalty analysis for job {job_id}")
+        logger.info(f"Starting background batch penalty analysis for job {job_id} with max_workers={max_workers}")
         
         # Process the file
         file_obj = io.BytesIO(file_content)
@@ -1849,10 +1849,10 @@ async def process_batch_penalty_analysis_background(job_id: str, file_content: b
         
         # Update total records
         job_storage[job_id].total_records = len(df)
-        logger.info(f"Processing {len(df)} rows for penalty analysis in job {job_id}")
+        logger.info(f"Processing {len(df)} rows for penalty analysis in job {job_id} using parallel processing")
         
-        # Process the data
-        result_df = df2penalty_analysis(df, idcol, contentcol)
+        # Process the data with parallel processing
+        result_df = df2penalty_analysis(df, idcol, contentcol, job_id, max_workers)
         
         # Update job as completed
         job_storage[job_id].status = JobStatus.COMPLETED
@@ -1875,7 +1875,8 @@ async def batch_penalty_analysis(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     idcol: str = Query(...),
-    contentcol: str = Query(...)
+    contentcol: str = Query(...),
+    max_workers: int = Query(None, description="Maximum number of parallel workers for processing (default: auto-detect)")
 ):
     """Start batch penalty analysis as background job"""
     try:
@@ -1894,14 +1895,15 @@ async def batch_penalty_analysis(
         )
         job_storage[job_id] = job_info
         
-        # Add background task
+        # Add background task with parallel processing support
         background_tasks.add_task(
             process_batch_penalty_analysis_background,
             job_id,
             contents,
             file.filename,
             idcol,
-            contentcol
+            contentcol,
+            max_workers
         )
         
         logger.info(f"Batch penalty analysis job {job_id} started for file: {file.filename}")

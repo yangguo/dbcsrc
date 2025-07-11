@@ -500,17 +500,23 @@ export const caseApi = {
   batchAnalyzePenalty: async (file: File, params: {
     idCol: string;
     contentCol: string;
+    maxWorkers?: number;
   }): Promise<any> => {
     const formData = new FormData();
     formData.append('file', file);
     
-    // Send idcol and contentcol as query parameters
+    // Send idcol, contentcol, and max_workers as query parameters
     const queryParams = new URLSearchParams({
       idcol: params.idCol,
       contentcol: params.contentCol
     });
     
-    // Start the job
+    // Add max_workers parameter if provided
+    if (params.maxWorkers !== undefined && params.maxWorkers !== null) {
+      queryParams.append('max_workers', params.maxWorkers.toString());
+    }
+    
+    // Start the job with parallel processing support
     const response = await apiClient.post(`/batch-penalty-analysis?${queryParams}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -521,9 +527,9 @@ export const caseApi = {
 
   // Get batch penalty analysis job status
   getBatchPenaltyAnalysisStatus: async (jobId: string): Promise<any> => {
-    // Use a reasonable timeout for status checks - keep it short for quick polling
+    // Use a reasonable timeout for status checks - increased for thinking models
     const response = await apiClient.get(`/batch-penalty-analysis/${jobId}/status`, {
-      timeout: 15000 // 15 seconds - quick status check only
+      timeout: 60000 // 60 seconds - longer timeout for thinking models
     });
     return response.data;
   },
@@ -668,8 +674,8 @@ export const caseApi = {
     }
   ): Promise<any> => {
     const startTime = Date.now();
-    const pollInterval = options?.pollInterval || 5000; // Poll every 5 seconds
-    const maxRetries = options?.maxRetries || 20; // More retries for long jobs
+    const pollInterval = options?.pollInterval || 10000; // Poll every 10 seconds (increased from 5)
+    const maxRetries = options?.maxRetries || 30; // More retries for long jobs (increased from 20)
     let consecutiveFailures = 0;
     
     return new Promise((resolve, reject) => {

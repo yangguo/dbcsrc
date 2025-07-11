@@ -5,6 +5,7 @@ import {
   Card,
   Form,
   Input,
+  InputNumber,
   Button,
   Space,
   Upload,
@@ -158,6 +159,11 @@ const CaseClassification: React.FC = () => {
   const [selectedSplitRows, setSelectedSplitRows] = useState<string[]>([]);
   const [selectedPenaltyRows, setSelectedPenaltyRows] = useState<string[]>([]);
   const [selectedUploadedRows, setSelectedUploadedRows] = useState<string[]>([]);
+  
+  // 手动任务状态检查相关状态
+  const [manualJobId, setManualJobId] = useState<string>('');
+  const [manualJobLoading, setManualJobLoading] = useState(false);
+  const [jobStatusInfo, setJobStatusInfo] = useState<any>(null);
 
 
 
@@ -290,10 +296,11 @@ const CaseClassification: React.FC = () => {
       setBatchPenaltyLoading(true);
       const file = penaltyFileList[0].originFileObj as File;
       
-      // Start the batch analysis job
+      // Start the batch analysis job with parallel processing support
       const jobResponse = await caseApi.batchAnalyzePenalty(file, {
         idCol: values.penaltyIdCol,
         contentCol: values.penaltyContentCol,
+        maxWorkers: values.maxWorkers, // Support for parallel processing
       });
       
       if (!jobResponse.success) {
@@ -301,28 +308,41 @@ const CaseClassification: React.FC = () => {
       }
       
       const jobId = jobResponse.data.job_id;
+      setManualJobId(jobId); // Store job ID for manual checking
       message.info(`批量分析任务已启动，任务ID: ${jobId}`);
       
       // Show progress message
       let progressMessage = message.loading('正在处理批量行政处罚分析，请耐心等待...', 0);
       
-      // Poll for job completion with progress updates
-      const result = await caseApi.pollBatchPenaltyAnalysisJobSync(
-        jobId,
-        (progress) => {
-          // Update progress message
-          progressMessage();
-          const progressPercent = progress.progress || 0;
-          const processedRecords = progress.processed_records || 0;
-          const totalRecords = progress.total_records || 0;
-          
-          progressMessage = message.loading(
-            `正在处理批量行政处罚分析... 进度: ${progressPercent.toFixed(1)}% (${processedRecords}/${totalRecords})`,
-            0
-          );
-        },
-        1800000 // 30 minutes timeout
-      );
+      // Poll for job completion with progress updates (no timeout)
+      const result = await new Promise((resolve, reject) => {
+        caseApi.pollBatchPenaltyAnalysisJob(
+          jobId,
+          (progress) => {
+            // Update progress message
+            progressMessage();
+            const progressPercent = progress.progress || 0;
+            const processedRecords = progress.processed_records || 0;
+            const totalRecords = progress.total_records || 0;
+            
+            progressMessage = message.loading(
+              `正在处理批量行政处罚分析... 进度: ${progressPercent.toFixed(1)}% (${processedRecords}/${totalRecords})`,
+              0
+            );
+          },
+          (result) => {
+            resolve(result);
+          },
+          (error) => {
+            reject(error);
+          },
+          {
+            initialPollInterval: 5000, // Start with 5 seconds
+            maxPollInterval: 30000, // Max 30 seconds between polls
+            maxConsecutiveFailures: 15 // Allow more failures for long jobs
+          }
+        );
+      });
       
       progressMessage();
       
@@ -345,10 +365,10 @@ const CaseClassification: React.FC = () => {
     } catch (error: any) {
       console.error('Batch penalty analysis error:', error);
       
-      if (error.message?.includes('Job polling timeout exceeded')) {
+      if (error.message?.includes('Status check failed after') && error.message?.includes('consecutive attempts')) {
         message.error({
-          content: '批量分析超时。任务可能仍在后台运行，请稍后查看结果或重新启动任务。',
-          duration: 8,
+          content: '网络连接不稳定，状态检查失败。任务可能仍在后台运行，请稍后手动检查结果或重新启动任务。',
+          duration: 10,
         });
       } else if (error.name === 'BackendUnavailableError') {
         message.error({
@@ -533,6 +553,55 @@ const CaseClassification: React.FC = () => {
     } catch (error) {
       console.error('保存分析结果失败:', error);
       message.error('保存分析结果失败');
+    }
+  };
+
+  // 手动检查任务状态
+  const handleManualJobStatusCheck = async () => {
+    if (!manualJobId.trim()) {
+      message.error('请输入任务ID');
+      return;
+    }
+
+    try {
+      setManualJobLoading(true);
+      const response = await caseApi.getBatchPenaltyAnalysisStatus(manualJobId.trim());
+      
+      if (response.success) {
+        setJobStatusInfo(response.data);
+        
+        if (response.data.status === 'completed') {
+          message.success('任务已完成！正在获取结果...');
+          
+          // 获取结果
+          const resultResponse = await caseApi.getBatchPenaltyAnalysisResult(manualJobId.trim());
+          if (resultResponse.success) {
+            const resultData = resultResponse.data?.result?.data || resultResponse.data || [];
+            setPenaltyBatchResults(Array.isArray(resultData) ? resultData : []);
+            
+            const processedCount = Array.isArray(resultData) ? resultData.length : 0;
+            message.success(`任务完成！共处理 ${processedCount} 条记录`);
+          } else {
+            message.error('获取任务结果失败');
+          }
+        } else if (response.data.status === 'failed') {
+          message.error(`任务失败: ${response.data.error || '未知错误'}`);
+        } else if (response.data.status === 'running') {
+          const progress = response.data.progress || 0;
+          const processedRecords = response.data.processed_records || 0;
+          const totalRecords = response.data.total_records || 0;
+          message.info(`任务正在运行中... 进度: ${progress.toFixed(1)}% (${processedRecords}/${totalRecords})`);
+        } else {
+          message.info(`任务状态: ${response.data.status}`);
+        }
+      } else {
+        message.error(response.message || '获取任务状态失败');
+      }
+    } catch (error: any) {
+      console.error('Manual job status check error:', error);
+      message.error(`检查任务状态失败: ${error.message || '未知错误'}`);
+    } finally {
+      setManualJobLoading(false);
     }
   };
 
@@ -998,6 +1067,19 @@ const CaseClassification: React.FC = () => {
             </Form.Item>
           </div>
           
+          <Form.Item
+            label="并行处理线程数"
+            name="maxWorkers"
+            tooltip="设置并行处理的最大线程数，可显著提升大批量数据的处理速度。留空则自动检测最优值。"
+          >
+            <InputNumber
+              placeholder="自动检测"
+              min={1}
+              max={16}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+          
           <Form.Item>
             <Button
               type="primary"
@@ -1010,6 +1092,64 @@ const CaseClassification: React.FC = () => {
             </Button>
           </Form.Item>
         </Form>
+        
+        {/* Manual Job Status Check Section */}
+        <div className="mt-6">
+          <Divider />
+          <Title level={4}>手动检查任务状态</Title>
+          <div className="flex gap-4 items-end mb-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium mb-2">任务ID</label>
+              <Input
+                placeholder="请输入任务ID"
+                value={manualJobId}
+                onChange={(e) => setManualJobId(e.target.value)}
+                onPressEnter={handleManualJobStatusCheck}
+              />
+            </div>
+            <Button
+              type="primary"
+              onClick={handleManualJobStatusCheck}
+              loading={manualJobLoading}
+              disabled={!manualJobId.trim()}
+            >
+              检查状态
+            </Button>
+          </div>
+          
+          {jobStatusInfo && (
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Text strong>任务状态: </Text>
+                  <Tag color={jobStatusInfo.status === 'completed' ? 'green' : 
+                             jobStatusInfo.status === 'failed' ? 'red' : 
+                             jobStatusInfo.status === 'running' ? 'blue' : 'orange'}>
+                    {jobStatusInfo.status}
+                  </Tag>
+                </div>
+                {jobStatusInfo.progress !== undefined && (
+                  <div>
+                    <Text strong>进度: </Text>
+                    <Text>{jobStatusInfo.progress.toFixed(1)}%</Text>
+                  </div>
+                )}
+                {jobStatusInfo.processed_records !== undefined && (
+                  <div>
+                    <Text strong>已处理记录: </Text>
+                    <Text>{jobStatusInfo.processed_records}/{jobStatusInfo.total_records || 0}</Text>
+                  </div>
+                )}
+                {jobStatusInfo.error && (
+                  <div>
+                    <Text strong>错误信息: </Text>
+                    <Text type="danger">{jobStatusInfo.error}</Text>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         
         {/* Batch Penalty Analysis Results */}
         {penaltyBatchResults && penaltyBatchResults.length > 0 && (
