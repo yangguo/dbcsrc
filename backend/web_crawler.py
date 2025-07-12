@@ -86,7 +86,7 @@ def get_now():
     return now_str
 
 
-def get_csvdf(penfolder, beginwith):
+def get_csvdf(penfolder, beginwith, include_filename=False):
     """Get concatenated dataframe from CSV files."""
     import os
     pattern = os.path.join(penfolder, beginwith + "*.csv")
@@ -95,6 +95,12 @@ def get_csvdf(penfolder, beginwith):
     for filepath in files2:
         try:
             pendf = get_pandas().read_csv(filepath, encoding='utf-8-sig')
+            
+            # Add filename column if requested
+            if include_filename and not pendf.empty:
+                filename = os.path.basename(filepath)
+                pendf['source_filename'] = filename
+            
             dflist.append(pendf)
         except Exception as e:
             # Error reading file
@@ -342,7 +348,7 @@ def get_sumeventdf_backend(orgname, start, end):
 
 
 def get_csrc2analysis():
-    """Get CSRC analysis data"""
+    """Get CSRC analysis data including source filename"""
     # Use absolute path to ensure it works from any working directory
     import os
     # Get the project root directory (dbcsrc)
@@ -351,7 +357,7 @@ def get_csrc2analysis():
     project_root = os.path.dirname(backend_dir)
     pencsrc2_abs = os.path.join(project_root, "data", "penalty", "csrc2")
     
-    pendf = get_csvdf(pencsrc2_abs, "csrc2analysis")
+    pendf = get_csvdf(pencsrc2_abs, "csrc2analysis", include_filename=True)
     if not pendf.empty:
         # Format date with error handling
         try:
@@ -436,7 +442,7 @@ def content_length_analysis(length, download_filter):
             misdf = misdf[misdf["名称"].str.contains(download_filter, case=False, na=False)]
 
         # get df by column name - only include columns that exist
-        available_cols = ["发文日期", "名称", "链接", "内容", "len", "filename"]
+        available_cols = ["发文日期", "名称", "链接", "内容", "len", "filename", "source_filename"]
         select_cols = [col for col in available_cols if col in misdf.columns]
         misdf1 = misdf[select_cols]
         
@@ -624,7 +630,7 @@ def get_chrome_driver():
 
 
 def get_csrclenanalysis():
-    """Get CSRC length analysis dataframe."""
+    """Get CSRC length analysis dataframe including source filename."""
     # Define tempdir using absolute path
     import os
     current_file = os.path.abspath(__file__)
@@ -632,7 +638,7 @@ def get_csrclenanalysis():
     project_root = os.path.dirname(backend_dir)
     tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
     
-    pendf = get_csvdf(tempdir, "csrclenanalysis")
+    pendf = get_csvdf(tempdir, "csrclenanalysis", include_filename=True)
     if not pendf.empty:
         pendf = pendf.fillna("")
     return pendf

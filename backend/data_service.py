@@ -19,13 +19,14 @@ def get_pandas():
     return pd
 
 
-def get_csvdf(penfolder: str, beginwith: str):
+def get_csvdf(penfolder: str, beginwith: str, include_filename: bool = False):
     """
     Load and concatenate CSV files from a folder that begin with a specific string.
     
     Args:
         penfolder: Path to the folder containing CSV files
         beginwith: String that filenames should begin with
+        include_filename: If True, adds a 'source_filename' column to track which file each row came from
         
     Returns:
         Concatenated DataFrame from all matching CSV files
@@ -76,6 +77,12 @@ def get_csvdf(penfolder: str, beginwith: str):
                     future = executor.submit(read_single_file)
                     try:
                         df = future.result(timeout=20)  # Increased to 20 second timeout per file
+                        
+                        # Add filename column if requested
+                        if include_filename and not df.empty:
+                            filename = os.path.basename(filepath)
+                            df['source_filename'] = filename
+                        
                         dflist.append(df)
                     except FutureTimeoutError:
                         print(f"Timeout reading {filepath}, skipping")
@@ -175,7 +182,7 @@ def get_csrc2analysis():
     Get CSRC2 analysis data from CSV files.
     
     Returns:
-        DataFrame with CSRC2 analysis data
+        DataFrame with CSRC2 analysis data including source filename
     """
     # Use absolute path to ensure it works from any working directory
     import os
@@ -185,7 +192,7 @@ def get_csrc2analysis():
     project_root = os.path.dirname(backend_dir)
     pencsrc2 = os.path.join(project_root, "data", "penalty", "csrc2")
     print(f"Looking for CSRC2 analysis data in: {pencsrc2}")
-    pendf = get_csvdf(pencsrc2, "csrc2analysis")
+    pendf = get_csvdf(pencsrc2, "csrc2analysis", include_filename=True)
     
     if not pendf.empty:
         # Format date - handle both timestamp and date formats

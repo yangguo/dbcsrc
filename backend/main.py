@@ -3711,7 +3711,7 @@ async def delete_attachments(request: dict):
 
 @app.post("/update-attachment-text", response_model=APIResponse)
 async def update_attachment_text(request: dict):
-    """Update attachment text content"""
+    """Update attachment text content in csrc2analysis files based on links and source file information"""
     try:
         attachment_ids = request.get('attachment_ids', [])
         
@@ -3723,22 +3723,203 @@ async def update_attachment_text(request: dict):
         
         logger.info(f"Starting text update for {len(attachment_ids)} attachments")
         
-        # For now, this is a placeholder implementation
-        # In a real implementation, you would update the actual text content
+        # Import required modules
+        from web_crawler import get_csrc2analysis, get_csrclenanalysis, savedf_backend, get_now
+        import pandas as pd
+        import os
+        
+        # Get csrc2analysis data
+        analysis_df = get_csrc2analysis()
+        if analysis_df.empty:
+            return APIResponse(
+                success=False,
+                message="No csrc2analysis data found"
+            )
+        
+        # Get csrclenanalysis data to find attachment information
+        len_df = get_csrclenanalysis()
+        if len_df.empty:
+            return APIResponse(
+                success=False,
+                message="No csrclenanalysis data found"
+            )
         
         updated_attachments = []
-        for attachment_id in attachment_ids:
-            updated_attachments.append({
-                'id': attachment_id,
-                'content': 'Updated text content',
-                'contentLength': len('Updated text content')
-            })
+        updated_count = 0
         
-        logger.info(f"Successfully updated text for {len(attachment_ids)} attachments")
+        # Process each attachment ID
+        for attachment_id in attachment_ids:
+            try:
+                # Find the attachment in csrclenanalysis data
+                # Try to find by URL first
+                attachment_data = pd.DataFrame()
+                if '链接' in len_df.columns:
+                    attachment_data = len_df[len_df['链接'] == attachment_id]
+                elif 'url' in len_df.columns:
+                    attachment_data = len_df[len_df['url'] == attachment_id]
+                
+                if attachment_data.empty:
+                    # Try to find by index if not found by URL
+                    try:
+                        attachment_data = len_df[len_df.index.astype(str) == str(attachment_id)]
+                    except:
+                        pass
+                
+                if not attachment_data.empty:
+                    row = attachment_data.iloc[0]
+                    attachment_url = row.get('url', attachment_id) if hasattr(row, 'get') else attachment_id
+                    
+                    # Get text content from csrclenanalysis data
+                    text_content = ""
+                    try:
+                        # Try to get text from various possible columns in csrclenanalysis
+                        if hasattr(row, '__getitem__') and 'text' in row and row['text'] is not None:
+                            if hasattr(pd, 'isna') and not pd.isna(row['text']):
+                                text_content = str(row['text']).strip()
+                            elif row['text'] not in [None, '', 'nan', 'NaN']:
+                                text_content = str(row['text']).strip()
+                        elif hasattr(row, '__getitem__') and '内容' in row and row['内容'] is not None:
+                            if hasattr(pd, 'isna') and not pd.isna(row['内容']):
+                                text_content = str(row['内容']).strip()
+                            elif row['内容'] not in [None, '', 'nan', 'NaN']:
+                                text_content = str(row['内容']).strip()
+                        elif hasattr(row, '__getitem__') and 'content' in row and row['content'] is not None:
+                            if hasattr(pd, 'isna') and not pd.isna(row['content']):
+                                text_content = str(row['content']).strip()
+                            elif row['content'] not in [None, '', 'nan', 'NaN']:
+                                text_content = str(row['content']).strip()
+                    except Exception as text_error:
+                        logger.warning(f"Error getting text content for {attachment_id}: {str(text_error)}")
+                        text_content = ""
+                    
+                    # Find matching record in csrc2analysis by URL
+                    if '链接' in analysis_df.columns:
+                        mask = analysis_df['链接'] == attachment_url
+                    elif 'url' in analysis_df.columns:
+                        mask = analysis_df['url'] == attachment_url
+                    else:
+                        logger.warning("No URL column found in csrc2analysis data")
+                        continue
+                    
+                    if mask.any():
+                        # Update the content field in csrc2analysis
+                        if '内容' in analysis_df.columns:
+                            analysis_df.loc[mask, '内容'] = text_content
+                        elif 'content' in analysis_df.columns:
+                            analysis_df.loc[mask, 'content'] = text_content
+                        
+                        # Update content length if column exists
+                        content_length = len(text_content) if text_content else 0
+                        if 'len' in analysis_df.columns:
+                            analysis_df.loc[mask, 'len'] = content_length
+                        elif '内容长度' in analysis_df.columns:
+                            analysis_df.loc[mask, '内容长度'] = content_length
+                        
+                        updated_count += 1
+                        logger.info(f"Updated content for URL: {attachment_url} with {content_length} characters")
+                        
+                        updated_attachments.append({
+                            'id': attachment_id,
+                            'url': attachment_url,
+                            'content': text_content,
+                            'contentLength': content_length
+                        })
+                    else:
+                        logger.warning(f"No matching record found in csrc2analysis for URL: {attachment_url}")
+                        updated_attachments.append({
+                            'id': attachment_id,
+                            'url': attachment_url,
+                            'content': '',
+                            'contentLength': 0,
+                            'error': 'No matching record found in csrc2analysis'
+                        })
+                else:
+                    logger.warning(f"Attachment not found in csrclenanalysis: {attachment_id}")
+                    updated_attachments.append({
+                        'id': attachment_id,
+                        'content': '',
+                        'contentLength': 0,
+                        'error': 'Attachment not found'
+                    })
+                    
+            except Exception as attachment_error:
+                logger.error(f"Error processing attachment {attachment_id}: {str(attachment_error)}")
+                updated_attachments.append({
+                    'id': attachment_id,
+                    'content': '',
+                    'contentLength': 0,
+                    'error': str(attachment_error)
+                })
+        
+        # Save updated csrc2analysis data if any updates were made
+        if updated_count > 0:
+            try:
+                # Group by source_filename to save each file separately
+                if 'source_filename' in analysis_df.columns:
+                    # Get unique source filenames
+                    unique_files = analysis_df['source_filename'].dropna().unique()
+                    
+                    backup_count = 0  # Track total number of backups created
+                    
+                    for source_filename in unique_files:
+                        # Filter data for this specific file
+                        file_data = analysis_df[analysis_df['source_filename'] == source_filename].copy()
+                        
+                        if not file_data.empty:
+                            # Get the original file path
+                            current_file = os.path.abspath(__file__)
+                            backend_dir = os.path.dirname(current_file)
+                            project_root = os.path.dirname(backend_dir)
+                            csrc2_dir = os.path.join(project_root, "data", "penalty", "csrc2")
+                            original_file_path = os.path.join(csrc2_dir, source_filename)
+                            
+                            # Create backup only once per file before modification
+                            if os.path.exists(original_file_path):
+                                # Generate timestamp for backup
+                                nowstr = get_now()
+                                # Extract filename without extension
+                                filename_without_ext = os.path.splitext(source_filename)[0]
+                                file_extension = os.path.splitext(source_filename)[1]
+                                # Create backup filename
+                                backup_filename = f"{nowstr}_{filename_without_ext}_backup{file_extension}"
+                                backup_file_path = os.path.join(csrc2_dir, backup_filename)
+                                
+                                # Create backup by copying
+                                import shutil
+                                shutil.copy2(original_file_path, backup_file_path)
+                                backup_count += 1
+                                logger.info(f"Created backup for {source_filename}: {backup_filename}")
+                            
+                            # Remove source_filename column before saving
+                            file_data_to_save = file_data.drop(columns=['source_filename'], errors='ignore')
+                            
+                            # Save the updated data with original filename
+                            file_data_to_save.to_csv(original_file_path, index=False, encoding='utf-8-sig')
+                            logger.info(f"Saved updated data to {source_filename}")
+                    
+                    logger.info(f"Saved updated data to {len(unique_files)} files, created {backup_count} backup files")
+                else:
+                    # No source_filename column found - do not update anything
+                    logger.warning("No source_filename column found in analysis_df, skipping file updates")
+                    return APIResponse(
+                        success=False,
+                        message="Cannot update files: source_filename column not found in data",
+                        data=updated_attachments
+                    )
+                    
+            except Exception as save_error:
+                logger.error(f"Error saving updated csrc2analysis data: {str(save_error)}")
+                return APIResponse(
+                    success=False,
+                    message=f"Updated {updated_count} records but failed to save: {str(save_error)}",
+                    data=updated_attachments
+                )
+        
+        logger.info(f"Successfully updated text for {updated_count} out of {len(attachment_ids)} attachments")
         
         return APIResponse(
             success=True,
-            message=f"Successfully updated text for {len(attachment_ids)} attachments",
+            message=f"Successfully updated text for {updated_count} out of {len(attachment_ids)} attachments",
             data=updated_attachments
         )
         

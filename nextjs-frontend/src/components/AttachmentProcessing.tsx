@@ -42,6 +42,7 @@ interface AttachmentData {
   publishDate?: string;
   localFilePath?: string;
   fileExists?: boolean;
+  sourceFilename?: string;
 }
 
 interface DownloadResult {
@@ -255,9 +256,17 @@ const AttachmentProcessing: React.FC = () => {
       title: '文件名',
       dataIndex: 'filename',
       key: 'filename',
-      width: '12%',
+      width: '10%',
       ellipsis: true,
       render: (filename: string) => filename || '-',
+    },
+    {
+      title: '来源文件',
+      dataIndex: 'sourceFilename',
+      key: 'sourceFilename',
+      width: '12%',
+      ellipsis: true,
+      render: (sourceFilename: string) => sourceFilename || '-',
     },
     {
       title: '下载状态',
@@ -428,6 +437,7 @@ const AttachmentProcessing: React.FC = () => {
         filename: item.filename || '',
         url: item.链接 || '',
         publishDate: item.发文日期 || '',
+        sourceFilename: item.source_filename || '',
       }));
       
       // 获取已下载文件状态并更新数据
@@ -702,8 +712,14 @@ const AttachmentProcessing: React.FC = () => {
       setLoading(true);
       setCurrentTask('更新文本内容...');
       
-      // 调用后端API更新文本内容
-      const result = await caseApi.updateAttachmentText(selectedRows);
+      // 获取选中行对应的URL，而不是传递组合ID
+      const selectedUrls = selectedRows.map(id => {
+        const item = analysisData.find(data => data.id === id);
+        return item?.url || id; // 如果找不到对应的item，则使用原ID作为fallback
+      }).filter(url => url); // 过滤掉空值
+      
+      // 调用后端API更新文本内容，传递URL列表
+      const result = await caseApi.updateAttachmentText(selectedUrls);
       
       // 更新本地数据
       if (result.success && result.data) {
