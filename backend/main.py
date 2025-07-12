@@ -415,7 +415,20 @@ app.add_middleware(
 @app.middleware("http")
 async def rate_limit_and_metrics_middleware(request: Request, call_next):
     start_time = time.time()
-    client_ip = request.client.host
+    
+    # Safely get client IP with fallback options
+    client_ip = "unknown"
+    if request.client and request.client.host:
+        client_ip = request.client.host
+    else:
+        # Try to get IP from headers (useful for proxied requests)
+        client_ip = (
+            request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or
+            request.headers.get("X-Real-IP", "") or
+            request.headers.get("CF-Connecting-IP", "") or  # Cloudflare
+            request.headers.get("X-Client-IP", "") or
+            "127.0.0.1"  # Default fallback
+        )
     
     # Rate limiting check
     if not rate_limiter.is_allowed(client_ip):
