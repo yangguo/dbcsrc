@@ -218,6 +218,30 @@ def get_csrc2analysis():
     return pendf
 
 
+def get_csrcmiscontent():
+    """
+    Get CSRC miscontent data from CSV files in temp directory.
+    
+    Returns:
+        DataFrame with CSRC miscontent data (downloaded file information)
+    """
+    # Use absolute path to ensure it works from any working directory
+    import os
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+    print(f"Looking for CSRC miscontent data in: {tempdir}")
+    pendf = get_csvdf(tempdir, "csrcmiscontent")
+    
+    if not pendf.empty:
+        # Fill NaN values
+        pendf = pendf.fillna("")
+    
+    return pendf
+
+
 def get_csrc2cat():
     """
     Get CSRC2 category data from CSV files.

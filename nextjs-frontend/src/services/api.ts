@@ -837,6 +837,51 @@ export const caseApi = {
     });
     return response.data;
   },
+
+  // Extract text from attachments
+  extractText: async (attachmentIds: string[]): Promise<any> => {
+    const response = await apiClient.post('/extract-text', {
+      attachment_ids: attachmentIds
+    });
+    return response.data;
+  },
+
+  // Check if file exists
+  checkFileExists: async (filePath: string): Promise<any> => {
+    const response = await apiClient.post('/check-file-exists', {
+      file_path: filePath
+    });
+    return response.data;
+  },
+
+  // Delete attachments
+  deleteAttachments: async (attachmentIds: string[]): Promise<any> => {
+    const response = await apiClient.post('/delete-attachments', {
+      attachment_ids: attachmentIds
+    });
+    return response.data;
+  },
+
+  // Update attachment text
+  updateAttachmentText: async (attachmentIds: string[]): Promise<any> => {
+    const response = await apiClient.post('/update-attachment-text', {
+      attachment_ids: attachmentIds
+    });
+    return response.data;
+  },
+
+  // Get downloaded file status from csrcmiscontent files
+  getDownloadedFileStatus: async (): Promise<{
+    data: Array<{
+      url: string;
+      filename: string;
+      text: string;
+    }>;
+    count: number;
+  }> => {
+    const response = await apiClient.get('/api/downloaded-file-status');
+    return response.data;
+  },
 };
 
 export default apiClient;

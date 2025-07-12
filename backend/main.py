@@ -3357,6 +3357,77 @@ async def upload_analysis_results(file: UploadFile = File(...)):
             error=str(e)
         )
 
+@app.get("/api/downloaded-file-status", response_model=APIResponse)
+async def get_downloaded_file_status():
+    """Get downloaded file status from csrcmiscontent files"""
+    try:
+        logger.info("Getting downloaded file status from csrcmiscontent files")
+        
+        from data_service import get_csrcmiscontent
+        
+        # Get csrcmiscontent data
+        misc_df = get_csrcmiscontent()
+        
+        if misc_df.empty:
+            logger.info("No csrcmiscontent data found")
+            return APIResponse(
+                success=True,
+                message="No downloaded file data available",
+                data=[]
+            )
+        
+        # Convert DataFrame to list of dictionaries
+        downloaded_files = misc_df.to_dict('records')
+        
+        logger.info(f"Retrieved {len(downloaded_files)} downloaded file records")
+        
+        return APIResponse(
+            success=True,
+            message=f"Successfully retrieved {len(downloaded_files)} downloaded file records",
+            data=downloaded_files
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get downloaded file status: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to get downloaded file status",
+            error=str(e)
+        )
+
+@app.post("/check-file-exists", response_model=APIResponse)
+async def check_file_exists(request: dict):
+    """Check if a file exists on the server"""
+    try:
+        file_path = request.get('file_path', '')
+        
+        if not file_path:
+            return APIResponse(
+                success=False,
+                message="File path is required",
+                data={'exists': False}
+            )
+        
+        # Check if file exists
+        exists = os.path.exists(file_path)
+        
+        logger.info(f"File existence check for {file_path}: {exists}")
+        
+        return APIResponse(
+            success=True,
+            message=f"File {'exists' if exists else 'does not exist'}",
+            data={'exists': exists, 'file_path': file_path}
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to check file existence: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to check file existence",
+            error=str(e),
+            data={'exists': False}
+        )
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
