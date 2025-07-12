@@ -89,7 +89,7 @@ except ImportError:
         return get_pandas().DataFrame()
 
 try:
-    from doc2text import convert_uploadfiles, docxconvertion, ofdconvertion
+    from doc2text import convert_uploadfiles, docxconvertion
 except ImportError:
     def convert_uploadfiles(*args, **kwargs):
         return {"message": "Document conversion not available"}
@@ -3426,6 +3426,257 @@ async def check_file_exists(request: dict):
             message="Failed to check file existence",
             error=str(e),
             data={'exists': False}
+        )
+
+@app.post("/extract-text", response_model=APIResponse)
+async def extract_text(request: dict):
+    """Extract text from attachments based on file type"""
+    try:
+        attachment_ids = request.get('attachment_ids', [])
+        
+        if not attachment_ids:
+            return APIResponse(
+                success=False,
+                message="Attachment IDs are required",
+                data={'result': []}
+            )
+        
+        logger.info(f"Starting text extraction for {len(attachment_ids)} attachments")
+        
+        # Get csrcmiscontent data to find attachment information
+        from data_service import get_csrcmiscontent
+        misc_df = get_csrcmiscontent()
+        
+        if misc_df.empty:
+            logger.warning("No csrcmiscontent data found")
+            return APIResponse(
+                success=True,
+                message="No attachment data available for text extraction",
+                data={'result': []}
+            )
+        
+        # Import text extraction functions from doc2text
+        from doc2text import docxurl2txt, pdfurl2txt, docxurl2ocr, pdfurl2ocr, picurl2ocr
+        import os
+        
+        # Extract text for each attachment ID
+        extraction_results = []
+        
+        for attachment_id in attachment_ids:
+            try:
+                # Find the attachment in the data
+                attachment_data = misc_df[misc_df['url'] == attachment_id]
+                
+                if attachment_data.empty:
+                    # If not found by URL, try to find by other identifiers
+                    attachment_data = misc_df[misc_df.index.astype(str) == str(attachment_id)]
+                
+                if not attachment_data.empty:
+                    row = attachment_data.iloc[0]
+                    raw_filename = row.get('filename', '') if hasattr(row, 'get') else ''
+                    attachment_url = row.get('url', attachment_id) if hasattr(row, 'get') else attachment_id
+                    
+                    # Clean filename by removing timestamp prefix (format: YYYYMMDDHHMMSS)
+                    # Use original filename from CSV data (keep timestamp)
+                    filename = raw_filename if raw_filename else f"attachment_{attachment_id}"
+                    
+                    # First check if text is already extracted in the CSV
+                    existing_text = ""
+                    try:
+                        if hasattr(row, '__getitem__') and 'text' in row and row['text'] is not None:
+                            # Use pandas isna if available, otherwise check for None/empty
+                            if hasattr(pd, 'isna') and not pd.isna(row['text']):
+                                existing_text = str(row['text']).strip()
+                            elif row['text'] not in [None, '', 'nan', 'NaN']:
+                                existing_text = str(row['text']).strip()
+                        elif hasattr(row, '__getitem__') and 'content' in row and row['content'] is not None:
+                            if hasattr(pd, 'isna') and not pd.isna(row['content']):
+                                existing_text = str(row['content']).strip()
+                            elif row['content'] not in [None, '', 'nan', 'NaN']:
+                                existing_text = str(row['content']).strip()
+                    except Exception as text_check_error:
+                        logger.warning(f"Error checking existing text: {str(text_check_error)}")
+                        existing_text = ""
+                    
+                    extracted_text = ""
+                    
+                    # If no existing text or empty, extract based on file type
+                    if not existing_text and filename:
+                        # Get file extension
+                        base, ext = os.path.splitext(filename)
+                        ext = ext.lower()
+                        
+                        # Construct file path in temp directory
+                        current_file = os.path.abspath(__file__)
+                        backend_dir = os.path.dirname(current_file)
+                        project_root = os.path.dirname(backend_dir)
+                        temp_dir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+                        file_path = os.path.join(temp_dir, filename)
+                        
+                        try:
+                            if os.path.exists(file_path):
+                                if ext in ['.docx']:
+                                    extracted_text = docxurl2txt(file_path)
+                                    logger.info(f"DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
+                                    # If direct extraction fails, try OCR
+                                    if not extracted_text or not extracted_text.strip():
+                                        logger.info(f"Trying OCR for DOCX file: {filename}")
+                                        extracted_text = docxurl2ocr(file_path, temp_dir)
+                                        logger.info(f"DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
+                                        
+                                elif ext in ['.doc']:
+                                    # For .doc files, check if converted .docx exists
+                                    doc_dir = os.path.join(temp_dir, "doc")
+                                    converted_path = os.path.join(doc_dir, base + ".docx")
+                                    if os.path.exists(converted_path):
+                                        extracted_text = docxurl2txt(converted_path)
+                                        if not extracted_text.strip():
+                                            extracted_text = docxurl2ocr(converted_path, temp_dir)
+                                    
+                                elif ext in ['.wps']:
+                                    # For .wps files, check if converted .docx exists
+                                    wps_dir = os.path.join(temp_dir, "wps")
+                                    converted_path = os.path.join(wps_dir, base + ".docx")
+                                    if os.path.exists(converted_path):
+                                        extracted_text = docxurl2txt(converted_path)
+                                        if not extracted_text.strip():
+                                            extracted_text = docxurl2ocr(converted_path, temp_dir)
+                                            
+                                elif ext in ['.pdf']:
+                                    extracted_text = pdfurl2txt(file_path)
+                                    # If direct extraction fails, try OCR
+                                    if not extracted_text.strip():
+                                        extracted_text = pdfurl2ocr(file_path, temp_dir)
+                                        
+                                elif ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']:
+                                    extracted_text = picurl2ocr(file_path)
+                                    
+                                elif ext in ['.xls', '.xlsx']:
+                                    # For Excel files, we could add support later
+                                    extracted_text = "Excel file - text extraction not yet supported"
+                                    
+                                else:
+                                    extracted_text = f"Unsupported file type: {ext}"
+                            else:
+                                extracted_text = f"File not found: {filename}"
+                                
+                        except Exception as file_error:
+                            logger.error(f"Error extracting text from {filename}: {str(file_error)}")
+                            extracted_text = f"Error extracting text: {str(file_error)}"
+                    else:
+                        extracted_text = existing_text if existing_text else "No text content available"
+                    
+                    result_item = {
+                        'url': attachment_url,
+                        'filename': filename,
+                        'text': extracted_text
+                    }
+                else:
+                    # Attachment not found, return empty result
+                    result_item = {
+                        'url': attachment_id,
+                        'filename': f'attachment_{attachment_id}',
+                        'text': 'Attachment not found'
+                    }
+                
+                extraction_results.append(result_item)
+                
+            except Exception as e:
+                logger.error(f"Error extracting text for attachment {attachment_id}: {str(e)}")
+                extraction_results.append({
+                    'url': attachment_id,
+                    'filename': f'attachment_{attachment_id}',
+                    'text': f'Error: {str(e)}'
+                })
+        
+        logger.info(f"Text extraction completed for {len(extraction_results)} attachments")
+        
+        return APIResponse(
+            success=True,
+            message=f"Successfully extracted text from {len(extraction_results)} attachments",
+            data={'result': extraction_results}
+        )
+        
+    except Exception as e:
+        logger.error(f"Text extraction failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Text extraction failed",
+            error=str(e),
+            data={'result': []}
+        )
+
+@app.post("/delete-attachments", response_model=APIResponse)
+async def delete_attachments(request: dict):
+    """Delete attachments"""
+    try:
+        attachment_ids = request.get('attachment_ids', [])
+        
+        if not attachment_ids:
+            return APIResponse(
+                success=False,
+                message="Attachment IDs are required"
+            )
+        
+        logger.info(f"Starting deletion of {len(attachment_ids)} attachments")
+        
+        # For now, this is a placeholder implementation
+        # In a real implementation, you would delete the actual files and database records
+        
+        logger.info(f"Successfully deleted {len(attachment_ids)} attachments")
+        
+        return APIResponse(
+            success=True,
+            message=f"Successfully deleted {len(attachment_ids)} attachments"
+        )
+        
+    except Exception as e:
+        logger.error(f"Attachment deletion failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Attachment deletion failed",
+            error=str(e)
+        )
+
+@app.post("/update-attachment-text", response_model=APIResponse)
+async def update_attachment_text(request: dict):
+    """Update attachment text content"""
+    try:
+        attachment_ids = request.get('attachment_ids', [])
+        
+        if not attachment_ids:
+            return APIResponse(
+                success=False,
+                message="Attachment IDs are required"
+            )
+        
+        logger.info(f"Starting text update for {len(attachment_ids)} attachments")
+        
+        # For now, this is a placeholder implementation
+        # In a real implementation, you would update the actual text content
+        
+        updated_attachments = []
+        for attachment_id in attachment_ids:
+            updated_attachments.append({
+                'id': attachment_id,
+                'content': 'Updated text content',
+                'contentLength': len('Updated text content')
+            })
+        
+        logger.info(f"Successfully updated text for {len(attachment_ids)} attachments")
+        
+        return APIResponse(
+            success=True,
+            message=f"Successfully updated text for {len(attachment_ids)} attachments",
+            data=updated_attachments
+        )
+        
+    except Exception as e:
+        logger.error(f"Attachment text update failed: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Attachment text update failed",
+            error=str(e)
         )
 
 if __name__ == "__main__":

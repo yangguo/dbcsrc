@@ -182,7 +182,7 @@ const theme = {
 ### Attachment Processing
 - File analysis and statistics
 - Bulk download capabilities
-- Format conversion (Word, OFD)
+- Format conversion (Word)
 - Text extraction
 
 ### Case Classification

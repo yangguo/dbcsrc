@@ -359,21 +359,34 @@ const AttachmentProcessing: React.FC = () => {
       key: 'url',
       ellipsis: true,
       width: '25%',
+      render: (url: string) => (
+        url ? (
+          <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+            查看原文
+          </a>
+        ) : '-'
+      ),
     },
     {
       title: '文件名',
       dataIndex: 'filename',
       key: 'filename',
-      width: '20%',
+      width: '25%',
+      ellipsis: true,
+      render: (filename: string) => (
+        <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={filename}>
+          {filename || '暂无文件名'}
+        </div>
+      ),
     },
     {
       title: '抽取的文本',
       dataIndex: 'extractedText',
       key: 'extractedText',
       ellipsis: true,
-      width: '40%',
+      width: '35%',
       render: (text: string) => (
-        <div style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={text}>
           {text || '暂无内容'}
         </div>
       ),
@@ -596,8 +609,14 @@ const AttachmentProcessing: React.FC = () => {
     setCurrentTask('抽取文本中...');
     
     try {
-      // 调用后端API进行文本抽取，传递选中的附件ID
-      const result = await caseApi.extractText(selectedRows);
+      // 获取选中行对应的URL，而不是传递组合ID
+      const selectedUrls = selectedRows.map(id => {
+        const item = analysisData.find(data => data.id === id);
+        return item?.url || id; // 如果找不到对应的item，则使用原ID作为fallback
+      }).filter(url => url); // 过滤掉空值
+      
+      // 调用后端API进行文本抽取，传递URL列表
+      const result = await caseApi.extractText(selectedUrls);
       
       // Transform extraction results
       const extractionData = result.data?.result || [];
@@ -917,7 +936,7 @@ const AttachmentProcessing: React.FC = () => {
                 id="file-upload"
                 type="file"
                 multiple
-                accept=".docx,.doc,.ofd,.pdf"
+                accept=".docx,.doc,.pdf"
                 onChange={handleFileChange}
                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />

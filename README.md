@@ -10,7 +10,7 @@ DBCSRC is a comprehensive document analysis and web crawling system designed for
 
 ## ✨ Features
 
-- **Document Processing**: Support for multiple document formats (PDF, DOCX, DOC, OFD)
+- **Document Processing**: Support for multiple document formats (PDF, DOCX, DOC)
 - **Web Crawling**: Automated data collection from regulatory websites
 - **Financial Analysis**: Extract monetary amounts and financial penalties
 - **Entity Recognition**: Identify people, organizations, and locations

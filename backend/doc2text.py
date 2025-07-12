@@ -13,11 +13,8 @@ import base64
 import openai
 
 # import streamlit as st
-from easyofd import OFD
 from pdf2image import convert_from_path
 from PIL import Image
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -331,14 +328,6 @@ def convert_uploadfiles(txtls, uploadpath):
                 if text1 == "":
                     text = pdfurl2ocr(datapath, uploadpath)
 
-            elif ext.lower() == ".ofd":
-                datapath = os.path.join(uploadpath, "ofd", base + ".pdf")
-                print(datapath)
-                text = pdfurl2txt(datapath)
-                text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
-                if text1 == "":
-                    text = pdfurl2ocr(datapath, uploadpath)
-
             elif (
                 ext.lower() == ".png"
                 or ext.lower() == ".jpg"
@@ -363,62 +352,3 @@ def extract_text(df, uploadpath):
     resls = convert_uploadfiles(txtls, uploadpath)
     df["文本"] = resls
     return df
-
-
-def ofdconvertion(uploadpath):
-    initfonts()
-    register_fonts()
-    ofdfiles = find_files(uploadpath, "*.ofd", True)
-
-    for filepath in ofdfiles:
-        # Processing file path
-        file_prefix = os.path.splitext(os.path.basename(filepath))[0]  # Get file prefix
-        with open(filepath, "rb") as f:
-            ofdb64 = str(base64.b64encode(f.read()), "utf-8")
-            ofd = OFD()  # Initialize OFD tool class
-            ofd.read(
-                ofdb64, save_xml=True, xml_name=f"{file_prefix}_xml"
-            )  # Read ofdb64
-            pdf_bytes = ofd.to_pdf()  # Convert to PDF
-            # img_np = ofd.to_jpg()  # Convert to image
-            ofd.del_data()
-        # create pdf folder if not exists
-        if not os.path.exists(os.path.join(uploadpath, "ofd")):
-            os.makedirs(os.path.join(uploadpath, "ofd"))
-
-        pdfpath = os.path.join(uploadpath, "ofd", f"{file_prefix}.pdf")
-
-        with open(pdfpath, "wb") as f:
-            f.write(pdf_bytes)
-
-
-def initfonts():
-    original_getfont = pdfmetrics.getFont
-
-    def patched_getfont(fontName):
-        if fontName == "黑体":
-            return original_getfont("SimHei")
-        elif fontName == "宋体":
-            return original_getfont("SimSun")
-        return original_getfont(fontName)
-
-    pdfmetrics.getFont = patched_getfont
-
-
-def register_fonts():
-    simhei_font_path = "/Library/Fonts/SimHei.ttf"
-    simsun_font_path = "/Library/Fonts/SimSun.ttf"
-
-    if os.path.exists(simhei_font_path):
-        pdfmetrics.registerFont(TTFont("SimHei", simhei_font_path))
-        # SimHei font registered
-    else:
-        # SimHei font not found
-        pass
-
-    if os.path.exists(simsun_font_path):
-        pdfmetrics.registerFont(TTFont("SimSun", simsun_font_path))
-        # SimSun font registered
-    else:
-        # SimSun font not found
-        pass
