@@ -882,6 +882,12 @@ export const caseApi = {
     const response = await apiClient.get('/api/downloaded-file-status');
     return response.data;
   },
+
+  // Get updated csrclenanalysis data after text extraction
+  getCsrclenanalysisData: async (): Promise<any> => {
+    const response = await apiClient.get('/api/csrclenanalysis-data');
+    return response.data;
+  },
 };
 
 export default apiClient;

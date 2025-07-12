@@ -365,18 +365,37 @@ def get_csrc2analysis():
     return pendf
 
 def savetemp(df, basename):
-    """Save dataframe to temp directory"""
+    """Save dataframe to temp directory
+    
+    For files like csrcmiscontent, it will look for existing timestamped files
+    and update them instead of creating new ones.
+    """
     # Use absolute path to ensure it works from any working directory
     import os
+    import glob
+    
     # Get the project root directory (dbcsrc)
     current_file = os.path.abspath(__file__)
     backend_dir = os.path.dirname(current_file)
     project_root = os.path.dirname(backend_dir)
     tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
     
+    os.makedirs(tempdir, exist_ok=True)
+    
+    # For csrcmiscontent, look for existing timestamped files
+    if basename == "csrcmiscontent":
+        # Look for existing csrcmiscontent*.csv files
+        existing_files = glob.glob(os.path.join(tempdir, "csrcmiscontent*.csv"))
+        if existing_files:
+            # Update the most recent file (last in sorted order)
+            existing_files.sort()
+            savepath = existing_files[-1]
+            df.to_csv(savepath, index=False, encoding='utf-8-sig')
+            return
+    
+    # Default behavior: use basename.csv
     savename = basename + ".csv"
     savepath = os.path.join(tempdir, savename)
-    os.makedirs(os.path.dirname(savepath), exist_ok=True)
     df.to_csv(savepath, index=False, encoding='utf-8-sig')
 
 def content_length_analysis(length, download_filter):

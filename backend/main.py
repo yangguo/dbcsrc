@@ -3428,6 +3428,69 @@ async def check_file_exists(request: dict):
             data={'exists': False}
         )
 
+async def update_content_files_after_extraction(extraction_results: list):
+    """Update csrclenanalysis files after text extraction
+    
+    Only updates existing files, does not create new ones.
+    """
+    try:
+        from web_crawler import get_csrclenanalysis, savetemp
+        import pandas as pd
+        import os
+        
+        # Get file paths
+        current_file = os.path.abspath(__file__)
+        backend_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(backend_dir)
+        tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+        len_file_path = os.path.join(tempdir, "csrclenanalysis.csv")
+        
+        # Only update csrclenanalysis if the file already exists
+        if os.path.exists(len_file_path):
+            # Update csrclenanalysis with new content lengths and content
+            len_df = get_csrclenanalysis()
+            
+            if not len_df.empty:
+                updated_len = False
+                for result in extraction_results:
+                    url = result.get('url', '')
+                    extracted_text = result.get('text', '')
+                    text_length = len(extracted_text) if extracted_text else 0
+                    
+                    if url:
+                        # Find matching rows by URL
+                        mask = len_df['链接'] == url if '链接' in len_df.columns else len_df['url'] == url
+                        if mask.any():
+                            # Update the length information
+                            if 'len' in len_df.columns:
+                                len_df.loc[mask, 'len'] = text_length
+                            if '内容长度' in len_df.columns:
+                                len_df.loc[mask, '内容长度'] = text_length
+                            # Update the content information
+                            if 'content' in len_df.columns:
+                                len_df.loc[mask, 'content'] = extracted_text
+                            if '内容' in len_df.columns:
+                                len_df.loc[mask, '内容'] = extracted_text
+                            if 'text' in len_df.columns:
+                                len_df.loc[mask, 'text'] = extracted_text
+                            logger.info(f"Updated length and content for URL: {url} to {text_length} characters")
+                            updated_len = True
+                
+                # Save updated csrclenanalysis only if there were updates
+                if updated_len:
+                    savetemp(len_df, "csrclenanalysis")
+                    logger.info("Updated existing csrclenanalysis file")
+                else:
+                    logger.info("No matching URLs found in csrclenanalysis for update")
+            else:
+                logger.info("csrclenanalysis file exists but is empty")
+        else:
+            logger.info("csrclenanalysis file does not exist, skipping update")
+            
+    except Exception as e:
+        logger.error(f"Error updating content files: {str(e)}")
+        raise
+
 @app.post("/extract-text", response_model=APIResponse)
 async def extract_text(request: dict):
     """Extract text from attachments based on file type"""
@@ -3591,6 +3654,14 @@ async def extract_text(request: dict):
         
         logger.info(f"Text extraction completed for {len(extraction_results)} attachments")
         
+        # Update csrclenanalysis files after successful text extraction
+        try:
+            await update_content_files_after_extraction(extraction_results)
+            logger.info("Successfully updated csrclenanalysis files")
+        except Exception as update_error:
+            logger.warning(f"Failed to update content files: {str(update_error)}")
+            # Don't fail the entire operation if file update fails
+        
         return APIResponse(
             success=True,
             message=f"Successfully extracted text from {len(extraction_results)} attachments",
@@ -3677,6 +3748,73 @@ async def update_attachment_text(request: dict):
             success=False,
             message="Attachment text update failed",
             error=str(e)
+        )
+
+@app.get("/api/csrclenanalysis-data", response_model=APIResponse)
+async def get_csrclenanalysis_data():
+    """Get updated csrclenanalysis data after text extraction"""
+    try:
+        from web_crawler import get_csrclenanalysis
+        import pandas as pd
+        import os
+        
+        # Get file paths
+        current_file = os.path.abspath(__file__)
+        backend_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(backend_dir)
+        tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+        len_file_path = os.path.join(tempdir, "csrclenanalysis.csv")
+        
+        # Check if csrclenanalysis file exists
+        if not os.path.exists(len_file_path):
+            return APIResponse(
+                success=False,
+                message="csrclenanalysis file not found",
+                data={'result': []}
+            )
+        
+        # Get csrclenanalysis data
+        len_df = get_csrclenanalysis()
+        
+        if len_df.empty:
+            return APIResponse(
+                success=True,
+                message="csrclenanalysis file is empty",
+                data={'result': []}
+            )
+        
+        # Convert DataFrame to list of dictionaries
+        result_data = []
+        for index, row in len_df.iterrows():
+            item = {
+                'id': str(index),
+                'url': row.get('链接', row.get('url', '')),
+                'title': row.get('案例标题', row.get('title', '')),
+                'date': row.get('发文日期', row.get('date', '')),
+                'content': row.get('内容', row.get('content', '')),
+                'contentLength': row.get('内容长度', row.get('len', 0)),
+                'filename': row.get('文件名', row.get('filename', '')),
+                'downloadStatus': '已下载' if row.get('文件名', row.get('filename', '')) else '未下载',
+                'fileStatus': '已存在' if row.get('文件名', row.get('filename', '')) else '不存在',
+                'textExtracted': bool(row.get('内容', row.get('content', '')))
+            }
+            result_data.append(item)
+        
+        logger.info(f"Retrieved {len(result_data)} records from csrclenanalysis")
+        
+        return APIResponse(
+            success=True,
+            message=f"Successfully retrieved {len(result_data)} records",
+            data={'result': result_data}
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get csrclenanalysis data: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to get csrclenanalysis data",
+            error=str(e),
+            data={'result': []}
         )
 
 if __name__ == "__main__":

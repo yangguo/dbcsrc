@@ -639,8 +639,43 @@ const AttachmentProcessing: React.FC = () => {
         )
       );
       
+      // Auto-refresh table data from updated csrclenanalysis file
+      try {
+        const updatedData = await caseApi.getCsrclenanalysisData();
+        if (updatedData.success && updatedData.data?.result) {
+          // Create a map of updated data for efficient lookup
+          const updatedDataMap = new Map();
+          updatedData.data.result.forEach((item: any) => {
+            updatedDataMap.set(item.url || item.id, item);
+          });
+          
+          // Merge updated data with existing data, preserving all original fields
+          setAnalysisData(prev => 
+            prev.map(item => {
+              const updatedItem = updatedDataMap.get(item.url || item.id);
+              if (updatedItem) {
+                // Only update content and contentLength, preserve all other fields
+                return {
+                  ...item,
+                  content: updatedItem.content || item.content,
+                  contentLength: updatedItem.contentLength || item.contentLength,
+                  textExtracted: true // Mark as text extracted
+                };
+              }
+              return item;
+            })
+          );
+          
+          message.success(`成功抽取 ${extractionResults.length} 个附件的文本，已更新现有的csrclenanalysis文件并刷新表格数据`);
+        } else {
+          message.success(`成功抽取 ${extractionResults.length} 个附件的文本，已更新现有的csrclenanalysis文件（仅更新已存在的文件）`);
+        }
+      } catch (refreshError) {
+        console.warn('Failed to refresh table data:', refreshError);
+        message.success(`成功抽取 ${extractionResults.length} 个附件的文本，已更新现有的csrclenanalysis文件（仅更新已存在的文件）`);
+      }
+      
       setActiveTab('textExtraction');
-      message.success(`成功抽取 ${extractionResults.length} 个附件的文本`);
     } catch (error: any) {
       if (error.name === 'BackendUnavailableError') {
         message.error({
