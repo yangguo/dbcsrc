@@ -112,13 +112,30 @@ def get_csrc2detail():
     """Get CSRC detail data."""
     pendf = get_csvdf(pencsrc2, "csrcdtlall")
     if not pendf.empty:
-        # Format date with error handling
-        try:
-            pendf["发文日期"] = get_pandas().to_datetime(pendf["发文日期"], format='mixed', errors='coerce').dt.date
-        except Exception as e:
-            # Date formatting warning
-            # Try alternative format
-            pendf["发文日期"] = get_pandas().to_datetime(pendf["发文日期"], errors='coerce').dt.date
+        # Format date - handle both timestamp and date formats
+        if "发文日期" in pendf.columns:
+            # First try to convert timestamps (numeric values) to datetime
+            def convert_date(date_val):
+                if get_pandas().isna(date_val) or date_val == "":
+                    return ""
+                
+                # If it's a numeric timestamp, convert it
+                try:
+                    # Check if it's a numeric timestamp (seconds or milliseconds)
+                    if str(date_val).replace('.', '').isdigit():
+                        timestamp = float(date_val)
+                        # If timestamp is in milliseconds (> 1e10), convert to seconds
+                        if timestamp > 1e10:
+                            timestamp = timestamp / 1000
+                        return get_pandas().to_datetime(timestamp, unit='s').date()
+                    else:
+                        # Try to parse as regular date string
+                        return get_pandas().to_datetime(date_val, errors='coerce').date()
+                except (ValueError, TypeError, OverflowError):
+                    # If conversion fails, return empty string
+                    return ""
+            
+            pendf["发文日期"] = pendf["发文日期"].apply(convert_date)
         # Fill na
         pendf = pendf.fillna("")
     return pendf

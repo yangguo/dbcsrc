@@ -162,9 +162,30 @@ city2province = {
 def get_csrc2detail():
     pendf = get_csvdf(pencsrc2, "csrcdtlall")
     if not pendf.empty:
-        # format date with error handling
+        # Format date - handle both timestamp and date formats
         if "发文日期" in pendf.columns:
-            pendf["发文日期"] = pd.to_datetime(pendf["发文日期"], errors='coerce').dt.date
+            # First try to convert timestamps (numeric values) to datetime
+            def convert_date(date_val):
+                if pd.isna(date_val) or date_val == "":
+                    return ""
+                
+                # If it's a numeric timestamp, convert it
+                try:
+                    # Check if it's a numeric timestamp (seconds or milliseconds)
+                    if str(date_val).replace('.', '').isdigit():
+                        timestamp = float(date_val)
+                        # If timestamp is in milliseconds (> 1e10), convert to seconds
+                        if timestamp > 1e10:
+                            timestamp = timestamp / 1000
+                        return pd.to_datetime(timestamp, unit='s').date()
+                    else:
+                        # Try to parse as regular date string
+                        return pd.to_datetime(date_val, errors='coerce').date()
+                except (ValueError, TypeError, OverflowError):
+                    # If conversion fails, return empty string
+                    return ""
+            
+            pendf["发文日期"] = pendf["发文日期"].apply(convert_date)
         # fillna
         pendf = pendf.fillna("")
     return pendf
