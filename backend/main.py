@@ -1669,11 +1669,24 @@ async def download_attachments(request: AttachmentDownloadRequest):
         
         result = download_attachment(request.positions)
         
+        # Convert DataFrame to serializable format
+        if hasattr(result, 'to_dict'):
+            # It's a pandas DataFrame, convert to records
+            serializable_result = result.to_dict('records')
+            total_count = len(result)
+        else:
+            # It's already serializable or None
+            serializable_result = result
+            total_count = 0
+        
         logger.info("Attachment download completed successfully")
         return APIResponse(
             success=True,
             message="Attachment download completed successfully",
-            data={"result": result}
+            data={
+                "results": serializable_result,
+                "count": total_count
+            }
         )
         
     except Exception as e:
