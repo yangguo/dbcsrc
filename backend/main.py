@@ -3521,6 +3521,7 @@ async def extract_text(request: dict):
         # Import text extraction functions from doc2text
         from doc2text import docxurl2txt, pdfurl2txt, docxurl2ocr, pdfurl2ocr, picurl2ocr
         import os
+        import subprocess
         
         # Extract text for each attachment ID
         extraction_results = []
@@ -3588,22 +3589,70 @@ async def extract_text(request: dict):
                                         logger.info(f"DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
                                         
                                 elif ext in ['.doc']:
-                                    # For .doc files, check if converted .docx exists
+                                    # For .doc files, convert to DOCX using LibreOffice first
                                     doc_dir = os.path.join(temp_dir, "doc")
+                                    os.makedirs(doc_dir, exist_ok=True)
                                     converted_path = os.path.join(doc_dir, base + ".docx")
-                                    if os.path.exists(converted_path):
+                                    
+                                    # Convert using LibreOffice if converted file doesn't exist
+                                    if not os.path.exists(converted_path):
+                                        try:
+                                            logger.info(f"Converting DOC file to DOCX: {filename}")
+                                            subprocess.call([
+                                                "soffice",
+                                                "--headless",
+                                                "--convert-to",
+                                                "docx",
+                                                file_path,
+                                                "--outdir",
+                                                doc_dir,
+                                            ])
+                                        except Exception as convert_error:
+                                            logger.error(f"LibreOffice conversion failed for {filename}: {str(convert_error)}")
+                                            extracted_text = f"Conversion failed: {str(convert_error)}"
+                                    
+                                    # Extract text from converted DOCX file
+                                    if os.path.exists(converted_path) and not extracted_text:
                                         extracted_text = docxurl2txt(converted_path)
-                                        if not extracted_text.strip():
+                                        logger.info(f"DOC->DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
+                                        # If direct extraction fails, try OCR
+                                        if not extracted_text or not extracted_text.strip():
+                                            logger.info(f"Trying OCR for converted DOC file: {filename}")
                                             extracted_text = docxurl2ocr(converted_path, temp_dir)
+                                            logger.info(f"DOC->DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
                                     
                                 elif ext in ['.wps']:
-                                    # For .wps files, check if converted .docx exists
+                                    # For .wps files, convert to DOCX using LibreOffice first
                                     wps_dir = os.path.join(temp_dir, "wps")
+                                    os.makedirs(wps_dir, exist_ok=True)
                                     converted_path = os.path.join(wps_dir, base + ".docx")
-                                    if os.path.exists(converted_path):
+                                    
+                                    # Convert using LibreOffice if converted file doesn't exist
+                                    if not os.path.exists(converted_path):
+                                        try:
+                                            logger.info(f"Converting WPS file to DOCX: {filename}")
+                                            subprocess.call([
+                                                "soffice",
+                                                "--headless",
+                                                "--convert-to",
+                                                "docx",
+                                                file_path,
+                                                "--outdir",
+                                                wps_dir,
+                                            ])
+                                        except Exception as convert_error:
+                                            logger.error(f"LibreOffice conversion failed for {filename}: {str(convert_error)}")
+                                            extracted_text = f"Conversion failed: {str(convert_error)}"
+                                    
+                                    # Extract text from converted DOCX file
+                                    if os.path.exists(converted_path) and not extracted_text:
                                         extracted_text = docxurl2txt(converted_path)
-                                        if not extracted_text.strip():
+                                        logger.info(f"WPS->DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
+                                        # If direct extraction fails, try OCR
+                                        if not extracted_text or not extracted_text.strip():
+                                            logger.info(f"Trying OCR for converted WPS file: {filename}")
                                             extracted_text = docxurl2ocr(converted_path, temp_dir)
+                                            logger.info(f"WPS->DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
                                             
                                 elif ext in ['.pdf']:
                                     extracted_text = pdfurl2txt(file_path)

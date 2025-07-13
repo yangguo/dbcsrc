@@ -4,7 +4,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 300000, // Increased to 300 seconds (5 minutes) for data-heavy operations
   headers: {
     'Content-Type': 'application/json',
   },
