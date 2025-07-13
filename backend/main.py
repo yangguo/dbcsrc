@@ -2679,8 +2679,9 @@ async def get_upload_data():
             diff_df['uploadProgress'] = 0
             diff_df['errorMessage'] = None
         
-        # Limit data size to prevent memory issues - only return summary info and limited records
-        MAX_RECORDS_PER_DATASET = 100  # Limit to prevent memory overflow
+        # Remove artificial limits for upload data to show all pending cases
+        # Only apply reasonable limits for very large datasets to prevent memory issues
+        MAX_RECORDS_PER_DATASET = 50000  # Very high limit to accommodate all pending upload cases
         
         def get_limited_data(df, max_records=MAX_RECORDS_PER_DATASET):
             """Get limited data with summary info to prevent memory issues"""
@@ -2861,6 +2862,7 @@ async def upload_cases(request: UploadCasesRequest):
         logger.info(f"Uploading {len(cases_to_upload)} cases with three-table intersection data")
         
         # Upload to MongoDB
+        logger.info(f"Attempting to insert {len(cases_to_upload)} cases to MongoDB")
         success = insert_online_data(cases_to_upload)
         
         if success:
@@ -2872,12 +2874,15 @@ async def upload_cases(request: UploadCasesRequest):
             upload_data_cache["timestamp"] = 0
             logger.info("Cleared upload data cache after successful upload")
             
-            return APIResponse(
+            response = APIResponse(
                 success=True,
                 message=f"Successfully uploaded {uploaded_count} cases with complete data",
                 count=uploaded_count
             )
+            logger.info(f"Returning success response: {response.dict()}")
+            return response
         else:
+            logger.error("Failed to insert data to MongoDB")
             return APIResponse(
                 success=False,
                 message="Failed to upload cases to database",

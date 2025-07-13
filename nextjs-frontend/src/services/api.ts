@@ -364,7 +364,7 @@ export const caseApi = {
     return response.data;
   },
 
-  uploadCases: async (caseIds: string[]): Promise<{ message: string }> => {
+  uploadCases: async (caseIds: string[]): Promise<{ success: boolean; message: string; count?: number; error?: string }> => {
     const response = await apiClient.post('/api/upload-cases', { case_ids: caseIds });
     return response.data;
   },

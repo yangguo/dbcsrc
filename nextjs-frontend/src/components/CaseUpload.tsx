@@ -92,6 +92,8 @@ const CaseUpload: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<UploadItem | null>(null);
   const [overallProgress, setOverallProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
   const [stats, setStats] = useState<UploadStats>({
     total: 0,
     pending: 0,
@@ -146,12 +148,12 @@ const CaseUpload: React.FC = () => {
         isOnline: true,
       }));
       
-      // Update stats
+      // Update stats - use backend counts for accurate totals
       setStats({
-        total: diffItems.length,
-        pending: diffItems.length,
+        total: data.diffData?.count || diffItems.length,
+        pending: data.diffData?.count || diffItems.length,
         uploading: 0,
-        completed: onlineItems.length,
+        completed: data.onlineData?.count || onlineItems.length,
         failed: 0,
         caseDetailCount: data.caseDetail?.count || 0,
         caseDetailUniqueCount: data.caseDetail?.uniqueCount || 0,
@@ -191,6 +193,15 @@ const CaseUpload: React.FC = () => {
   useEffect(() => {
     loadUploadData();
   }, []);
+
+  // Handle pagination changes
+  const handlePageChange = (page: number, size?: number) => {
+    setCurrentPage(page);
+    if (size && size !== pageSize) {
+      setPageSize(size);
+      setCurrentPage(1); // Reset to first page when page size changes
+    }
+  };
 
   const columns = [
     {
@@ -414,6 +425,7 @@ const CaseUpload: React.FC = () => {
       return;
     }
 
+    let uploadSuccess = false;
     try {
       setLoading(true);
       setOverallProgress(0);
@@ -447,10 +459,21 @@ const CaseUpload: React.FC = () => {
       );
       
       // Call backend API to upload data
+      console.log('开始调用上传API，案例数量:', selectedItems.length);
       const response = await apiClient.post('/api/upload-cases', {
         case_ids: selectedItems.map(item => item.链接),
+      }, {
+        timeout: 300000, // 5分钟超时
       });
       
+      console.log('API响应:', response.data);
+      
+      // Check if upload was successful
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || response.data?.error || '上传失败');
+      }
+      
+      console.log('上传成功，继续更新进度');
       setOverallProgress(70);
       
       // Update progress for each item
@@ -489,6 +512,7 @@ const CaseUpload: React.FC = () => {
       );
       
       setOverallProgress(100);
+      uploadSuccess = true;
       
       message.success(`批量上线完成，共处理 ${selectedItems.length} 个案例`);
       setSelectedRows([]);
@@ -499,8 +523,17 @@ const CaseUpload: React.FC = () => {
       }, 1000);
       
     } catch (error) {
-      message.error('批量上线失败');
       console.error('Batch upload error:', error);
+      
+      // Get error message
+      let errorMessage = '上线失败，请重试';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      message.error(`批量上线失败: ${errorMessage}`);
       
       // Mark failed items
       setUploadItems(prev => 
@@ -509,15 +542,25 @@ const CaseUpload: React.FC = () => {
             ? {
                 ...prevItem,
                 status: 'failed' as const,
-                errorMessage: '上线失败，请重试',
+                errorMessage: errorMessage,
               }
             : prevItem
         )
       );
     } finally {
       setLoading(false);
-      setOverallProgress(0);
-      setCurrentStep(0);
+      // 根据上传结果决定如何重置进度
+      if (uploadSuccess) {
+        // 成功时延迟重置，让用户看到完成状态
+        setTimeout(() => {
+          setOverallProgress(0);
+          setCurrentStep(0);
+        }, 3000);
+      } else {
+        // 失败时立即重置
+        setOverallProgress(0);
+        setCurrentStep(0);
+      }
     }
   };
 
@@ -810,11 +853,19 @@ const CaseUpload: React.FC = () => {
           rowSelection={rowSelection}
           loading={loading || dataLoading}
           pagination={{
-            pageSize: 10,
+            current: currentPage,
+            pageSize: pageSize,
+            total: uploadItems.length,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total, range) =>
-              `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+            pageSizeOptions: uploadItems.length <= 1000 
+              ? ['50', '100', '200', '500', '1000', '全部']
+              : ['50', '100', '200', '500', '1000'],
+            showTotal: (total, range) => {
+              return `显示第 ${range[0]}-${range[1]} 条，共 ${total} 条待上线数据`;
+            },
+            onChange: handlePageChange,
+            onShowSizeChange: handlePageChange
           }}
           scroll={{ x: 2800, y: 400 }}
           size="small"
