@@ -33,45 +33,56 @@ from selenium.webdriver.support import expected_conditions as EC
 # Directory paths
 pencsrc2 = "../data/penalty/csrc2"
 
-# Organization ID mapping
+# Organization ID mapping - each organization can have multiple IDs with names
+# Structure: {"org_name": [{"id": "id_string", "name": "id_display_name"}, ...]}
 org2id = {
-    "山西": "94bf3c5d8e5b4265a7916f19fb8b65ef",
-    "四川": "88a03b16f60e4d16a62bd494d6530495",
-    "新疆": "baa8f6e40657486bb0d7cc8525c857e6",
-    "山东": "4bd2094f91c14fcc84ffc4df0cd29d2b",
-    "大连": "d5247fa1384f4a46b17f2d33f025bdca",
-    "湖北": "a4478a6efb074823959f782bf7ad23c2",
-    "湖南": "53d1eac8c4c145db8ca62c99bda5c058",
-    "陕西": "00d7790e259b4d3dbaefe2935b1ec05f",
-    "天津": "882ff9eb82b346999ab45e9a597bc461",
-    "宁夏": "9e622bf25828428996182a74dea32057",
-    "安徽": "1d14687d160f4fe09642c86fc33501bd",
-    "总部": "29ae08ca97d44d6ea365874aa02d44f6",
-    "北京": "313639c4d05a43e5b86b1f356066f22d",
-    "江苏": "47d5896f8fc1486c89208dbdf00e937b",
-    "黑龙江": "19044145cb714a7cbd9cad1b2a810809",
-    "甘肃": "7a78277d94df4057a9ad6cb9db7fca2a",
-    "宁波": "da83ebb77019448c912dbcdec571d3d7",
-    "深圳": "51840ec0710b4221b27cf3f7d52c0781",
-    "河北": "9b55d0917b8c45239e04815ad7d684dd",
-    "广东": "a281797dea33433e93c30bcc4fa2e907",
-    "厦门": "b5eabe7e6d0847ebae3ea9b1abd2a230",
-    "福建": "ca335b3bbc51408da8a64f89bce67c95",
-    "西藏": "da2deae04a2a412e896d05d31b603804",
-    "青岛": "47f0814210b64db681be188da7f21b22",
-    "贵州": "1d15ee7b6389461eb45b7de8fc742615",
-    "河南": "fa3997ef7b7549049b59451451e03623",
-    "广西": "cad5c39b4cae415fb576ceffc5d197ec",
-    "内蒙古": "afc4ff6ea7644244ba66b79b296aaa36",
-    "海南": "aa24b402e1df434bbb68baa256fef9d4",
-    "浙江": "ac4e1875e53f4cb185195265376c8550",
-    "云南": "0ce80bd1aaae430c8511b1a282e582f8",
-    "辽宁": "25ae72513b9a4e96a18823d4b1844f22",
-    "吉林": "ee414472c92443479e16c250e69840e1",
-    "江西": "d7cae17b8d824e768ec1f7e86fd7f36a",
-    "重庆": "c28e1398b3054af694b769291a1c8952",
-    "上海": "0dd09598f7f2470fb269732ec5b8ddc8",
-    "青海": "1747a405d9a6437e8688f25c48c6205a",
+    "山西": [{"id": "94bf3c5d8e5b4265a7916f19fb8b65ef", "name": "山西局"}],
+    "四川": [{"id": "88a03b16f60e4d16a62bd494d6530495", "name": "四川局"}],
+    "新疆": [{"id": "baa8f6e40657486bb0d7cc8525c857e6", "name": "新疆局"}],
+    "山东": [{"id": "4bd2094f91c14fcc84ffc4df0cd29d2b", "name": "山东局"}],
+    "大连": [{"id": "d5247fa1384f4a46b17f2d33f025bdca", "name": "大连局"}],
+    "湖北": [{"id": "a4478a6efb074823959f782bf7ad23c2", "name": "湖北局"}],
+    "湖南": [{"id": "53d1eac8c4c145db8ca62c99bda5c058", "name": "湖南局"}],
+    "陕西": [{"id": "00d7790e259b4d3dbaefe2935b1ec05f", "name": "行政执法"},
+    {"id": "f0dad1ecc157416ea412e4a0608e04bd", "name": "行政处罚决定"},
+    {"id": "f6c680055f9e43e7addf9493680a6112", "name": "行政监管措施"}
+    ],
+    "天津": [{"id": "882ff9eb82b346999ab45e9a597bc461", "name": "天津局"}],
+    "宁夏": [{"id": "9e622bf25828428996182a74dea32057", "name": "宁夏局"}],
+    "安徽": [{"id": "1d14687d160f4fe09642c86fc33501bd", "name": "安徽局"}],
+    "总部": [{"id": "29ae08ca97d44d6ea365874aa02d44f6", "name": "总部"}],
+    "北京": [{"id": "313639c4d05a43e5b86b1f356066f22d", "name": "北京局"}],
+    "江苏": [{"id": "47d5896f8fc1486c89208dbdf00e937b", "name": "江苏局"}],
+    "黑龙江": [{"id": "19044145cb714a7cbd9cad1b2a810809", "name": "黑龙江局"}],
+    "甘肃": [{"id": "7a78277d94df4057a9ad6cb9db7fca2a", "name": "甘肃局"}],
+    "宁波": [{"id": "da83ebb77019448c912dbcdec571d3d7", "name": "宁波局"}],
+    "深圳": [{"id": "51840ec0710b4221b27cf3f7d52c0781", "name": "深圳局"}],
+    "河北": [
+        {"id": "9b55d0917b8c45239e04815ad7d684dd", "name": "行政执法"},
+        {"id": "e838879760e84c668062433e2cdbc389", "name": "行政处罚决定"},
+        {"id": "03efc68cb7cf4e65a5ee1e4e96d19a69", "name": "市场禁入决定"},
+        {"id": "4091867fdc664e169267aefc763c6d1d", "name": "行政监管措施"}
+    ],
+    "广东": [{"id": "a281797dea33433e93c30bcc4fa2e907", "name": "广东局"}],
+    "厦门": [{"id": "b5eabe7e6d0847ebae3ea9b1abd2a230", "name": "厦门局"}],
+    "福建": [{"id": "ca335b3bbc51408da8a64f89bce67c95", "name": "福建局"}],
+    "西藏": [{"id": "da2deae04a2a412e896d05d31b603804", "name": "西藏局"}],
+    "青岛": [{"id": "47f0814210b64db681be188da7f21b22", "name": "青岛局"}],
+    "贵州": [{"id": "1d15ee7b6389461eb45b7de8fc742615", "name": "贵州局"}],
+    "河南": [{"id": "fa3997ef7b7549049b59451451e03623", "name": "河南局"}],
+    "广西": [{"id": "cad5c39b4cae415fb576ceffc5d197ec", "name": "广西局"}],
+    "内蒙古": [{"id": "afc4ff6ea7644244ba66b79b296aaa36", "name": "行政执法"},
+    {"id": "e4f2dbcdd85c4bac9a9e9a6f2d093d19", "name": "行政处罚决定"},
+    {"id": "4c96602a020c4398adfc7123a48f2ee1", "name": "行政监管措施"}],
+    "海南": [{"id": "aa24b402e1df434bbb68baa256fef9d4", "name": "海南局"}],
+    "浙江": [{"id": "ac4e1875e53f4cb185195265376c8550", "name": "浙江局"}],
+    "云南": [{"id": "0ce80bd1aaae430c8511b1a282e582f8", "name": "云南局"}],
+    "辽宁": [{"id": "25ae72513b9a4e96a18823d4b1844f22", "name": "辽宁局"}],
+    "吉林": [{"id": "ee414472c92443479e16c250e69840e1", "name": "吉林局"}],
+    "江西": [{"id": "d7cae17b8d824e768ec1f7e86fd7f36a", "name": "江西局"}],
+    "重庆": [{"id": "c28e1398b3054af694b769291a1c8952", "name": "重庆局"}],
+    "上海": [{"id": "0dd09598f7f2470fb269732ec5b8ddc8", "name": "上海局"}],
+    "青海": [{"id": "1747a405d9a6437e8688f25c48c6205a", "name": "青海局"}],
 }
 
 
@@ -147,18 +158,34 @@ def get_csrc2detail():
     return pendf
 
 
-def get_url_backend(orgname):
-    """Get URL for organization."""
+def get_url_backend(orgname, selected_ids=None):
+    """Get URLs for organization (returns list of URLs for multiple IDs).
+    
+    Args:
+        orgname (str): Organization name
+        selected_ids (list, optional): List of specific IDs to use. If None, uses all IDs for the organization.
+    
+    Returns:
+        list: List of URLs for the specified IDs
+    """
     if orgname not in org2id:
         raise ValueError(f"Organization '{orgname}' not found in org2id mapping")
     
-    id = org2id[orgname]
-    url = (
-        "http://www.csrc.gov.cn/searchList/"
-        + id
-        + "?_isAgg=true&_isJson=true&_pageSize=10&_template=index&_rangeTimeGte=&_channelName=&page="
-    )
-    return url
+    id_list = org2id[orgname]
+    
+    # Filter by selected IDs if provided
+    if selected_ids:
+        id_list = [item for item in id_list if item["id"] in selected_ids]
+    
+    urls = []
+    for item in id_list:
+        url = (
+            "http://www.csrc.gov.cn/searchList/"
+            + item["id"]
+            + "?_isAgg=true&_isJson=true&_pageSize=10&_template=index&_rangeTimeGte=&_channelName=&page="
+        )
+        urls.append(url)
+    return urls
 
 
 def savedf_backend(df, basename):
@@ -169,13 +196,14 @@ def savedf_backend(df, basename):
     df.to_csv(savepath, index=False, escapechar="\\", encoding='utf-8-sig')
 
 
-def get_sumeventdf_backend(orgname, start, end):
+def get_sumeventdf_backend(orgname, start, end, selected_ids=None):
     """Backend implementation of get_sumeventdf2.
     
     Args:
         orgname (str): Organization name
         start (int): Start page number
         end (int): End page number
+        selected_ids (list, optional): List of specific IDs to use. If None, uses all IDs for the organization.
         
     Returns:
         pd.DataFrame: Scraped case data
@@ -205,134 +233,138 @@ def get_sumeventdf_backend(orgname, start, end):
     for pageno in range(start, end + 1):
         progress = ((pageno - start) / total_pages) * 100
         # Processing page
-        url = get_url_backend(orgname) + str(pageno)
+        url_list = get_url_backend(orgname, selected_ids)
         
-        # Retry logic for network requests
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                # Increase timeout and add retry logic
-                dd = requests.get(url, headers=headers, verify=False, timeout=60)
-                dd.raise_for_status()
-                break  # Success, exit retry loop
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                retry_count += 1
-                if retry_count >= max_retries:
-                    # Max retries reached for page
+        # Process each URL (one for each ID) for this page
+        for base_url in url_list:
+            url = base_url + str(pageno)
+            
+            # Retry logic for network requests
+            max_retries = 3
+            retry_count = 0
+            
+            while retry_count < max_retries:
+                try:
+                    # Increase timeout and add retry logic
+                    dd = requests.get(url, headers=headers, verify=False, timeout=60)
+                    dd.raise_for_status()
+                    break  # Success, exit retry loop
+                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        # Max retries reached for page
+                        errorls.append(url)
+                        break
+                    else:
+                        # Retry for page
+                        time.sleep(2)  # Wait before retry
+                        continue
+                except Exception as e:
+                    # Non-retryable error for page
                     errorls.append(url)
                     break
-                else:
-                    # Retry for page
-                    time.sleep(2)  # Wait before retry
-                    continue
-            except Exception as e:
-                # Non-retryable error for page
-                errorls.append(url)
-                break
-        
-        if retry_count >= max_retries:
-            continue  # Skip this page and move to next
             
-        try:
-            sd = BeautifulSoup(dd.content, "html.parser")
-            json_text = str(sd.text).strip()
-            json_data = json.loads(json_text, strict=False)
-            
-            if "data" not in json_data or "results" not in json_data["data"]:
-                # No data found for page
-                continue
+            if retry_count >= max_retries:
+                continue  # Skip this URL and move to next
                 
-            itemls = json_data["data"]["results"]
-
-            titlels = []
-            wenhaols = []
-            datels = []
-            snls = []
-            urlls = []
-            docls = []
-
-            for idx, item in enumerate(itemls):
-                try:
-                    if "domainMetaList" not in item or not item["domainMetaList"]:
-                        # Missing domainMetaList for item
-                        continue
-                        
-                    headerls = item["domainMetaList"][0]["resultList"]
-                    headerdf = get_pandas().DataFrame(headerls)
-                    
-                    # Extract fields with error handling
-                    wenhao_rows = headerdf[headerdf["key"] == "wh"]
-                    wenhao = wenhao_rows["value"].iloc[0] if not wenhao_rows.empty else ""
-                    
-                    sn_rows = headerdf[headerdf["key"] == "syh"]
-                    sn = sn_rows["value"].iloc[0] if not sn_rows.empty else ""
-                    
-                    title = item.get("subTitle", "")
-                    url_item = item.get("url", "")
-                    date = item.get("publishedTimeStr", "")
-                    
-                    try:
-                        doc = (
-                            item.get("contentHtml", "")
-                            .replace("\r", "")
-                            .replace("\n", "")
-                            .replace("\u2002", "")
-                            .replace("\u3000", "")
-                        )
-                    except Exception as e:
-                        # Error processing contentHtml for item
-                        doc = (
-                            item.get("content", "")
-                            .replace("\r", "")
-                            .replace("\n", "")
-                            .replace("\u2002", "")
-                            .replace("\u3000", "")
-                        )
-
-                    titlels.append(title)
-                    wenhaols.append(wenhao)
-                    datels.append(date)
-                    snls.append(sn)
-                    urlls.append(url_item)
-                    docls.append(doc)
-                except Exception as e:
-                    # Error processing item
+            try:
+                sd = BeautifulSoup(dd.content, "html.parser")
+                json_text = str(sd.text).strip()
+                json_data = json.loads(json_text, strict=False)
+                
+                if "data" not in json_data or "results" not in json_data["data"]:
+                    # No data found for page
                     continue
+                    
+                itemls = json_data["data"]["results"]
 
-            if titlels:  # Only create DataFrame if we have data
-                csrceventdf = get_pandas().DataFrame({
-                    "名称": titlels,
-                    "文号": wenhaols,
-                    "发文日期": datels,
-                    "序列号": snls,
-                    "链接": urlls,
-                    "内容": docls,
-                })
-                csrceventdf["机构"] = orgname
-                resultls.append(csrceventdf)
+                titlels = []
+                wenhaols = []
+                datels = []
+                snls = []
+                urlls = []
+                docls = []
 
-        except requests.exceptions.HTTPError as e:
-            if hasattr(dd, 'status_code') and dd.status_code == 403:
-                # 403 Forbidden error - authentication or IP blocking issue
-                pass
-            errorls.append(url)
-        except json.JSONDecodeError as e:
-            # JSON decode error
-            errorls.append(url)
-        except Exception as e:
-            # General error occurred
-            errorls.append(url)
+                for idx, item in enumerate(itemls):
+                    try:
+                        if "domainMetaList" not in item or not item["domainMetaList"]:
+                            # Missing domainMetaList for item
+                            continue
+                            
+                        headerls = item["domainMetaList"][0]["resultList"]
+                        headerdf = get_pandas().DataFrame(headerls)
+                        
+                        # Extract fields with error handling
+                        wenhao_rows = headerdf[headerdf["key"] == "wh"]
+                        wenhao = wenhao_rows["value"].iloc[0] if not wenhao_rows.empty else ""
+                        
+                        sn_rows = headerdf[headerdf["key"] == "syh"]
+                        sn = sn_rows["value"].iloc[0] if not sn_rows.empty else ""
+                        
+                        title = item.get("subTitle", "")
+                        url_item = item.get("url", "")
+                        date = item.get("publishedTimeStr", "")
+                        
+                        try:
+                            doc = (
+                                item.get("contentHtml", "")
+                                .replace("\r", "")
+                                .replace("\n", "")
+                                .replace("\u2002", "")
+                                .replace("\u3000", "")
+                            )
+                        except Exception as e:
+                            # Error processing contentHtml for item
+                            doc = (
+                                item.get("content", "")
+                                .replace("\r", "")
+                                .replace("\n", "")
+                                .replace("\u2002", "")
+                                .replace("\u3000", "")
+                            )
 
-        # Save temporary results every 5 pages
+                        titlels.append(title)
+                        wenhaols.append(wenhao)
+                        datels.append(date)
+                        snls.append(sn)
+                        urlls.append(url_item)
+                        docls.append(doc)
+                    except Exception as e:
+                        # Error processing item
+                        continue
+
+                if titlels:  # Only create DataFrame if we have data
+                    csrceventdf = get_pandas().DataFrame({
+                        "名称": titlels,
+                        "文号": wenhaols,
+                        "发文日期": datels,
+                        "序列号": snls,
+                        "链接": urlls,
+                        "内容": docls,
+                    })
+                    csrceventdf["机构"] = orgname
+                    resultls.append(csrceventdf)
+
+            except requests.exceptions.HTTPError as e:
+                if hasattr(dd, 'status_code') and dd.status_code == 403:
+                    # 403 Forbidden error - authentication or IP blocking issue
+                    pass
+                errorls.append(url)
+            except json.JSONDecodeError as e:
+                # JSON decode error
+                errorls.append(url)
+            except Exception as e:
+                # General error occurred
+                errorls.append(url)
+
+        # Save temporary results every 5 pages (moved outside the URL loop)
         mod = (count + 1) % 5
         if mod == 0 and count > 0 and resultls:
             tempdf = get_pandas().concat(resultls)
             savename = "temp-" + orgname + "-0-" + str(count + 1)
             savedf_backend(tempdf, savename)
 
-        # Reduced wait time to improve performance
+        # Reduced wait time to improve performance (moved outside the URL loop)
         wait = random.randint(1, 5)
         time.sleep(wait)
         count += 1
@@ -770,4 +802,281 @@ def download_attachment(down_list=None):
         savetemp(misdf, savecsv)
         return misdf
     else:
+        return get_pandas().DataFrame()
+
+# Helper functions for managing organization IDs
+def add_org_id(orgname, new_id, name=None):
+    """Add a new ID to an existing organization or create a new organization entry.
+    
+    Args:
+        orgname (str): Organization name
+        new_id (str): New ID to add
+        name (str, optional): Display name for the ID. If None, defaults to orgname + "局"
+    """
+    if name is None:
+        name = f"{orgname}局"
+    
+    new_entry = {"id": new_id, "name": name}
+    
+    if orgname in org2id:
+        # Check if ID already exists
+        existing_ids = [item["id"] for item in org2id[orgname]]
+        if new_id not in existing_ids:
+            org2id[orgname].append(new_entry)
+    else:
+        org2id[orgname] = [new_entry]
+
+
+def remove_org_id(orgname, id_to_remove):
+    """Remove an ID from an organization.
+    
+    Args:
+        orgname (str): Organization name
+        id_to_remove (str): ID to remove
+    """
+    if orgname in org2id:
+        org2id[orgname] = [item for item in org2id[orgname] if item["id"] != id_to_remove]
+        # Remove the organization entry if no IDs left
+        if not org2id[orgname]:
+            del org2id[orgname]
+
+
+def get_org_ids(orgname):
+    """Get all IDs for an organization.
+    
+    Args:
+        orgname (str): Organization name
+        
+    Returns:
+        list: List of ID dictionaries with 'id' and 'name' keys
+    """
+    return org2id.get(orgname, [])
+
+
+def get_org_id_strings(orgname):
+    """Get all ID strings for an organization.
+    
+    Args:
+        orgname (str): Organization name
+        
+    Returns:
+        list: List of ID strings only
+    """
+    return [item["id"] for item in org2id.get(orgname, [])]
+
+
+def list_all_orgs():
+    """List all organizations and their ID counts.
+    
+    Returns:
+        dict: Dictionary with organization names as keys and ID counts as values
+    """
+    return {org: len(ids) for org, ids in org2id.items()}
+
+
+def get_all_org_data():
+    """Get complete organization data structure for frontend.
+    
+    Returns:
+        dict: Complete org2id structure
+    """
+    return org2id
+
+# Example usage of the updated org2id structure:
+# 
+# # Add multiple IDs for an organization
+# add_org_id("北京", "new_id_123456")
+# add_org_id("北京", "another_id_789012")
+# 
+# # Get all IDs for an organization
+# beijing_ids = get_org_ids("北京")
+# print(f"Beijing IDs: {beijing_ids}")
+# 
+# # List all organizations and their ID counts
+# org_counts = list_all_orgs()
+# print(f"Organization ID counts: {org_counts}")
+# 
+# # The get_url_backend function now returns a list of URLs
+# beijing_urls = get_url_backend("北京")
+# print(f"Beijing URLs: {beijing_urls}")
+
+def get_sumeventdf_backend_selective(orgname, start, end, selected_ids=None):
+    """Backend implementation with selective ID support.
+    
+    Args:
+        orgname (str): Organization name
+        start (int): Start page number
+        end (int): End page number
+        selected_ids (list, optional): List of specific IDs to scrape. If None, scrapes all IDs.
+        
+    Returns:
+        pd.DataFrame: Scraped case data
+    """
+    if not isinstance(start, int) or not isinstance(end, int):
+        raise ValueError("Start and end must be integers")
+    
+    if start > end:
+        raise ValueError("Start page must be less than or equal to end page")
+    
+    if start < 1:
+        raise ValueError("Start page must be greater than 0")
+    
+    # Calculate estimated time
+    total_pages = end - start + 1
+    estimated_time = total_pages * 3  # Rough estimate: 3 seconds per page
+    
+    resultls = []
+    errorls = []
+    count = 0
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    for pageno in range(start, end + 1):
+        progress = ((pageno - start) / total_pages) * 100
+        # Processing page
+        url_list = get_url_backend(orgname, selected_ids)
+        
+        # Process each URL (one for each selected ID) for this page
+        for base_url in url_list:
+            url = base_url + str(pageno)
+            
+            # Retry logic for network requests
+            max_retries = 3
+            retry_count = 0
+            
+            while retry_count < max_retries:
+                try:
+                    # Increase timeout and add retry logic
+                    dd = requests.get(url, headers=headers, verify=False, timeout=60)
+                    dd.raise_for_status()
+                    break  # Success, exit retry loop
+                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        # Max retries reached for page
+                        errorls.append(url)
+                        break
+                    else:
+                        # Retry for page
+                        time.sleep(2)  # Wait before retry
+                        continue
+                except Exception as e:
+                    # Non-retryable error for page
+                    errorls.append(url)
+                    break
+            
+            if retry_count >= max_retries:
+                continue  # Skip this URL and move to next
+                
+            try:
+                sd = BeautifulSoup(dd.content, "html.parser")
+                json_text = str(sd.text).strip()
+                json_data = json.loads(json_text, strict=False)
+                
+                if "data" not in json_data or "results" not in json_data["data"]:
+                    # No data found for page
+                    continue
+                    
+                itemls = json_data["data"]["results"]
+
+                titlels = []
+                wenhaols = []
+                datels = []
+                snls = []
+                urlls = []
+                docls = []
+
+                for idx, item in enumerate(itemls):
+                    try:
+                        if "domainMetaList" not in item or not item["domainMetaList"]:
+                            # Missing domainMetaList for item
+                            continue
+                            
+                        headerls = item["domainMetaList"][0]["resultList"]
+                        headerdf = get_pandas().DataFrame(headerls)
+                        
+                        # Extract fields with error handling
+                        wenhao_rows = headerdf[headerdf["key"] == "wh"]
+                        wenhao = wenhao_rows["value"].iloc[0] if not wenhao_rows.empty else ""
+                        
+                        sn_rows = headerdf[headerdf["key"] == "syh"]
+                        sn = sn_rows["value"].iloc[0] if not sn_rows.empty else ""
+                        
+                        title = item.get("subTitle", "")
+                        url_item = item.get("url", "")
+                        date = item.get("publishedTimeStr", "")
+                        
+                        try:
+                            doc = (
+                                item.get("contentHtml", "")
+                                .replace("\r", "")
+                                .replace("\n", "")
+                                .replace("\u2002", "")
+                                .replace("\u3000", "")
+                            )
+                        except Exception as e:
+                            # Error processing contentHtml for item
+                            doc = (
+                                item.get("content", "")
+                                .replace("\r", "")
+                                .replace("\n", "")
+                                .replace("\u2002", "")
+                                .replace("\u3000", "")
+                            )
+
+                        titlels.append(title)
+                        wenhaols.append(wenhao)
+                        datels.append(date)
+                        snls.append(sn)
+                        urlls.append(url_item)
+                        docls.append(doc)
+                    except Exception as e:
+                        # Error processing item
+                        continue
+
+                if titlels:  # Only create DataFrame if we have data
+                    csrceventdf = get_pandas().DataFrame({
+                        "名称": titlels,
+                        "文号": wenhaols,
+                        "发文日期": datels,
+                        "序列号": snls,
+                        "链接": urlls,
+                        "内容": docls,
+                    })
+                    csrceventdf["机构"] = orgname
+                    resultls.append(csrceventdf)
+
+            except requests.exceptions.HTTPError as e:
+                if hasattr(dd, 'status_code') and dd.status_code == 403:
+                    # 403 Forbidden error - authentication or IP blocking issue
+                    pass
+                errorls.append(url)
+            except json.JSONDecodeError as e:
+                # JSON decode error
+                errorls.append(url)
+            except Exception as e:
+                # General error occurred
+                errorls.append(url)
+
+        # Save temporary results every 5 pages (moved outside the URL loop)
+        mod = (count + 1) % 5
+        if mod == 0 and count > 0 and resultls:
+            tempdf = get_pandas().concat(resultls)
+            savename = "temp-" + orgname + "-0-" + str(count + 1)
+            savedf_backend(tempdf, savename)
+
+        # Reduced wait time to improve performance (moved outside the URL loop)
+        wait = random.randint(1, 5)
+        time.sleep(wait)
+        count += 1
+
+    if resultls:
+        resultsum = get_pandas().concat(resultls).reset_index(drop=True)
+        savedf_backend(resultsum, "tempall-" + orgname)
+        # Scraping completed
+        return resultsum
+    else:
+        # Scraping completed
         return get_pandas().DataFrame()

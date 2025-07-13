@@ -225,6 +225,7 @@ export interface UpdateParams {
   orgName: string;
   startPage: number;
   endPage: number;
+  selectedIds?: string[];
 }
 
 export interface AttachmentAnalysis {
@@ -331,6 +332,12 @@ export const caseApi = {
     }
     
     throw lastError;
+  },
+
+  // Get organization to ID mapping
+  getOrg2idMapping: async (): Promise<any> => {
+    const response = await apiClient.get('/api/org2id');
+    return response.data;
   },
 
   // Search cases

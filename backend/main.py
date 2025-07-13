@@ -541,6 +541,7 @@ class UpdateRequest(BaseModel):
     orgName: str = Field(..., min_length=1, max_length=100, description="Organization name")
     startPage: int = Field(..., ge=1, le=1000, description="Starting page number")
     endPage: int = Field(..., ge=1, le=1000, description="Ending page number")
+    selectedIds: Optional[List[str]] = Field(None, description="List of specific IDs to update")
     
     @field_validator('endPage')
     @classmethod
@@ -978,6 +979,31 @@ def get_org_chart_data():
             message="Failed to generate organization chart data",
             error=str(e),
             data={"organizations": {}, "total_cases": 0}
+        )
+
+@app.get("/api/org2id", response_model=APIResponse)
+def get_org2id_mapping():
+    """Get organization to ID mapping from web_crawler"""
+    try:
+        logger.info("Fetching org2id mapping")
+        
+        # Import org2id from web_crawler
+        from web_crawler import org2id
+        
+        return APIResponse(
+            success=True,
+            message="Organization to ID mapping retrieved successfully",
+            data=org2id,
+            count=len(org2id)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching org2id mapping: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to fetch organization to ID mapping",
+            error=str(e),
+            data={}
         )
 
 @app.get("/api/org-summary", response_model=APIResponse)
@@ -1521,7 +1547,9 @@ async def update_cases(request: UpdateRequest):
         
         # Get case summary data using backend functions
         logger.info(f"Fetching case data from pages {request.startPage} to {request.endPage}")
-        sumeventdf = get_sumeventdf_backend(request.orgName, request.startPage, request.endPage)
+        if request.selectedIds:
+            logger.info(f"Using selected IDs: {request.selectedIds}")
+        sumeventdf = get_sumeventdf_backend(request.orgName, request.startPage, request.endPage, request.selectedIds)
         
         if sumeventdf.empty:
             logger.warning(f"No data found for {request.orgName} in specified page range")

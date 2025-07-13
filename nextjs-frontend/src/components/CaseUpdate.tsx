@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   Form,
@@ -14,6 +14,7 @@ import {
   Typography,
   App,
   Divider,
+  Checkbox,
 } from 'antd';
 import { SyncOutlined, ReloadOutlined } from '@ant-design/icons';
 import { caseApi, UpdateParams } from '@/services/api';
@@ -21,16 +22,19 @@ import { caseApi, UpdateParams } from '@/services/api';
 const { Option } = Select;
 const { Text, Title } = Typography;
 
-const orgOptions = [
-  '山西', '四川', '新疆', '山东', '大连', '湖北', '湖南', '陕西',
-  '天津', '宁夏', '安徽', '总部', '北京', '江苏', '黑龙江', '甘肃',
-  '宁波', '深圳', '河北', '广东', '厦门', '福建', '西藏', '青岛',
-  '贵州', '河南', '广西', '内蒙古', '海南', '浙江', '云南', '辽宁',
-  '吉林', '江西', '重庆', '上海', '青海'
-];
+// Organization ID mapping - each organization can have multiple IDs with names
+type IdInfo = {
+  id: string;
+  name: string;
+};
+
+type Org2IdType = {
+  [key: string]: IdInfo[];
+};
 
 interface UpdateResult {
   orgName: string;
+  idName: string;
   success: boolean;
   count: number;
   error?: string;
@@ -43,6 +47,65 @@ const CaseUpdate: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [updateResults, setUpdateResults] = useState<UpdateResult[]>([]);
   const [currentOrg, setCurrentOrg] = useState<string>('');
+  const [selectedOrgs, setSelectedOrgs] = useState<string[]>([]);
+  const [availableIds, setAvailableIds] = useState<{id: string, name: string, orgName: string}[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [org2id, setOrg2id] = useState<Org2IdType>({});
+  const [orgOptions, setOrgOptions] = useState<string[]>([]);
+  const [loadingOrg2id, setLoadingOrg2id] = useState(true);
+
+  // Fetch org2id mapping from API
+  const fetchOrg2idMapping = async () => {
+    try {
+      setLoadingOrg2id(true);
+      const result = await caseApi.getOrg2idMapping();
+      
+      if (result.success && result.data) {
+        setOrg2id(result.data);
+        setOrgOptions(Object.keys(result.data));
+        message.success('组织ID映射加载成功');
+      } else {
+        throw new Error(result.message || '获取组织ID映射失败');
+      }
+    } catch (error) {
+      console.error('Failed to fetch org2id mapping:', error);
+      message.error('获取组织ID映射失败，请刷新页面重试');
+      // Fallback to empty mapping
+      setOrg2id({});
+      setOrgOptions([]);
+    } finally {
+      setLoadingOrg2id(false);
+    }
+  };
+
+  // Load org2id mapping on component mount
+  useEffect(() => {
+    fetchOrg2idMapping();
+  }, []);
+
+  // Handle organization selection change
+  const handleOrgChange = (orgs: string[]) => {
+    setSelectedOrgs(orgs);
+    
+    // Update available IDs based on selected organizations
+    const newAvailableIds: {id: string, name: string, orgName: string}[] = [];
+    orgs.forEach(orgName => {
+      if (org2id[orgName]) {
+        org2id[orgName].forEach((idInfo: IdInfo) => {
+          newAvailableIds.push({
+            id: idInfo.id,
+            name: idInfo.name,
+            orgName: orgName
+          });
+        });
+      }
+    });
+    setAvailableIds(newAvailableIds);
+    
+    // Clear selected IDs when organizations change
+    setSelectedIds([]);
+    form.setFieldsValue({ selectedIds: [] });
+  };
 
   const handleUpdate = async (values: any) => {
     try {
@@ -50,43 +113,107 @@ const CaseUpdate: React.FC = () => {
       setProgress(0);
       setUpdateResults([]);
       
-      const { orgNames, startPage, endPage } = values;
-      const selectedOrgs = orgNames.length > 0 ? orgNames : orgOptions;
-      const totalOrgs = selectedOrgs.length;
+      const { orgNames, selectedIds: formSelectedIds, startPage, endPage } = values;
+      
+      // Determine which IDs to update
+      let idsToUpdate: {id: string, name: string, orgName: string}[] = [];
+      
+      if (formSelectedIds && formSelectedIds.length > 0) {
+        // Use specifically selected IDs
+        idsToUpdate = availableIds.filter(idInfo => formSelectedIds.includes(idInfo.id));
+      } else if (orgNames && orgNames.length > 0) {
+        // Use all IDs from selected organizations
+        orgNames.forEach((orgName: string) => {
+          if (org2id[orgName]) {
+            org2id[orgName].forEach((idInfo: IdInfo) => {
+              idsToUpdate.push({
+                id: idInfo.id,
+                name: idInfo.name,
+                orgName: orgName
+              });
+            });
+          }
+        });
+      } else {
+        // Use all IDs from all organizations
+        orgOptions.forEach(orgName => {
+          if (org2id[orgName]) {
+            org2id[orgName].forEach((idInfo: IdInfo) => {
+              idsToUpdate.push({
+                id: idInfo.id,
+                name: idInfo.name,
+                orgName: orgName
+              });
+            });
+          }
+        });
+      }
+      
+      const totalIds = idsToUpdate.length;
+      const totalPages = endPage - startPage + 1;
+      const totalTasks = totalIds * totalPages; // 总任务数 = 机构数 × 页面数
       const results: UpdateResult[] = [];
+      let completedTasks = 0;
 
-      for (let i = 0; i < selectedOrgs.length; i++) {
-        const orgName = selectedOrgs[i];
-        setCurrentOrg(orgName);
-        setProgress(Math.round((i / totalOrgs) * 100));
-
-        try {
-          const params: UpdateParams = {
-            orgName,
-            startPage,
-            endPage,
-          };
-
-          const result = await caseApi.updateCases(params);
+      for (let i = 0; i < idsToUpdate.length; i++) {
+        const idInfo = idsToUpdate[i];
+        
+        // 按页面范围逐页更新，提供更精确的进度
+        for (let page = startPage; page <= endPage; page++) {
+          setCurrentOrg(`${idInfo.orgName} - ${idInfo.name} (第${page}页/${totalPages}页)`);
           
-          results.push({
-            orgName,
-            success: true,
-            count: result.count,
-          });
+          // 计算当前进度：已完成任务数 / 总任务数
+          const currentProgress = Math.round((completedTasks / totalTasks) * 100);
+          setProgress(currentProgress);
 
-          message.success(`${orgName} 更新完成，共 ${result.count} 条案例`);
-        } catch (error) {
-          results.push({
-            orgName,
-            success: false,
-            count: 0,
-            error: error instanceof Error ? error.message : '未知错误',
-          });
-          message.error(`${orgName} 更新失败`);
+          try {
+            const params = {
+              orgName: idInfo.orgName,
+              selectedIds: [idInfo.id],
+              startPage: page,
+              endPage: page, // 逐页处理
+            };
+
+            const result = await caseApi.updateCases(params);
+            
+            // 如果是该机构的第一页，创建结果记录
+            if (page === startPage) {
+              results.push({
+                orgName: idInfo.orgName,
+                idName: idInfo.name,
+                success: true,
+                count: result.count,
+              });
+            } else {
+              // 累加后续页面的案例数
+              const existingResult = results.find(r => 
+                r.orgName === idInfo.orgName && r.idName === idInfo.name
+              );
+              if (existingResult) {
+                existingResult.count += result.count;
+              }
+            }
+
+            if (result.count > 0) {
+              message.success(`${idInfo.orgName} - ${idInfo.name} 第${page}页更新完成，新增 ${result.count} 条案例`);
+            }
+          } catch (error) {
+            // 如果是该机构的第一页且出错，创建失败记录
+            if (page === startPage) {
+              results.push({
+                orgName: idInfo.orgName,
+                idName: idInfo.name,
+                success: false,
+                count: 0,
+                error: error instanceof Error ? error.message : '未知错误',
+              });
+            }
+            message.error(`${idInfo.orgName} - ${idInfo.name} 第${page}页更新失败`);
+          }
+
+          completedTasks++;
+          setUpdateResults([...results]);
         }
-
-        setUpdateResults([...results]);
       }
 
       setProgress(100);
@@ -96,7 +223,7 @@ const CaseUpdate: React.FC = () => {
       const totalCount = results.reduce((sum, r) => sum + r.count, 0);
       
       message.success(
-        `更新完成！成功更新 ${successCount}/${totalOrgs} 个机构，共 ${totalCount} 条案例`
+        `更新完成！成功更新 ${successCount}/${totalIds} 个ID，处理 ${totalPages} 页，共 ${totalCount} 条案例`
       );
     } catch (error) {
       message.error('更新过程中发生错误');
@@ -158,16 +285,19 @@ const CaseUpdate: React.FC = () => {
             endPage: 1,
           }}
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Form.Item
               label="选择机构"
               name="orgNames"
-              tooltip="不选择则更新所有机构"
+              tooltip="选择机构后可进一步选择具体ID"
             >
               <Select
                 mode="multiple"
-                placeholder="请选择机构（留空则选择全部）"
+                placeholder={loadingOrg2id ? "正在加载机构列表..." : "请选择机构（留空则选择全部）"}
                 allowClear
+                onChange={handleOrgChange}
+                loading={loadingOrg2id}
+                disabled={loadingOrg2id}
               >
                 {orgOptions.map(org => (
                   <Option key={org} value={org}>{org}</Option>
@@ -175,6 +305,28 @@ const CaseUpdate: React.FC = () => {
               </Select>
             </Form.Item>
             
+            <Form.Item
+              label="选择具体ID"
+              name="selectedIds"
+              tooltip="可选择具体的ID进行更新，留空则更新所选机构的所有ID"
+            >
+              <Select
+                mode="multiple"
+                placeholder="请先选择机构，然后选择具体ID（留空则选择所选机构的全部ID）"
+                allowClear
+                disabled={availableIds.length === 0}
+                onChange={setSelectedIds}
+              >
+                {availableIds.map(idInfo => (
+                  <Option key={idInfo.id} value={idInfo.id}>
+                    {idInfo.orgName} - {idInfo.name}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Form.Item
               label="起始页"
               name="startPage"
@@ -237,14 +389,19 @@ const CaseUpdate: React.FC = () => {
                 '0%': '#108ee9',
                 '100%': '#87d068',
               }}
+              format={(percent) => `${percent}%`}
             />
             {currentOrg && (
               <Alert
                 message={`正在更新: ${currentOrg}`}
+                description={`总体进度: ${progress}% - 按页面逐步处理中`}
                 type="info"
                 showIcon
               />
             )}
+            <div className="text-sm text-gray-500">
+              提示：进度条根据页面范围和机构数量计算，每完成一页更新进度条会相应推进
+            </div>
           </div>
         </Card>
       )}
@@ -282,7 +439,7 @@ const CaseUpdate: React.FC = () => {
                 <List.Item.Meta
                   title={
                     <Space>
-                      <Text strong>{result.orgName}</Text>
+                      <Text strong>{result.orgName} - {result.idName}</Text>
                       {result.success ? (
                         <Text type="success">✓ 成功</Text>
                       ) : (
