@@ -894,6 +894,14 @@ export const caseApi = {
     const response = await apiClient.get('/api/csrclenanalysis-data');
     return response.data;
   },
+
+  // Download attachments
+  downloadAttachments: async (positions: number[]): Promise<any> => {
+    const response = await apiClient.post('/download-attachments', {
+      positions: positions
+    });
+    return response.data;
+  },
 };
 
 export default apiClient;

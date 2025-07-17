@@ -3552,7 +3552,7 @@ async def extract_text(request: dict):
             )
         
         # Import text extraction functions from doc2text
-        from doc2text import docxurl2txt, pdfurl2txt, docxurl2ocr, pdfurl2ocr, picurl2ocr
+        from doc2text import docxurl2txt, pdfurl2txt, docxurl2ocr, pdfurl2ocr, picurl2ocr, find_libreoffice_executable, convert_with_libreoffice
         import os
         import subprocess
         
@@ -3631,15 +3631,14 @@ async def extract_text(request: dict):
                                     if not os.path.exists(converted_path):
                                         try:
                                             logger.info(f"Converting DOC file to DOCX: {filename}")
-                                            subprocess.call([
-                                                "soffice",
-                                                "--headless",
-                                                "--convert-to",
-                                                "docx",
-                                                file_path,
-                                                "--outdir",
-                                                doc_dir,
-                                            ])
+                                            soffice_path = find_libreoffice_executable()
+                                            if soffice_path:
+                                                success = convert_with_libreoffice(file_path, doc_dir, soffice_path)
+                                                if not success:
+                                                    extracted_text = f"LibreOffice conversion failed for {filename}"
+                                            else:
+                                                logger.error("LibreOffice not found on system")
+                                                extracted_text = "LibreOffice not found - cannot convert DOC files"
                                         except Exception as convert_error:
                                             logger.error(f"LibreOffice conversion failed for {filename}: {str(convert_error)}")
                                             extracted_text = f"Conversion failed: {str(convert_error)}"
@@ -3664,15 +3663,14 @@ async def extract_text(request: dict):
                                     if not os.path.exists(converted_path):
                                         try:
                                             logger.info(f"Converting WPS file to DOCX: {filename}")
-                                            subprocess.call([
-                                                "soffice",
-                                                "--headless",
-                                                "--convert-to",
-                                                "docx",
-                                                file_path,
-                                                "--outdir",
-                                                wps_dir,
-                                            ])
+                                            soffice_path = find_libreoffice_executable()
+                                            if soffice_path:
+                                                success = convert_with_libreoffice(file_path, wps_dir, soffice_path)
+                                                if not success:
+                                                    extracted_text = f"LibreOffice conversion failed for {filename}"
+                                            else:
+                                                logger.error("LibreOffice not found on system")
+                                                extracted_text = "LibreOffice not found - cannot convert WPS files"
                                         except Exception as convert_error:
                                             logger.error(f"LibreOffice conversion failed for {filename}: {str(convert_error)}")
                                             extracted_text = f"Conversion failed: {str(convert_error)}"
@@ -3829,6 +3827,9 @@ async def update_attachment_text(request: dict):
         updated_attachments = []
         updated_count = 0
         
+        # Track which specific records need to be updated (by URL)
+        records_to_update = {}  # {url: {text_content, content_length}}
+        
         # Process each attachment ID
         for attachment_id in attachment_ids:
             try:
@@ -3884,21 +3885,15 @@ async def update_attachment_text(request: dict):
                         continue
                     
                     if mask.any():
-                        # Update the content field in csrc2analysis
-                        if '内容' in analysis_df.columns:
-                            analysis_df.loc[mask, '内容'] = text_content
-                        elif 'content' in analysis_df.columns:
-                            analysis_df.loc[mask, 'content'] = text_content
-                        
-                        # Update content length if column exists
+                        # Store the update information for later processing
                         content_length = len(text_content) if text_content else 0
-                        if 'len' in analysis_df.columns:
-                            analysis_df.loc[mask, 'len'] = content_length
-                        elif '内容长度' in analysis_df.columns:
-                            analysis_df.loc[mask, '内容长度'] = content_length
+                        records_to_update[attachment_url] = {
+                            'text_content': text_content,
+                            'content_length': content_length
+                        }
                         
                         updated_count += 1
-                        logger.info(f"Updated content for URL: {attachment_url} with {content_length} characters")
+                        logger.info(f"Prepared update for URL: {attachment_url} with {content_length} characters")
                         
                         updated_attachments.append({
                             'id': attachment_id,
@@ -3934,52 +3929,110 @@ async def update_attachment_text(request: dict):
                 })
         
         # Save updated csrc2analysis data if any updates were made
-        if updated_count > 0:
+        if updated_count > 0 and records_to_update:
             try:
                 # Group by source_filename to save each file separately
                 if 'source_filename' in analysis_df.columns:
-                    # Get unique source filenames
-                    unique_files = analysis_df['source_filename'].dropna().unique()
+                    # Find which files contain the updated records
+                    files_to_update = set()
+                    for url in records_to_update.keys():
+                        if '链接' in analysis_df.columns:
+                            matching_records = analysis_df[analysis_df['链接'] == url]
+                        elif 'url' in analysis_df.columns:
+                            matching_records = analysis_df[analysis_df['url'] == url]
+                        else:
+                            continue
+                        
+                        if not matching_records.empty:
+                            source_files = matching_records['source_filename'].dropna().unique()
+                            files_to_update.update(source_files)
                     
                     backup_count = 0  # Track total number of backups created
                     
-                    for source_filename in unique_files:
-                        # Filter data for this specific file
-                        file_data = analysis_df[analysis_df['source_filename'] == source_filename].copy()
+                    # Collect all records that will be updated for backup
+                    backup_records = []
+                    
+                    # Only process files that contain updated records
+                    for source_filename in files_to_update:
+                        # Read the original file from disk to get clean data
+                        current_file = os.path.abspath(__file__)
+                        backend_dir = os.path.dirname(current_file)
+                        project_root = os.path.dirname(backend_dir)
+                        csrc2_dir = os.path.join(project_root, "data", "penalty", "csrc2")
+                        original_file_path = os.path.join(csrc2_dir, source_filename)
                         
-                        if not file_data.empty:
-                            # Get the original file path
-                            current_file = os.path.abspath(__file__)
-                            backend_dir = os.path.dirname(current_file)
-                            project_root = os.path.dirname(backend_dir)
-                            csrc2_dir = os.path.join(project_root, "data", "penalty", "csrc2")
-                            original_file_path = os.path.join(csrc2_dir, source_filename)
+                        if not os.path.exists(original_file_path):
+                            logger.warning(f"Original file not found: {original_file_path}")
+                            continue
+                        
+                        # Read the original file data
+                        try:
+                            original_file_data = get_pandas().read_csv(original_file_path, encoding='utf-8-sig')
+                        except Exception as read_error:
+                            logger.error(f"Failed to read original file {source_filename}: {str(read_error)}")
+                            continue
+                        
+                        # Collect records that will be updated for backup
+                        file_updated = False
+                        for url, update_info in records_to_update.items():
+                            # Find matching records in this file
+                            if '链接' in original_file_data.columns:
+                                mask = original_file_data['链接'] == url
+                            elif 'url' in original_file_data.columns:
+                                mask = original_file_data['url'] == url
+                            else:
+                                continue
                             
-                            # Create backup only once per file before modification
-                            if os.path.exists(original_file_path):
-                                # Generate timestamp for backup
-                                nowstr = get_now()
-                                # Extract filename without extension
-                                filename_without_ext = os.path.splitext(source_filename)[0]
-                                file_extension = os.path.splitext(source_filename)[1]
-                                # Create backup filename
-                                backup_filename = f"{nowstr}_{filename_without_ext}_backup{file_extension}"
-                                backup_file_path = os.path.join(csrc2_dir, backup_filename)
+                            if mask.any():
+                                # Get the original record(s) before update for backup
+                                original_records = original_file_data[mask].copy()
+                                # Add source file info to backup records
+                                original_records['backup_source_file'] = source_filename
+                                original_records['backup_timestamp'] = get_now()
+                                backup_records.append(original_records)
                                 
-                                # Create backup by copying
-                                import shutil
-                                shutil.copy2(original_file_path, backup_file_path)
-                                backup_count += 1
-                                logger.info(f"Created backup for {source_filename}: {backup_filename}")
-                            
-                            # Remove source_filename column before saving
-                            file_data_to_save = file_data.drop(columns=['source_filename'], errors='ignore')
-                            
-                            # Save the updated data with original filename
-                            file_data_to_save.to_csv(original_file_path, index=False, encoding='utf-8-sig')
+                                # Update the content field
+                                if '内容' in original_file_data.columns:
+                                    original_file_data.loc[mask, '内容'] = update_info['text_content']
+                                elif 'content' in original_file_data.columns:
+                                    original_file_data.loc[mask, 'content'] = update_info['text_content']
+                                
+                                # Update content length if column exists
+                                if 'len' in original_file_data.columns:
+                                    original_file_data.loc[mask, 'len'] = update_info['content_length']
+                                elif '内容长度' in original_file_data.columns:
+                                    original_file_data.loc[mask, '内容长度'] = update_info['content_length']
+                                
+                                file_updated = True
+                                logger.info(f"Applied update for URL {url} in file {source_filename}")
+                        
+                        # Save the updated file data only if changes were made
+                        if file_updated:
+                            original_file_data.to_csv(original_file_path, index=False, encoding='utf-8-sig')
                             logger.info(f"Saved updated data to {source_filename}")
                     
-                    logger.info(f"Saved updated data to {len(unique_files)} files, created {backup_count} backup files")
+                    # Create a single backup file with all updated records
+                    if backup_records:
+                        try:
+                            # Combine all backup records into one DataFrame
+                            backup_df = get_pandas().concat(backup_records, ignore_index=True)
+                            
+                            # Create backup filename with timestamp
+                            nowstr = get_now()
+                            backup_filename = f"{nowstr}_updated_records_backup.csv"
+                            backup_file_path = os.path.join(csrc2_dir, backup_filename)
+                            
+                            # Save backup file
+                            backup_df.to_csv(backup_file_path, index=False, encoding='utf-8-sig')
+                            backup_count = 1
+                            logger.info(f"Created backup file with {len(backup_df)} updated records: {backup_filename}")
+                        except Exception as backup_error:
+                            logger.error(f"Failed to create backup file: {str(backup_error)}")
+                            backup_count = 0
+                    else:
+                        backup_count = 0
+                    
+                    logger.info(f"Processed {len(files_to_update)} files, created backup for {len(backup_records)} updated records")
                 else:
                     # No source_filename column found - do not update anything
                     logger.warning("No source_filename column found in analysis_df, skipping file updates")

@@ -533,12 +533,41 @@ const AttachmentProcessing: React.FC = () => {
       
       setDownloadResults(prev => [...prev, ...newDownloadResults]);
       
-      // Update download status
-      const updatedData = analysisData.map(item => 
-        selectedRows.includes(item.id)
-          ? { ...item, downloadStatus: 'downloaded' as const }
-          : item
-      );
+      // Create a map of successful downloads for efficient lookup
+      const successfulDownloads = new Map();
+      downloadData.forEach((item: any) => {
+        if (item.filename) {
+          successfulDownloads.set(item.url, {
+            filename: item.filename,
+            text: item.text || '',
+            downloaded: true
+          });
+        }
+      });
+      
+      // Update download status based on actual results
+      const updatedData = analysisData.map(item => {
+        if (selectedRows.includes(item.id)) {
+          const downloadInfo = successfulDownloads.get(item.url);
+          if (downloadInfo) {
+            return {
+              ...item,
+              downloadStatus: 'downloaded' as const,
+              filename: downloadInfo.filename,
+              content: downloadInfo.text || item.content,
+              contentLength: downloadInfo.text ? downloadInfo.text.length : item.contentLength,
+              textExtracted: !!downloadInfo.text,
+            };
+          } else {
+            return {
+              ...item,
+              downloadStatus: 'failed' as const,
+            };
+          }
+        }
+        return item;
+      });
+      
       setAnalysisData(updatedData);
       
       setProgress(100);
@@ -721,17 +750,75 @@ const AttachmentProcessing: React.FC = () => {
       // 调用后端API更新文本内容，传递URL列表
       const result = await caseApi.updateAttachmentText(selectedUrls);
       
-      // 更新本地数据
-      if (result.success && result.data) {
-        setAnalysisData(prev => 
-          prev.map(item => {
-            const updatedItem = result.data.find((updated: any) => updated.id === item.id);
-            return updatedItem ? { ...item, content: updatedItem.content, contentLength: updatedItem.contentLength } : item;
-          })
-        );
+      if (result.success) {
+        // 自动刷新数据以获取最新状态
+        setCurrentTask('刷新数据中...');
+        
+        try {
+          // 获取当前表单值用于刷新数据
+          const formValues = form.getFieldsValue();
+          const currentContentLength = formValues.contentLength || 10;
+          const currentDownloadFilter = formValues.downloadFilter || 'none';
+          
+          // 重新获取分析数据
+          const refreshedData = await caseApi.analyzeAttachments({
+            contentLength: currentContentLength,
+            downloadFilter: currentDownloadFilter,
+          });
+          
+          if (refreshedData.success && refreshedData.data?.result) {
+            const transformedData = refreshedData.data.result.map((item: any, index: number) => ({
+              id: item.链接 || item.url || `item-${index}`,
+              title: item.名称 || item.title || '',
+              content: item.内容 || item.content || '',
+              contentLength: item.len || item.contentLength || 0,
+              hasAttachment: item.filename ? true : false,
+              downloadStatus: 'pending' as const,
+              textExtracted: false,
+              filename: item.filename || '',
+              url: item.链接 || item.url || '',
+              publishDate: item.发文日期 || item.date || '',
+              sourceFilename: item.source_filename || '',
+            }));
+            
+            setAnalysisData(transformedData);
+            
+            // 清除选中状态
+            setSelectedRows([]);
+            
+            message.success(`成功更新 ${selectedUrls.length} 个附件的文本，数据已自动刷新`);
+          } else {
+            // 如果刷新失败，仍然更新本地数据
+            if (result.data) {
+              setAnalysisData(prev => 
+                prev.map(item => {
+                  const updatedItem = result.data.find((updated: any) => updated.id === item.id);
+                  return updatedItem ? { ...item, content: updatedItem.content, contentLength: updatedItem.contentLength } : item;
+                })
+              );
+            }
+            // 清除选中状态
+            setSelectedRows([]);
+            message.success(`成功更新 ${selectedUrls.length} 个附件的文本`);
+          }
+        } catch (refreshError) {
+          console.warn('数据刷新失败，使用本地更新:', refreshError);
+          // 如果刷新失败，仍然更新本地数据
+          if (result.data) {
+            setAnalysisData(prev => 
+              prev.map(item => {
+                const updatedItem = result.data.find((updated: any) => updated.id === item.id);
+                return updatedItem ? { ...item, content: updatedItem.content, contentLength: updatedItem.contentLength } : item;
+              })
+            );
+          }
+          // 清除选中状态
+          setSelectedRows([]);
+          message.warning(`成功更新 ${selectedUrls.length} 个附件的文本，但数据刷新失败，请手动重新分析`);
+        }
+      } else {
+        message.error(result.message || '文本更新失败');
       }
-      
-      message.success(`成功更新 ${selectedRows.length} 个附件的文本`);
     } catch (error: any) {
       console.error('更新文本失败:', error);
       message.error(error.response?.data?.message || '文本更新失败，请稍后重试');

@@ -62,9 +62,17 @@ const CaseClassification: React.FC = () => {
       key: 'content',
       width: 300,
       ellipsis: true,
-      render: (text: string) => (
-        <span title={text}>{text?.substring(0, 100)}...</span>
-      ),
+      render: (text: string) => {
+        const content = text || '';
+        const displayText = content ? content.substring(0, 100) + (content.length > 100 ? '...' : '') : '-';
+        // 限制title内容长度，避免过长内容导致显示问题
+        const titleText = content && content.length > 0 ? 
+          (content.length > 500 ? content.substring(0, 500) + '...' : content) : 
+          undefined;
+        return (
+          <span title={titleText}>{displayText}</span>
+        );
+      },
     },
     {
       title: '文号',

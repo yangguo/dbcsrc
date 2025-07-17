@@ -188,73 +188,118 @@ def save_uploadedfile(uploadedfile, uploadpath):
     pass
 
 
+def find_libreoffice_executable():
+    """Find LibreOffice executable on Windows"""
+    possible_paths = [
+        r"D:\LibreOffice\program\soffice.exe",  # Your custom installation path
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+        r"C:\Program Files\LibreOffice 7\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice 7\program\soffice.exe",
+        "soffice"  # fallback for Linux/macOS or if in PATH
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path) or path == "soffice":
+            return path
+    
+    return None
+
+def convert_with_libreoffice(input_file, output_dir, soffice_path):
+    """Convert document using LibreOffice with proper error handling"""
+    try:
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Convert paths to absolute paths to avoid issues
+        input_file = os.path.abspath(input_file)
+        output_dir = os.path.abspath(output_dir)
+        
+        # Check if input file exists
+        if not os.path.exists(input_file):
+            print(f"Input file does not exist: {input_file}")
+            return False
+        
+        # Check if LibreOffice executable exists
+        if not os.path.exists(soffice_path):
+            print(f"LibreOffice executable not found: {soffice_path}")
+            return False
+        
+        print(f"Converting: {input_file}")
+        print(f"Output dir: {output_dir}")
+        print(f"Using LibreOffice: {soffice_path}")
+        
+        cmd = [
+            soffice_path,
+            "--headless",
+            "--convert-to",
+            "docx",
+            input_file,
+            "--outdir",
+            output_dir,
+        ]
+        
+        # Use shell=True on Windows to handle paths with spaces and special characters
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,  # 60 second timeout
+            shell=True,
+            cwd=output_dir  # Set working directory
+        )
+        
+        print(f"LibreOffice return code: {result.returncode}")
+        if result.stdout:
+            print(f"LibreOffice stdout: {result.stdout}")
+        if result.stderr:
+            print(f"LibreOffice stderr: {result.stderr}")
+        
+        if result.returncode != 0:
+            print(f"LibreOffice conversion failed for {input_file}")
+            return False
+        
+        return True
+        
+    except subprocess.TimeoutExpired:
+        print(f"LibreOffice conversion timed out for {input_file}")
+        return False
+    except Exception as e:
+        print(f"Error converting {input_file}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 def docxconvertion(uploadpath):
     docdest = os.path.join(uploadpath, "doc")
     wpsdest = os.path.join(uploadpath, "wps")
-    # doccdest = os.path.join(basepath,'docc')
     docxdest = os.path.join(uploadpath, "docx")
+
+    # Find LibreOffice executable
+    soffice_path = find_libreoffice_executable()
+    if not soffice_path:
+        print("LibreOffice not found. Please install LibreOffice or add it to PATH.")
+        return False
 
     docfiles = find_files(uploadpath, "*.doc", True)
     wpsfiles = find_files(uploadpath, "*.wps", True)
     docxfiles = find_files(uploadpath, "*.docx", True)
 
+    success = True
+
     for filepath in docfiles:
-        # Processing file path
-        # filename = os.path.basename(filepath)
-        #     print(filename)
-        #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
-        subprocess.call(
-            [
-                "soffice",
-                "--headless",
-                "--convert-to",
-                "docx",
-                filepath,
-                "--outdir",
-                docdest,
-            ]
-        )
+        if not convert_with_libreoffice(filepath, docdest, soffice_path):
+            success = False
 
     for filepath in wpsfiles:
-        # Processing file path
-        # filename = os.path.basename(filepath)
-        #     print(filename)
-        #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
-        subprocess.call(
-            [
-                "soffice",
-                "--headless",
-                "--convert-to",
-                "docx",
-                filepath,
-                "--outdir",
-                wpsdest,
-            ]
-        )
-
-    # for filepath in doccfiles:
-    #     print (filepath)
-    #     filename=os.path.basename(filepath)
-    # #     print(filename)
-    # #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
-    #     subprocess.call(['soffice', '--headless', '--convert-to', 'docx', filepath,"--outdir",doccdest])
+        if not convert_with_libreoffice(filepath, wpsdest, soffice_path):
+            success = False
 
     for filepath in docxfiles:
-        # Processing file path
-        # filename = os.path.basename(filepath)
-        #     print(filename)
-        #         output = subprocess.check_output(["soffice","--headless","--convert-to","docx",file,"--outdir",dest])
-        subprocess.call(
-            [
-                "soffice",
-                "--headless",
-                "--convert-to",
-                "docx",
-                filepath,
-                "--outdir",
-                docxdest,
-            ]
-        )
+        if not convert_with_libreoffice(filepath, docxdest, soffice_path):
+            success = False
+    
+    return success
 
 
 def get_uploadfiles(uploadpath):
