@@ -589,6 +589,148 @@ class PenaltyAnalysisRequest(BaseModel):
 def read_root():
     return {"message": "DBCSRC API is running", "version": "1.0.0"}
 
+@app.get("/job/{job_id}", response_model=APIResponse, tags=["Jobs"])
+async def get_job_status(job_id: str):
+    """Get job status and progress"""
+    try:
+        if job_id not in job_storage:
+            return APIResponse(
+                success=False,
+                message="Job not found",
+                error="Invalid job ID"
+            )
+        
+        job_info = job_storage[job_id]
+        
+        # Calculate duration if job is running or completed
+        duration = None
+        if job_info.started_at:
+            end_time = job_info.completed_at or datetime.now()
+            duration = (end_time - job_info.started_at).total_seconds()
+        
+        return APIResponse(
+            success=True,
+            message="Job status retrieved successfully",
+            data={
+                "job_id": job_info.job_id,
+                "status": job_info.status,
+                "progress": job_info.progress,
+                "processed_records": job_info.processed_records,
+                "total_records": job_info.total_records,
+                "created_at": job_info.created_at.isoformat(),
+                "started_at": job_info.started_at.isoformat() if job_info.started_at else None,
+                "completed_at": job_info.completed_at.isoformat() if job_info.completed_at else None,
+                "duration_seconds": duration,
+                "error": job_info.error,
+                "result_count": len(job_info.result) if job_info.result else 0
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving job status: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to retrieve job status",
+            error=str(e)
+        )
+
+@app.get("/jobs", response_model=APIResponse, tags=["Jobs"])
+async def list_jobs():
+    """List all jobs with their status"""
+    try:
+        jobs_data = []
+        for job_id, job_info in job_storage.items():
+            duration = None
+            if job_info.started_at:
+                end_time = job_info.completed_at or datetime.now()
+                duration = (end_time - job_info.started_at).total_seconds()
+            
+            jobs_data.append({
+                "job_id": job_info.job_id,
+                "status": job_info.status,
+                "progress": job_info.progress,
+                "processed_records": job_info.processed_records,
+                "total_records": job_info.total_records,
+                "created_at": job_info.created_at.isoformat(),
+                "duration_seconds": duration,
+                "error": job_info.error
+            })
+        
+        return APIResponse(
+            success=True,
+            message=f"Retrieved {len(jobs_data)} jobs",
+            data=jobs_data,
+            count=len(jobs_data)
+        )
+    except Exception as e:
+        logger.error(f"Error listing jobs: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to list jobs",
+            error=str(e)
+        )
+
+@app.delete("/jobs/{job_id}", response_model=APIResponse, tags=["Jobs"])
+async def delete_job(job_id: str):
+    """Delete a specific job from storage"""
+    try:
+        if job_id not in job_storage:
+            return APIResponse(
+                success=False,
+                message="Job not found",
+                error="Invalid job ID"
+            )
+        
+        job_info = job_storage[job_id]
+        if job_info.status == JobStatus.RUNNING:
+            return APIResponse(
+                success=False,
+                message="Cannot delete running job",
+                error="Job is currently running"
+            )
+        
+        del job_storage[job_id]
+        
+        return APIResponse(
+            success=True,
+            message="Job deleted successfully"
+        )
+    except Exception as e:
+        logger.error(f"Error deleting job: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to delete job",
+            error=str(e)
+        )
+
+@app.delete("/jobs", response_model=APIResponse, tags=["Jobs"])
+async def cleanup_jobs():
+    """Clean up completed and failed jobs older than 1 hour"""
+    try:
+        current_time = datetime.now()
+        cleanup_threshold = timedelta(hours=1)
+        
+        jobs_to_delete = []
+        for job_id, job_info in job_storage.items():
+            if job_info.status in [JobStatus.COMPLETED, JobStatus.FAILED]:
+                if job_info.completed_at and (current_time - job_info.completed_at) > cleanup_threshold:
+                    jobs_to_delete.append(job_id)
+        
+        for job_id in jobs_to_delete:
+            del job_storage[job_id]
+        
+        return APIResponse(
+            success=True,
+            message=f"Cleaned up {len(jobs_to_delete)} old jobs",
+            data={"deleted_count": len(jobs_to_delete)}
+        )
+    except Exception as e:
+        logger.error(f"Error cleaning up jobs: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to cleanup jobs",
+            error=str(e)
+        )
+
 
 # Cache for summary data to improve performance
 _summary_cache = {"data": None, "timestamp": 0}
@@ -1701,14 +1843,36 @@ async def analyze_attachments(request: AttachmentRequest):
 
 @app.post("/download-attachments", response_model=APIResponse)
 async def download_attachments(request: AttachmentDownloadRequest):
-    """Download case attachments"""
+    """Download case attachments with progress tracking"""
     try:
         logger.info(f"Starting attachment download with positions={request.positions}")
+        
+        # Create a job for tracking progress
+        job_id = str(uuid.uuid4())
+        job_info = JobInfo(
+            job_id=job_id,
+            status=JobStatus.PENDING,
+            created_at=datetime.now(),
+            total_records=len(request.positions)
+        )
+        job_storage[job_id] = job_info
+        
+        # Progress callback function
+        def progress_callback(current: int, total: int, message: str):
+            if job_id in job_storage:
+                job_storage[job_id].processed_records = current
+                job_storage[job_id].progress = int((current / total) * 100) if total > 0 else 0
+                logger.info(f"Download progress: {current}/{total} ({job_storage[job_id].progress}%) - {message}")
+        
+        # Update job status to running
+        job_storage[job_id].status = JobStatus.RUNNING
+        job_storage[job_id].started_at = datetime.now()
         
         # Import here to avoid circular imports
         from web_crawler import download_attachment
         
-        result = download_attachment(request.positions)
+        # Run download with progress callback
+        result = download_attachment(request.positions, progress_callback)
         
         # Convert DataFrame to serializable format
         if hasattr(result, 'to_dict'):
@@ -1717,24 +1881,86 @@ async def download_attachments(request: AttachmentDownloadRequest):
             total_count = len(result)
         else:
             # It's already serializable or None
-            serializable_result = result
+            serializable_result = result if result is not None else []
             total_count = 0
         
-        logger.info("Attachment download completed successfully")
+        # Update job status to completed
+        job_storage[job_id].status = JobStatus.COMPLETED
+        job_storage[job_id].completed_at = datetime.now()
+        job_storage[job_id].result = serializable_result
+        
+        logger.info(f"Attachment download completed successfully - {total_count} files processed")
+        
         return APIResponse(
             success=True,
-            message="Attachment download completed successfully",
+            message=f"Attachment download completed successfully - {total_count} files processed",
             data={
+                "job_id": job_id,
                 "results": serializable_result,
-                "count": total_count
-            }
+                "summary": {
+                    "total_requested": len(request.positions),
+                    "total_processed": total_count,
+                    "success_rate": f"{(total_count/len(request.positions)*100):.1f}%" if request.positions else "0%"
+                }
+            },
+            count=total_count
         )
         
     except Exception as e:
+        # Update job status to failed
+        if 'job_id' in locals() and job_id in job_storage:
+            job_storage[job_id].status = JobStatus.FAILED
+            job_storage[job_id].error = str(e)
+            job_storage[job_id].completed_at = datetime.now()
+        
         logger.error(f"Attachment download failed: {str(e)}", exc_info=True)
         return APIResponse(
             success=False,
             message="Attachment download failed",
+            error=str(e)
+        )
+
+@app.get("/job-status/{job_id}", response_model=APIResponse)
+async def get_job_status(job_id: str):
+    """Get job status and progress"""
+    try:
+        if job_id not in job_storage:
+            return APIResponse(
+                success=False,
+                message="Job not found",
+                error="Invalid job ID"
+            )
+        
+        job_info = job_storage[job_id]
+        
+        # Convert datetime objects to strings for JSON serialization
+        job_data = {
+            "job_id": job_info.job_id,
+            "status": job_info.status,
+            "progress": job_info.progress,
+            "processed_records": job_info.processed_records,
+            "total_records": job_info.total_records,
+            "created_at": job_info.created_at.isoformat() if job_info.created_at else None,
+            "started_at": job_info.started_at.isoformat() if job_info.started_at else None,
+            "completed_at": job_info.completed_at.isoformat() if job_info.completed_at else None,
+            "error": job_info.error
+        }
+        
+        # Include result only if job is completed
+        if job_info.status == JobStatus.COMPLETED and job_info.result:
+            job_data["result"] = job_info.result
+        
+        return APIResponse(
+            success=True,
+            message="Job status retrieved successfully",
+            data=job_data
+        )
+        
+    except Exception as e:
+        logger.error(f"Error retrieving job status: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to retrieve job status",
             error=str(e)
         )
 

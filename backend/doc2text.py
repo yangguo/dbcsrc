@@ -38,21 +38,85 @@ def docxurl2txt(url):
     return text
 
 
-def pdfurl2txt(url):
-    #     response = requests.get(url)
-    #     source_stream = BytesIO(response.content)
+def pdfurl2txt(url, uploadpath=None):
+    """Extract text from PDF using pdfplumber with automatic OCR fallback"""
     result = ""
+    
     try:
-        #         with pdfplumber.open(source_stream) as pdf:
+        # Primary method: pdfplumber
         with pdfplumber.open(url) as pdf:
             for page in pdf.pages:
                 txt = page.extract_text()
-                if txt != "":
-                    result += txt
+                if txt:
+                    result += txt + "\n"
+        
+        # Check if we got meaningful text (not just whitespace/special chars)
+        clean_result = result.strip().translate(str.maketrans("", "", r" \n\t\r\s"))
+        
+        if clean_result:
+            print(f"Successfully extracted {len(result)} characters using pdfplumber")
+            return result.strip()
+        else:
+            print("pdfplumber extracted no meaningful text, trying PyMuPDF...")
+            
     except Exception as e:
-        # Error in PDF processing
-        pass
-    return result
+        print(f"pdfplumber failed for {url}: {str(e)}")
+    
+    # Fallback method 1: PyMuPDF
+    try:
+        import fitz
+        doc = fitz.open(url)
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            text = page.get_text()
+            if text:
+                result += text + "\n"
+        doc.close()
+        
+        # Check if PyMuPDF got meaningful text
+        clean_result = result.strip().translate(str.maketrans("", "", r" \n\t\r\s"))
+        
+        if clean_result:
+            print(f"Successfully extracted {len(result)} characters using PyMuPDF")
+            return result.strip()
+        else:
+            print("PyMuPDF also extracted no meaningful text, falling back to OCR...")
+            
+    except Exception as fallback_error:
+        print(f"PyMuPDF fallback failed: {str(fallback_error)}")
+    
+    # Fallback method 2: OCR using LLM
+    if uploadpath is None:
+        # Create temporary directory for OCR processing
+        import tempfile
+        uploadpath = tempfile.mkdtemp()
+        cleanup_temp = True
+    else:
+        cleanup_temp = False
+    
+    try:
+        print("Attempting OCR extraction...")
+        ocr_result = pdfurl2ocr(url, uploadpath)
+        
+        if ocr_result and ocr_result.strip():
+            print(f"Successfully extracted {len(ocr_result)} characters using OCR")
+            return ocr_result.strip()
+        else:
+            print("OCR extraction also failed or returned no text")
+            
+    except Exception as ocr_error:
+        print(f"OCR fallback failed: {str(ocr_error)}")
+    finally:
+        # Clean up temporary directory if we created it
+        if cleanup_temp:
+            try:
+                import shutil
+                shutil.rmtree(uploadpath, ignore_errors=True)
+            except:
+                pass
+    
+    print(f"All PDF text extraction methods failed for {url}")
+    return ""
 
 
 # Initialize OpenAI client
@@ -70,67 +134,153 @@ def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
+
+
 def llm_ocr_text(image_file):
-    """Extract text from image using OpenAI Vision model"""
+    """Extract text from image using Doubao Vision API - simplified and focused"""
     try:
+        if not os.path.exists(image_file):
+            print(f"Image file not found: {image_file}")
+            return ""
+        
         # Get the base64 string
         base64_image = encode_image(image_file)
+        if not base64_image:
+            print(f"Failed to encode image: {image_file}")
+            return ""
         
-        response = client.chat.completions.create(
-            model=OPENAI_VISION_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Please extract all text from this image. Return only the extracted text without any additional commentary or formatting. If the text is in Chinese, preserve the Chinese characters."
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
+        print(f"Attempting OCR for: {os.path.basename(image_file)}")
+        
+        # Use the configured vision model directly
+        try:
+            response = client.chat.completions.create(
+                model=OPENAI_VISION_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "请提取图片中的所有文字内容，包括中文和英文。只返回提取的文字，不要添加任何解释。"
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{base64_image}"
+                                }
                             }
-                        }
-                    ]
-                }
-            ],
-            max_tokens=1000
-        )
-        
-        return response.choices[0].message.content
+                        ]
+                    }
+                ],
+                max_tokens=2000,
+                temperature=0
+            )
+            
+            if response and response.choices and len(response.choices) > 0:
+                content = response.choices[0].message.content
+                if content and content.strip():
+                    print(f"✓ OCR successful, extracted {len(content)} characters")
+                    return content.strip()
+            
+            print("❌ Empty response from vision model")
+            return ""
+            
+        except Exception as api_error:
+            error_msg = str(api_error)
+            print(f"❌ Vision API error: {error_msg}")
+            
+            # Log specific error details for debugging
+            if "400" in error_msg:
+                print("💡 HTTP 400 - Check model name and message format")
+            elif "401" in error_msg:
+                print("💡 HTTP 401 - Check API key")
+            elif "404" in error_msg:
+                print("💡 HTTP 404 - Model not found")
+            
+            return ""
         
     except Exception as e:
-        # Error in OCR processing
-        pass
-    return ""
+        print(f"❌ OCR processing error: {str(e)}")
+        return ""
 
 
 def pdfurl2ocr(url, uploadpath):
-    PDF_file = Path(url)
-    # Store all the pages of the PDF in a variable
+    """Convert PDF to images and extract text using OCR - PyMuPDF preferred"""
     image_file_list = []
     text = ""
-    # with TemporaryDirectory() as tempdir:
-    pdf_pages = convert_from_path(PDF_file, 500)
-    # Iterate through all the pages stored above
-    for page_enumeration, page in enumerate(pdf_pages, start=1):
-        # enumerate() "counts" the pages for us.
+    
+    try:
+        # Try PyMuPDF first (no external dependencies)
+        try:
+            import fitz
+            print(f"Using PyMuPDF for PDF to image conversion")
+            
+            doc = fitz.open(url)
+            page_count = len(doc)
+            print(f"PDF has {page_count} pages")
+            
+            # Convert each page to image
+            for page_num in range(page_count):
+                page = doc.load_page(page_num)
+                # Get pixmap with higher resolution for better OCR
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x zoom for better quality
+                filename = os.path.join(uploadpath, f"page_{page_num + 1}.png")
+                pix.save(filename)
+                image_file_list.append(filename)
+                print(f"Converted page {page_num + 1} to {filename}")
+            
+            doc.close()
+            
+        except ImportError:
+            print("PyMuPDF not available, trying pdf2image...")
+            # Fallback to pdf2image (requires poppler)
+            try:
+                from pdf2image import convert_from_path
+                PDF_file = Path(url)
+                pdf_pages = convert_from_path(PDF_file, 300)  # 300 DPI for good quality
+                
+                for page_enumeration, page in enumerate(pdf_pages, start=1):
+                    filename = os.path.join(uploadpath, f"page_{page_enumeration}.jpg")
+                    page.save(filename, "JPEG")
+                    image_file_list.append(filename)
+                    print(f"Converted page {page_enumeration} to {filename}")
+                    
+            except Exception as pdf2image_error:
+                print(f"pdf2image failed: {str(pdf2image_error)}")
+                return ""
 
-        # Create a file name to store the image
-        filename = os.path.join(uploadpath, "page_" + str(page_enumeration) + ".jpg")
+        # Extract text from images using LLM OCR
+        print(f"Starting OCR for {len(image_file_list)} images...")
+        for i, image_file in enumerate(image_file_list, 1):
+            try:
+                print(f"Processing image {i}/{len(image_file_list)}: {os.path.basename(image_file)}")
+                extracted_text = llm_ocr_text(image_file)
+                if extracted_text and extracted_text.strip():
+                    text += extracted_text + "\n"
+                    print(f"✓ Extracted {len(extracted_text)} characters from page {i}")
+                else:
+                    print(f"❌ No text extracted from page {i}")
+            except Exception as e:
+                print(f"Error extracting text from {image_file}: {str(e)}")
+            finally:
+                # Clean up image file
+                try:
+                    os.remove(image_file)
+                except OSError:
+                    pass
 
-        # Save the image of the page in system
-        page.save(filename, "JPEG")
-        image_file_list.append(filename)
+        if text.strip():
+            print(f"✅ Total OCR extraction: {len(text)} characters")
+        else:
+            print("❌ No text extracted from any pages")
 
-    # Iterate from 1 to total number of pages
-    for image_file in image_file_list:
-        text += llm_ocr_text(image_file)
-        # delete image file
-        os.remove(image_file)
-
-    return text
+    except Exception as e:
+        print(f"Error in PDF OCR processing for {url}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        text = ""
+    
+    return text.strip()
 
 
 def docxurl2ocr(url, uploadpath):
@@ -368,10 +518,8 @@ def convert_uploadfiles(txtls, uploadpath):
 
             elif ext.lower() == ".pdf":
                 print(datapath)
-                text = pdfurl2txt(datapath)
-                text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
-                if text1 == "":
-                    text = pdfurl2ocr(datapath, uploadpath)
+                # Pass uploadpath to enable automatic OCR fallback
+                text = pdfurl2txt(datapath, uploadpath)
 
             elif (
                 ext.lower() == ".png"

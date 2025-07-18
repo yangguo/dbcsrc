@@ -729,7 +729,7 @@ def update_csrc2analysis_backend():
 
 def get_chrome_driver():
     """Get Chrome WebDriver with automatic ChromeDriver management."""
-    print("Starting Chrome driver initialization...")
+    print("Initializing Chrome driver...")
     
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
@@ -751,18 +751,15 @@ def get_chrome_driver():
     
     try:
         # Use ChromeDriverManager for automatic ChromeDriver management
-        print("Using ChromeDriverManager for automatic ChromeDriver setup...")
         service = ChromeService(executable_path=ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
-        print("Successfully initialized Chrome driver with automatic management")
+        print("✓ Chrome driver initialized successfully")
         return driver
     except Exception as e:
         # Fallback to system chromedriver if automatic management fails
-        print(f"ChromeDriverManager failed: {e}")
         try:
-            print("Attempting to use system chromedriver as fallback...")
             driver = webdriver.Chrome(options=options)
-            print("Successfully initialized Chrome driver using system chromedriver")
+            print("✓ Chrome driver initialized using system chromedriver")
             return driver
         except Exception as fallback_error:
             error_msg = (
@@ -789,11 +786,12 @@ def get_csrclenanalysis():
     return pendf
 
 
-def download_attachment(down_list=None):
-    """Download attachments from CSRC URLs.
+def download_attachment(down_list=None, progress_callback=None):
+    """Download attachments from CSRC URLs with progress tracking.
     
     Args:
         down_list: List of indices to download. If None, downloads all.
+        progress_callback: Optional callback function to report progress (current, total, message)
     """
     if down_list is None:
         down_list = []
@@ -811,18 +809,40 @@ def download_attachment(down_list=None):
     misls = lendf["链接"].tolist()
     # get submisls by index list
     if down_list:
-        submisls = [misls[i] for i in down_list]
+        submisls = [misls[i] for i in down_list if i < len(misls)]
     else:
         submisls = misls
 
+    total_downloads = len(submisls)
+    if total_downloads == 0:
+        print("No URLs to download")
+        return get_pandas().DataFrame()
+
+    print(f"Starting download of {total_downloads} attachments...")
+    if progress_callback:
+        progress_callback(0, total_downloads, "Initializing download...")
+
     resultls = []
     errorls = []
-    count = 0
+    successful_downloads = 0
+    failed_downloads = 0
 
     driver = get_chrome_driver()
 
     for i, url in enumerate(submisls):
-        # Processing download
+        current_progress = i + 1
+        progress_percent = (current_progress / total_downloads) * 100
+        
+        # Progress bar display
+        bar_length = 30
+        filled_length = int(bar_length * current_progress // total_downloads)
+        bar = '█' * filled_length + '-' * (bar_length - filled_length)
+        
+        print(f"\rProgress: |{bar}| {progress_percent:.1f}% ({current_progress}/{total_downloads}) - Processing attachment {current_progress}", end='', flush=True)
+        
+        if progress_callback:
+            progress_callback(current_progress, total_downloads, f"Downloading attachment {current_progress}/{total_downloads}")
+
         try:
             driver.get(url)
             # Wait for the page to load and the specific element to be present
@@ -834,10 +854,13 @@ def download_attachment(down_list=None):
             sd = BeautifulSoup(page_source, "html.parser")
 
             dirpath = url.rsplit("/", 1)[0]
+            savename = ""
+            text = ""
+            
             try:
                 filepath = sd.find_all("div", class_="detail-news")[0].a["href"]
                 datapath = dirpath + "/" + filepath
-                # Downloading file
+                
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                     "Referer": url,
@@ -855,17 +878,28 @@ def download_attachment(down_list=None):
                         file_response = requests.get(datapath, headers=headers, stream=True, timeout=30)
                         file_response.raise_for_status()
                         
+                        # Get file size for progress tracking
+                        file_size = int(file_response.headers.get('content-length', 0))
+                        
                         savename = get_now() + os.path.basename(datapath)
                         filename = os.path.join(tempdir, savename)
                         
+                        downloaded_size = 0
                         with open(filename, "wb") as f:
                             for chunk in file_response.iter_content(1024 * 1024 * 2):
                                 if chunk:
                                     f.write(chunk)
+                                    downloaded_size += len(chunk)
+                                    
+                                    # Update progress for large files
+                                    if file_size > 0:
+                                        file_progress = (downloaded_size / file_size) * 100
+                                        if file_progress % 25 == 0:  # Update every 25%
+                                            print(f" - File progress: {file_progress:.0f}%", end='', flush=True)
                         
                         # Verify file was downloaded successfully
                         if os.path.exists(filename) and os.path.getsize(filename) > 0:
-                            text = ""
+                            successful_downloads += 1
                             break
                         else:
                             raise Exception("Downloaded file is empty or doesn't exist")
@@ -873,48 +907,59 @@ def download_attachment(down_list=None):
                     except Exception as download_error:
                         retry_count += 1
                         if retry_count >= max_retries:
-                            print(f"Failed to download {datapath} after {max_retries} attempts: {str(download_error)}")
-                            raise download_error
+                            failed_downloads += 1
+                            break
                         else:
-                            print(f"Download attempt {retry_count} failed for {datapath}, retrying...")
                             time.sleep(2)  # Wait before retry
                             
             except Exception as e:
-                # Error downloading file - log the specific error
-                print(f"Error downloading attachment from {url}: {str(e)}")
-                savename = ""
+                # Try to extract text content if file download fails
+                failed_downloads += 1
                 try:
                     text = sd.find_all("div", class_="detail-news")[0].text
                 except Exception:
                     text = "Failed to extract text content"
+                    
             datals = {"url": url, "filename": savename, "text": text}
             df = get_pandas().DataFrame(datals, index=[0])
             resultls.append(df)
+            
         except Exception as e:
             # Error processing URL
             errorls.append(url)
+            failed_downloads += 1
 
-        mod = (count + 1) % 10
-        if mod == 0 and count > 0:
-            tempdf = pd.concat(resultls)
-            savename = "temp-" + str(count + 1)
-            savetemp(tempdf, savename)
+        # Save temporary results every 10 downloads
+        if (current_progress) % 10 == 0 and resultls:
+            tempdf = get_pandas().concat(resultls)
+            temp_savename = "temp-" + str(current_progress)
+            savetemp(tempdf, temp_savename)
 
-        wait = random.randint(2, 20)
+        # Reduced wait time for better user experience
+        wait = random.randint(1, 3)
         time.sleep(wait)
-        # Download completed
-        count += 1
+
+    # Final progress update
+    print(f"\n✓ Download completed: {successful_downloads} successful, {failed_downloads} failed, {len(errorls)} errors")
+    
+    if progress_callback:
+        progress_callback(total_downloads, total_downloads, f"Completed: {successful_downloads} successful, {failed_downloads} failed")
 
     driver.quit()
 
     if resultls:
-        misdf = pd.concat(resultls)
+        misdf = get_pandas().concat(resultls)
         savecsv = "csrcmiscontent" + get_now()
         # reset index
         misdf.reset_index(drop=True, inplace=True)
         savetemp(misdf, savecsv)
+        
+        print(f"Results saved to: {savecsv}.csv")
+        print(f"Total records processed: {len(misdf)}")
+        
         return misdf
     else:
+        print("No results to save")
         return get_pandas().DataFrame()
 
 # Helper functions for managing organization IDs

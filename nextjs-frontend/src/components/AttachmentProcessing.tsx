@@ -17,6 +17,7 @@ import {
   Typography,
   Tag,
   Tabs,
+  Tooltip,
 } from 'antd';
 import {
   FileTextOutlined,
@@ -236,9 +237,22 @@ const AttachmentProcessing: React.FC = () => {
       ellipsis: true,
       width: '20%',
       render: (content: string) => (
-        <div style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {content || '暂无内容'}
-        </div>
+        <Tooltip 
+          title={content || '暂无内容'}
+          placement="topLeft"
+          styles={{ root: { maxWidth: '400px', wordWrap: 'break-word' } }}
+        >
+          <div 
+            style={{ 
+              maxWidth: '150px', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis',
+              cursor: 'pointer'
+            }}
+          >
+            {content || '暂无内容'}
+          </div>
+        </Tooltip>
       ),
     },
     {
@@ -342,9 +356,22 @@ const AttachmentProcessing: React.FC = () => {
       ellipsis: true,
       width: '30%',
       render: (text: string) => (
-        <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {text || '暂无内容'}
-        </div>
+        <Tooltip 
+          title={text || '暂无内容'}
+          placement="topLeft"
+          styles={{ root: { maxWidth: '400px', wordWrap: 'break-word' } }}
+        >
+          <div 
+            style={{ 
+              maxWidth: '200px', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis',
+              cursor: 'pointer'
+            }}
+          >
+            {text || '暂无内容'}
+          </div>
+        </Tooltip>
       ),
     },
     {
@@ -395,9 +422,22 @@ const AttachmentProcessing: React.FC = () => {
       ellipsis: true,
       width: '35%',
       render: (text: string) => (
-        <div style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={text}>
-          {text || '暂无内容'}
-        </div>
+        <Tooltip 
+          title={text || '暂无内容'}
+          placement="topLeft"
+          styles={{ root: { maxWidth: '400px', wordWrap: 'break-word' } }}
+        >
+          <div 
+            style={{ 
+              maxWidth: '300px', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis',
+              cursor: 'pointer'
+            }}
+          >
+            {text || '暂无内容'}
+          </div>
+        </Tooltip>
       ),
     },
     {
@@ -519,24 +559,59 @@ const AttachmentProcessing: React.FC = () => {
         analysisData.findIndex(item => item.id === id)
       ).filter(pos => pos !== -1);
       
+      if (positions.length === 0) {
+        message.error('无法找到选中项目的位置信息');
+        return;
+      }
+      
       const result = await caseApi.downloadAttachments(positions);
       
-      // Transform download results
-      const downloadData = result.data?.result || [];
-      const newDownloadResults: DownloadResult[] = downloadData.map((item: any, index: number) => ({
-        id: `download-${Date.now()}-${index}`,
-        url: item.url || '',
-        filename: item.filename || '',
-        text: item.text || '',
-        status: item.filename ? 'success' as const : 'failed' as const,
-      }));
+      // Transform download results - handle both 'results' and 'result' keys for compatibility
+      const downloadData = result.data?.results || result.data?.result || [];
+      
+      // Always create download results even if backend returns empty data
+      // This helps with debugging and shows the user what happened
+      const newDownloadResults: DownloadResult[] = [];
+      
+      if (Array.isArray(downloadData) && downloadData.length > 0) {
+        // Process actual download data
+        downloadData.forEach((item: any, index: number) => {
+          const hasValidFilename = item.filename && 
+                                 item.filename !== '' && 
+                                 item.filename !== null && 
+                                 item.filename !== 'undefined' &&
+                                 item.filename !== 'NaN';
+          
+          newDownloadResults.push({
+            id: `download-${Date.now()}-${index}`,
+            url: item.url || '',
+            filename: hasValidFilename ? item.filename : '下载失败',
+            text: item.text || '',
+            status: hasValidFilename ? 'success' as const : 'failed' as const,
+          });
+        });
+      } else {
+        // Create placeholder results for selected items to show what was attempted
+        selectedRows.forEach((rowId, index) => {
+          const item = analysisData.find(data => data.id === rowId);
+          if (item) {
+            newDownloadResults.push({
+              id: `download-${Date.now()}-${index}`,
+              url: item.url || '',
+              filename: '下载失败 - 后端无响应',
+              text: '',
+              status: 'failed' as const,
+            });
+          }
+        });
+      }
       
       setDownloadResults(prev => [...prev, ...newDownloadResults]);
       
       // Create a map of successful downloads for efficient lookup
       const successfulDownloads = new Map();
       downloadData.forEach((item: any) => {
-        if (item.filename) {
+        if (item.filename && item.filename !== '' && item.filename !== null) {
           successfulDownloads.set(item.url, {
             filename: item.filename,
             text: item.text || '',
@@ -571,7 +646,17 @@ const AttachmentProcessing: React.FC = () => {
       setAnalysisData(updatedData);
       
       setProgress(100);
-      message.success(`下载完成，共处理 ${selectedRows.length} 个附件`);
+      
+      const successCount = newDownloadResults.filter(item => item.status === 'success').length;
+      const failCount = newDownloadResults.filter(item => item.status === 'failed').length;
+      
+      if (successCount > 0) {
+        message.success(`下载完成，成功 ${successCount} 个，失败 ${failCount} 个附件`);
+      } else {
+        message.warning(`下载完成，但所有 ${failCount} 个附件都下载失败`);
+      }
+      
+
       
       // 自动检查下载文件的存在性
       await autoCheckFilesExistence(updatedData);
