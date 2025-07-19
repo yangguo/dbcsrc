@@ -3510,7 +3510,7 @@ async def save_penalty_analysis_results(request: Request):
 
 @app.post("/api/upload-analysis-results", response_model=APIResponse)
 async def upload_analysis_results(file: UploadFile = File(...)):
-    """Upload and save analysis results file as csrccat and csrcsplit files"""
+    """Upload and save analysis results file as csrccat and csrcsplit files, filtering out failed records"""
     try:
         logger.info(f"Starting upload analysis results from file: {file.filename}")
         
@@ -3532,10 +3532,49 @@ async def upload_analysis_results(file: UploadFile = File(...)):
                 message="上传的文件为空"
             )
         
+        # Filter out failed records based on status column
+        original_count = len(df)
+        filtered_df = df.copy()
+        
+        # Check for various status column names and filter out failed records
+        status_columns = ['status', 'Status', 'STATUS', '状态', 'state', 'State', 'analysis_status', 'Analysis_Status', 'ANALYSIS_STATUS']
+        status_col = None
+        
+        for col in status_columns:
+            if col in df.columns:
+                status_col = col
+                break
+        
+        if status_col:
+            # Filter out records with failed status
+            failed_values = ['failed', 'Failed', 'FAILED', 'fail', 'Fail', 'FAIL', 
+                           'error', 'Error', 'ERROR', '失败', '错误', 'false', 'False', 'FALSE']
+            
+            # Keep only records that are not in failed_values
+            filtered_df = df[~df[status_col].astype(str).str.strip().isin(failed_values)]
+            
+            # Also filter out empty/null status values if they should be considered failed
+            filtered_df = filtered_df[filtered_df[status_col].notna() & (filtered_df[status_col].astype(str).str.strip() != '')]
+            
+            filtered_count = len(filtered_df)
+            failed_count = original_count - filtered_count
+            
+            logger.info(f"Filtered out {failed_count} failed records from {original_count} total records, {filtered_count} records remaining")
+        else:
+            logger.info(f"No status column found, processing all {original_count} records")
+            filtered_count = original_count
+            failed_count = 0
+        
+        if filtered_df.empty:
+            return APIResponse(
+                success=False,
+                message=f"过滤失败记录后没有有效数据。原始记录数: {original_count}, 失败记录数: {failed_count}"
+            )
+        
         # Convert DataFrame to list of dictionaries with size limit to prevent memory issues
         MAX_UPLOAD_RECORDS = 5000  # Limit to prevent memory overflow during upload
-        total_records = len(df)
-        limited_df = df.head(MAX_UPLOAD_RECORDS)
+        total_records = len(filtered_df)
+        limited_df = filtered_df.head(MAX_UPLOAD_RECORDS)
         penalty_results = limited_df.to_dict('records')
         
         if total_records > MAX_UPLOAD_RECORDS:
@@ -3592,18 +3631,30 @@ async def upload_analysis_results(file: UploadFile = File(...)):
         
         logger.info(f"Successfully saved uploaded analysis results to {cat_filename} and {split_filename}")
         
+        # Prepare success message with filtering information
+        if status_col and failed_count > 0:
+            filter_message = f"已过滤掉 {failed_count} 条失败记录，"
+        else:
+            filter_message = ""
+        
+        success_message = f"{filter_message}上传的分析结果已成功保存为 {cat_filename} 和 {split_filename}"
+        
         return APIResponse(
             success=True,
-            message=f"上传的分析结果已成功保存为 {cat_filename} 和 {split_filename}",
+            message=success_message,
             data={
                 'cat_filename': cat_filename,
                 'split_filename': split_filename,
                 'cat_filepath': cat_filepath,
                 'split_filepath': split_filepath,
                 'records_count': len(penalty_results),
-                'total_records_in_file': total_records,
+                'total_records_in_file': original_count,
+                'filtered_records_count': filtered_count,
+                'failed_records_count': failed_count,
                 'records_processed': len(penalty_results),
                 'has_more_records': total_records > MAX_UPLOAD_RECORDS,
+                'status_column_found': status_col is not None,
+                'status_column_name': status_col,
                 'uploaded_data': penalty_results if len(penalty_results) <= 100 else penalty_results[:100]  # Only return first 100 for display
             }
         )

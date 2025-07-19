@@ -168,6 +168,12 @@ const CaseClassification: React.FC = () => {
   const [selectedPenaltyRows, setSelectedPenaltyRows] = useState<string[]>([]);
   const [selectedUploadedRows, setSelectedUploadedRows] = useState<string[]>([]);
   
+  // 分页状态管理
+  const [categoryPageSize, setCategoryPageSize] = useState(10);
+  const [splitPageSize, setSplitPageSize] = useState(10);
+  const [penaltyPageSize, setPenaltyPageSize] = useState(10);
+  const [uploadedPageSize, setUploadedPageSize] = useState(10);
+  
   // 手动任务状态检查相关状态
   const [manualJobId, setManualJobId] = useState<string>('');
   const [manualJobLoading, setManualJobLoading] = useState(false);
@@ -355,8 +361,8 @@ const CaseClassification: React.FC = () => {
       progressMessage();
       
       // Handle both success/data format and direct data format
-      if (result && (result.success !== false)) {
-        const resultData = result.data?.result?.data || result.data || result;
+      if (result && (result as any).success !== false) {
+        const resultData = (result as any).data?.result?.data || (result as any).data || result;
         setPenaltyBatchResults(Array.isArray(resultData) ? resultData : []);
         
         const processedCount = Array.isArray(resultData) ? resultData.length : 0;
@@ -368,7 +374,7 @@ const CaseClassification: React.FC = () => {
           `批量行政处罚分析完成！共处理 ${processedCount} 条记录，成功 ${successCount} 条，失败 ${failedCount} 条，异常 ${errorCount} 条`
         );
       } else {
-        throw new Error(result?.message || '批量分析失败');
+        throw new Error((result as any)?.message || '批量分析失败');
       }
     } catch (error: any) {
       console.error('Batch penalty analysis error:', error);
@@ -682,18 +688,58 @@ const CaseClassification: React.FC = () => {
               console.log('解析的标题行:', headers);
               
               // 解析数据行
-              const data = lines.slice(1).map((line, index) => {
-                const values = parseCSVLine(line).map(val => val.replace(/^["']|["']$/g, ''));
-                const row: any = { id: `upload-${index}` };
-                headers.forEach((header, i) => {
-                  row[header] = values[i] || '';
-                });
-                return row;
-              });
-              
-              setUploadedResults(data);
-              console.log('解析的上传结果数据:', data);
-              message.success(`成功解析 ${data.length} 条记录`);
+          const allData = lines.slice(1).map((line, index) => {
+            const values = parseCSVLine(line).map(val => val.replace(/^["']|["']$/g, ''));
+            const row: any = { id: `upload-${index}` };
+            headers.forEach((header, i) => {
+              row[header] = values[i] || '';
+            });
+            return row;
+          });
+          
+          // Filter out failed records based on status column
+           const statusColumns = ['status', 'Status', 'STATUS', '状态', 'state', 'State', 'analysis_status', 'Analysis_Status', 'ANALYSIS_STATUS'];
+          let statusCol = null;
+          
+          for (const col of statusColumns) {
+            if (headers.includes(col)) {
+              statusCol = col;
+              break;
+            }
+          }
+          
+          let filteredData = allData;
+          let failedCount = 0;
+          
+          if (statusCol) {
+            const failedValues = ['failed', 'Failed', 'FAILED', 'fail', 'Fail', 'FAIL', 
+                                'error', 'Error', 'ERROR', '失败', '错误', 'false', 'False', 'FALSE'];
+            
+            const originalCount = allData.length;
+            filteredData = allData.filter(row => {
+              const statusValue = String(row[statusCol] || '').trim();
+              return statusValue !== '' && !failedValues.includes(statusValue);
+            });
+            
+            failedCount = originalCount - filteredData.length;
+            
+            // Update row IDs after filtering
+            filteredData = filteredData.map((row, index) => ({
+              ...row,
+              id: `upload-${index}`
+            }));
+          }
+          
+          setUploadedResults(filteredData);
+          console.log('解析的上传结果数据:', filteredData);
+          
+          if (statusCol && failedCount > 0) {
+            message.success(`成功解析 ${allData.length} 条记录，过滤掉 ${failedCount} 条失败记录，剩余 ${filteredData.length} 条有效记录`);
+          } else if (statusCol) {
+            message.success(`成功解析 ${allData.length} 条记录（未发现失败记录）`);
+          } else {
+            message.success(`成功解析 ${filteredData.length} 条记录（未找到状态列）`);
+          }
             } catch (error) {
               console.error('解析文件内容失败:', error);
               message.error(`解析文件内容失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -722,10 +768,26 @@ const CaseClassification: React.FC = () => {
       
       // Use the uploaded file to call the new API
       const file = uploadResultsFileList[0].originFileObj;
+      if (!file) {
+        message.error('请选择要上传的文件');
+        return;
+      }
       const response = await caseApi.uploadAnalysisResultsFile(file);
       
       if (response.success) {
-        message.success(`上传的分析结果已成功保存为 ${response.data.cat_filename} 和 ${response.data.split_filename}`);
+        // Display detailed success message with filtering information
+        const data = response.data;
+        let successMessage = response.message;
+        
+        if (data.status_column_found && data.failed_records_count > 0) {
+          successMessage += `\n原始记录数: ${data.total_records_in_file}\n有效记录数: ${data.filtered_records_count}\n失败记录数: ${data.failed_records_count}`;
+        } else if (data.status_column_found) {
+          successMessage += `\n处理记录数: ${data.total_records_in_file}（未发现失败记录）`;
+        } else {
+          successMessage += `\n处理记录数: ${data.total_records_in_file}（未找到状态列，处理所有记录）`;
+        }
+        
+        message.success(successMessage);
       } else {
         message.error(response.message || '保存上传的分析结果失败');
       }
@@ -836,10 +898,22 @@ const CaseClassification: React.FC = () => {
                       }),
                     }}
                     pagination={{
-                      pageSize: 10,
+                      pageSize: categoryPageSize,
                       showSizeChanger: true,
                       showQuickJumper: true,
                       showTotal: (total) => `共 ${total} 条记录`,
+                      onChange: (page, size) => {
+                        // 分页变化处理逻辑
+                        console.log('Category pagination changed:', page, size);
+                        if (size && size !== categoryPageSize) {
+                          setCategoryPageSize(size);
+                        }
+                      },
+                      onShowSizeChange: (current, size) => {
+                        // 页面大小变化处理逻辑
+                        console.log('Category page size changed:', current, size);
+                        setCategoryPageSize(size);
+                      },
                     }}
                     scroll={{ x: 2000, y: 400 }}
                     size="small"
@@ -882,10 +956,22 @@ const CaseClassification: React.FC = () => {
                       }),
                     }}
                     pagination={{
-                      pageSize: 10,
+                      pageSize: splitPageSize,
                       showSizeChanger: true,
                       showQuickJumper: true,
                       showTotal: (total) => `共 ${total} 条记录`,
+                      onChange: (page, size) => {
+                        // 分页变化处理逻辑
+                        console.log('Split pagination changed:', page, size);
+                        if (size && size !== splitPageSize) {
+                          setSplitPageSize(size);
+                        }
+                      },
+                      onShowSizeChange: (current, size) => {
+                        // 页面大小变化处理逻辑
+                        console.log('Split page size changed:', current, size);
+                        setSplitPageSize(size);
+                      },
                     }}
                     scroll={{ x: 2000, y: 400 }}
                     size="small"
@@ -1309,10 +1395,22 @@ const CaseClassification: React.FC = () => {
                 }),
               }}
               pagination={{
-                pageSize: 10,
+                pageSize: penaltyPageSize,
                 showSizeChanger: true,
                 showTotal: (total, range) =>
                   `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+                onChange: (page, size) => {
+                  // 分页变化处理逻辑
+                  console.log('Penalty batch pagination changed:', page, size);
+                  if (size && size !== penaltyPageSize) {
+                    setPenaltyPageSize(size);
+                  }
+                },
+                onShowSizeChange: (current, size) => {
+                  // 页面大小变化处理逻辑
+                  console.log('Penalty batch page size changed:', current, size);
+                  setPenaltyPageSize(size);
+                },
               }}
               scroll={{ x: 1400, y: 400 }}
             />
@@ -1406,10 +1504,22 @@ const CaseClassification: React.FC = () => {
                 }),
               }}
               pagination={{
-                pageSize: 10,
+                pageSize: uploadedPageSize,
                 showSizeChanger: true,
                 showTotal: (total, range) =>
                   `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+                onChange: (page, size) => {
+                  // 分页变化处理逻辑
+                  console.log('Uploaded results pagination changed:', page, size);
+                  if (size && size !== uploadedPageSize) {
+                    setUploadedPageSize(size);
+                  }
+                },
+                onShowSizeChange: (current, size) => {
+                  // 页面大小变化处理逻辑
+                  console.log('Uploaded results page size changed:', current, size);
+                  setUploadedPageSize(size);
+                },
               }}
               scroll={{ x: 1400, y: 400 }}
             />
