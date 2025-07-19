@@ -46,18 +46,7 @@ const { TextArea } = Input;
 // 扩展的案例详情接口已从api.ts导入
 
 // 扩展的搜索参数接口
-interface EnhancedSearchParams {
-  startDate?: string;
-  endDate?: string;
-  wenhao?: string;
-  people?: string;
-  caseKeyword?: string;
-  org?: string[];
-  minPenalty?: number;
-  lawSelect?: string;
-  page?: number;
-  pageSize?: number;
-}
+// 使用从api.ts导入的EnhancedSearchParams接口，移除本地重复定义
 
 // 搜索统计信息接口已从api.ts导入
 
@@ -233,15 +222,15 @@ const CaseSearch: React.FC = () => {
   const handleSearch = async (values: any) => {
     setLoading(true);
     try {
-      const params: EnhancedSearchParams = {
+      const params: import('../services/api').EnhancedSearchParams = {
         keyword: values.keyword,
         docNumber: values.docNumber,
         party: values.party,
-        org: values.org,
+        org: values.org, // 直接使用org值，不需要取数组第一个元素
         minAmount: values.minAmount,
         legalBasis: values.legalBasis,
-        startDate: values.dateRange?.[0]?.format('YYYY-MM-DD'),
-        endDate: values.dateRange?.[1]?.format('YYYY-MM-DD'),
+        dateFrom: values.dateRange?.[0]?.format('YYYY-MM-DD'),
+        dateTo: values.dateRange?.[1]?.format('YYYY-MM-DD'),
         page: 1,
         pageSize,
       };
@@ -290,15 +279,15 @@ const CaseSearch: React.FC = () => {
     setLoading(true);
     try {
       const formValues = form.getFieldsValue();
-      const searchParams = {
+      const searchParams: import('../services/api').EnhancedSearchParams = {
         keyword: formValues.keyword,
         docNumber: formValues.docNumber,
         party: formValues.party,
         org: formValues.org,
         minAmount: formValues.minAmount,
         legalBasis: formValues.legalBasis,
-        startDate: formValues.dateRange?.[0]?.format('YYYY-MM-DD'),
-        endDate: formValues.dateRange?.[1]?.format('YYYY-MM-DD'),
+        dateFrom: formValues.dateRange?.[0]?.format('YYYY-MM-DD'),
+        dateTo: formValues.dateRange?.[1]?.format('YYYY-MM-DD'),
         page: page,
         pageSize: size || pageSize,
       };
@@ -339,7 +328,7 @@ const CaseSearch: React.FC = () => {
       }
       
       const formValues = form.getFieldsValue();
-       const downloadParams = {
+       const downloadParams: import('../services/api').EnhancedSearchParams = {
          keyword: formValues.keyword || undefined,
          docNumber: formValues.docNumber || undefined,
          org: formValues.org || undefined,
@@ -467,7 +456,7 @@ const CaseSearch: React.FC = () => {
                   <InputNumber 
                     placeholder="请输入金额"
                     style={{ width: '100%' }}
-                    formatter={value => `¥ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    formatter={(value) => value ? `¥ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
                     parser={value => value!.replace(/¥\s?|(,*)/g, '')}
                     min={0}
                   />
@@ -544,7 +533,7 @@ const CaseSearch: React.FC = () => {
                 precision={0}
                 prefix="¥"
                 valueStyle={{ color: '#f5222d' }}
-                formatter={(value) => `${Number(value).toLocaleString()}`}
+                formatter={(value) => Number(value).toLocaleString()}
               />
             </Col>
             <Col span={6}>
@@ -554,7 +543,7 @@ const CaseSearch: React.FC = () => {
                 precision={0}
                 prefix="¥"
                 valueStyle={{ color: '#52c41a' }}
-                formatter={(value) => `${Number(value).toLocaleString()}`}
+                formatter={(value) => Number(value).toLocaleString()}
               />
             </Col>
             <Col span={6}>

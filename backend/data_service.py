@@ -138,10 +138,13 @@ def get_csrc2detail():
                         # If timestamp is in milliseconds (> 1e10), convert to seconds
                         if timestamp > 1e10:
                             timestamp = timestamp / 1000
-                        return get_pandas().to_datetime(timestamp, unit='s').date()
+                        return get_pandas().to_datetime(timestamp, unit='s').strftime('%Y-%m-%d')
                     else:
-                        # Try to parse as regular date string
-                        return get_pandas().to_datetime(date_val, errors='coerce').date()
+                        # Try to parse as regular date string and return as string
+                        parsed_date = get_pandas().to_datetime(date_val, errors='coerce')
+                        if get_pandas().isna(parsed_date):
+                            return ""
+                        return parsed_date.strftime('%Y-%m-%d')
                 except (ValueError, TypeError, OverflowError):
                     # If conversion fails, return empty string
                     return ""
@@ -210,10 +213,13 @@ def get_csrc2analysis():
                         # If timestamp is in milliseconds (> 1e10), convert to seconds
                         if timestamp > 1e10:
                             timestamp = timestamp / 1000
-                        return get_pandas().to_datetime(timestamp, unit='s').date()
+                        return get_pandas().to_datetime(timestamp, unit='s').strftime('%Y-%m-%d')
                     else:
-                        # Try to parse as regular date string
-                        return get_pandas().to_datetime(date_val, errors='coerce').date()
+                        # Try to parse as regular date string and return as string
+                        parsed_date = get_pandas().to_datetime(date_val, errors='coerce')
+                        if get_pandas().isna(parsed_date):
+                            return ""
+                        return parsed_date.strftime('%Y-%m-%d')
                 except (ValueError, TypeError, OverflowError):
                     # If conversion fails, return empty string
                     return ""

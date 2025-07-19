@@ -1590,7 +1590,7 @@ def search_cases_enhanced(
             logger.info(f"After organization filter: {len(df)} cases")
         
         if party:
-            df = df[df['内容'].str.contains(party, na=False, case=False)]
+            df = df[df['people'].str.contains(party, na=False, case=False)]
             logger.info(f"After party filter: {len(df)} cases")
         
         if minAmount is not None:
@@ -1602,7 +1602,7 @@ def search_cases_enhanced(
             logger.info(f"After minAmount filter: {len(df)} cases")
         
         if legalBasis:
-            df = df[df['内容'].str.contains(legalBasis, na=False, case=False)]
+            df = df[df['law'].str.contains(legalBasis, na=False, case=False)]
             logger.info(f"After legalBasis filter: {len(df)} cases")
         
         if dateFrom:
@@ -2688,23 +2688,23 @@ async def download_search_results(
             df = df[df['机构'] == org]
         
         if party:
-            df = df[df['内容'].str.contains(party, na=False, case=False)]
+            df = df[df['people'].str.contains(party, na=False, case=False)]
         
         if minAmount is not None:
             df = df[get_pandas().to_numeric(df['罚款金额'], errors='coerce') >= minAmount]
         
         if legalBasis:
-            df = df[df['内容'].str.contains(legalBasis, na=False, case=False)]
+            df = df[df['law'].str.contains(legalBasis, na=False, case=False)]
         
         if dateFrom:
             try:
-                df = df[pd.to_datetime(df['发文日期'], errors='coerce') >= pd.to_datetime(dateFrom)]
+                df = df[get_pandas().to_datetime(df['发文日期'], errors='coerce') >= get_pandas().to_datetime(dateFrom)]
             except Exception as date_error:
                 logger.warning(f"Date filtering error for dateFrom: {date_error}")
         
         if dateTo:
             try:
-                df = df[pd.to_datetime(df['发文日期'], errors='coerce') <= pd.to_datetime(dateTo)]
+                df = df[get_pandas().to_datetime(df['发文日期'], errors='coerce') <= get_pandas().to_datetime(dateTo)]
             except Exception as date_error:
                 logger.warning(f"Date filtering error for dateTo: {date_error}")
         

@@ -206,8 +206,8 @@ export interface EnhancedSearchParams {
   org?: string;           // 发文地区
   minAmount?: number;     // 最低罚款金额
   legalBasis?: string;    // 处罚依据
-  startDate?: string;     // 开始日期
-  endDate?: string;       // 结束日期
+  dateFrom?: string;      // 开始日期
+  dateTo?: string;        // 结束日期
   page?: number;
   pageSize?: number;
 }
