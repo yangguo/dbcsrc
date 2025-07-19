@@ -269,9 +269,13 @@ def get_csrc2cat():
     if not amtdf.empty:
         # Process amount column
         if "amount" in amtdf.columns:
+            # Only fill blank/null values with 0, leave other values unchanged
+            # First, identify truly blank values (empty strings, None, NaN)
+            blank_mask = amtdf["amount"].isna() | (amtdf["amount"] == "") | (amtdf["amount"] == "")
+            # Fill only blank values with 0
+            amtdf.loc[blank_mask, "amount"] = 0
+            # Convert to numeric, but preserve existing non-blank values
             amtdf["amount"] = get_pandas().to_numeric(amtdf["amount"], errors='coerce')
-            # Fill NaN values in amount with 0 instead of empty string
-            amtdf["amount"] = amtdf["amount"].fillna(0)
         # Rename columns law to lawlist
         if "law" in amtdf.columns:
             amtdf.rename(columns={"law": "lawlist"}, inplace=True)

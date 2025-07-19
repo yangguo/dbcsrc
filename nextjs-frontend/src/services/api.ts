@@ -895,11 +895,9 @@ export const caseApi = {
     return response.data;
   },
 
-  // Download attachments
-  downloadAttachments: async (positions: number[]): Promise<any> => {
-    const response = await apiClient.post('/download-attachments', {
-      positions: positions
-    });
+  // Get csrccat data with invalid amount fields
+  getCsrcatInvalidAmount: async (): Promise<any> => {
+    const response = await apiClient.get('/api/csrccat-invalid-amount');
     return response.data;
   },
 };

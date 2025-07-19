@@ -18,11 +18,12 @@ import os
 import json
 from utils import savetemp
 
-# Initialize OpenAI client
+# Initialize OpenAI client with better error handling
 client = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
     base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-    timeout=120.0  # 2 minutes timeout for thinking models
+    timeout=60.0,  # Reduced timeout to 1 minute for faster failure detection
+    max_retries=3  # Limit retries to avoid long waits
 )
 
 # Get model name from environment or use default
@@ -70,8 +71,23 @@ Choose the most appropriate category from the provided list."""
                 "score": 0.5
             }
             
+    except openai.APIConnectionError as e:
+        # Return default result on connection error
+        print(f"API连接失败: {str(e)}")
+        return {
+            "label": candidate_labels[0] if candidate_labels else "unknown",
+            "score": 0.0
+        }
+    except openai.APITimeoutError as e:
+        # Return default result on timeout
+        print(f"API请求超时: {str(e)}")
+        return {
+            "label": candidate_labels[0] if candidate_labels else "unknown",
+            "score": 0.0
+        }
     except Exception as e:
         # Return default result on error
+        print(f"分类失败: {str(e)}")
         return {
             "label": candidate_labels[0] if candidate_labels else "unknown",
             "score": 0.0
@@ -129,12 +145,12 @@ def extract_penalty_info(text):
   "主要违法违规事实",
   "行政处罚依据"（以字符串形式输出所有相关条文，多个条文用分号分隔）,
   "行政处罚决定",
-  "作出处罚决定的机关名称"，
-  "作出处罚决定的日期"，
+  "作出处罚决定的机关名称",
+  "作出处罚决定的日期",
   "行业",
-  "罚没总金额"，（数字形式，包含罚款金额和没收金额的总和）
-  "违规类型"，
-  "监管地区" （相关省份）。
+  "罚没总金额"（必须转换为纯数字形式，包含罚款金额和没收金额的总和，单位为元。例如：10万元 → 100000，5.5万元 → 55000，1000元 → 1000。如果包含多项金额，请计算总和。如果无法确定具体数字，填写0）,
+  "违规类型",
+  "监管地区" （相关省份）.
 重要提示：将输出格式化为JSON。只返回JSON响应，不添加其他评论或文本。如果返回的文本不是JSON，将视为失败。所有字段值都必须是字符串类型，不要使用数组或列表格式。
 
 输入文本：{text}"""
@@ -178,6 +194,26 @@ def extract_penalty_info(text):
                 "raw_response": result_text
             }
             
+    except openai.APIConnectionError as e:
+        return {
+            "success": False,
+            "error": f"API连接失败: {str(e)}. 请检查网络连接或API配置"
+        }
+    except openai.APITimeoutError as e:
+        return {
+            "success": False,
+            "error": f"API请求超时: {str(e)}. 网络可能较慢"
+        }
+    except openai.RateLimitError as e:
+        return {
+            "success": False,
+            "error": f"API限流: {str(e)}. 请稍后重试"
+        }
+    except openai.AuthenticationError as e:
+        return {
+            "success": False,
+            "error": f"API认证失败: {str(e)}. 请检查API密钥"
+        }
     except Exception as e:
         return {
             "success": False,

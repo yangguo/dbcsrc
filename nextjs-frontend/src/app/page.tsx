@@ -18,6 +18,7 @@ import AttachmentProcessing from '@/components/AttachmentProcessing';
 import CaseClassification from '@/components/CaseClassification';
 import CaseDownload from '@/components/CaseDownload';
 import CaseUpload from '@/components/CaseUpload';
+import CsrcatAnalysis from '@/components/CsrcatAnalysis';
 
 const { Header, Sider, Content } = Layout;
 
@@ -63,6 +64,11 @@ const menuItems: MenuItem[] = [
     icon: <CloudUploadOutlined />,
     label: '案例上线2',
   },
+  {
+    key: 'csrccat-analysis',
+    icon: <BarChartOutlined />,
+    label: '数据修复',
+  },
 ];
 
 const renderContent = (selectedKey: string) => {
@@ -81,6 +87,8 @@ const renderContent = (selectedKey: string) => {
       return <CaseDownload />;
     case 'upload':
       return <CaseUpload />;
+    case 'csrccat-analysis':
+      return <CsrcatAnalysis />;
     default:
       return <CaseSummary />;
   }

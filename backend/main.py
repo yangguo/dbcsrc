@@ -4359,6 +4359,33 @@ async def get_csrclenanalysis_data():
             data={'result': []}
         )
 
+@app.get("/api/csrccat-invalid-amount", response_model=APIResponse)
+async def get_csrccat_invalid_amount():
+    """Analyze csrccat data to find records where amount field is not a valid number"""
+    try:
+        from csrccat_analysis import analyze_csrccat_invalid_amounts
+        
+        # Get analysis results from the dedicated module
+        analysis_result = analyze_csrccat_invalid_amounts()
+        
+        invalid_count = analysis_result['summary']['invalid']
+        total_count = analysis_result['summary']['total']
+        
+        return APIResponse(
+            success=True,
+            message=f"Found {invalid_count} records with invalid amount values out of {total_count} total records",
+            data=analysis_result
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to analyze csrccat invalid amounts: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to analyze csrccat invalid amounts",
+            error=str(e),
+            data={'result': [], 'summary': {'total': 0, 'invalid': 0, 'valid': 0, 'invalidPercentage': 0, 'nanCount': 0, 'zeroCount': 0, 'negativeCount': 0}}
+        )
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
