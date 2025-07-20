@@ -339,23 +339,54 @@ def save_uploadedfile(uploadedfile, uploadpath):
 
 
 def find_libreoffice_executable():
-    """Find LibreOffice executable on Windows"""
-    possible_paths = [
-        r"D:\LibreOffice\program\soffice.exe",  # Your custom installation path
-        r"C:\Program Files\LibreOffice\program\soffice.exe",
-        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-        r"C:\Program Files\LibreOffice 7\program\soffice.exe",
-        r"C:\Program Files (x86)\LibreOffice 7\program\soffice.exe",
-        "soffice"  # fallback for Linux/macOS or if in PATH
-    ]
+    """Find LibreOffice executable on Windows, macOS, and Linux"""
+    import platform
+    import shutil
     
-    for path in possible_paths:
-        if os.path.exists(path) or path == "soffice":
+    system = platform.system().lower()
+    
+    if system == "darwin":  # macOS
+        possible_paths = [
+            "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+            "/usr/local/bin/soffice",
+            "/opt/homebrew/bin/soffice",
+            "soffice"  # fallback if in PATH
+        ]
+    elif system == "linux":
+        possible_paths = [
+            "/usr/bin/soffice",
+            "/usr/local/bin/soffice",
+            "/opt/libreoffice/program/soffice",
+            "/snap/bin/libreoffice",
+            "soffice"  # fallback if in PATH
+        ]
+    else:  # Windows
+        possible_paths = [
+            r"D:\LibreOffice\program\soffice.exe",  # Your custom installation path
+            r"C:\Program Files\LibreOffice\program\soffice.exe",
+            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+            r"C:\Program Files\LibreOffice 7\program\soffice.exe",
+            r"C:\Program Files (x86)\LibreOffice 7\program\soffice.exe",
+            "soffice.exe"  # fallback for Windows if in PATH
+        ]
+    
+    # First try the specific paths
+    for path in possible_paths[:-1]:  # Exclude the fallback
+        if os.path.exists(path):
+            print(f"Found LibreOffice at: {path}")
             return path
     
+    # Try using shutil.which to find in PATH
+    fallback = possible_paths[-1]
+    which_result = shutil.which(fallback)
+    if which_result:
+        print(f"Found LibreOffice in PATH: {which_result}")
+        return which_result
+    
+    print(f"LibreOffice not found. Searched paths: {possible_paths}")
     return None
 
-def convert_with_libreoffice(input_file, output_dir, soffice_path):
+def convert_with_libreoffice(input_file, output_dir, soffice_path, output_format="docx"):
     """Convert document using LibreOffice with proper error handling"""
     try:
         # Ensure output directory exists
@@ -370,32 +401,39 @@ def convert_with_libreoffice(input_file, output_dir, soffice_path):
             print(f"Input file does not exist: {input_file}")
             return False
         
-        # Check if LibreOffice executable exists
-        if not os.path.exists(soffice_path):
+        # Check if LibreOffice executable exists (skip check if it's just the command name)
+        if not soffice_path.startswith('/') and not soffice_path.endswith('.exe'):
+            # It's likely a command in PATH, skip file existence check
+            pass
+        elif not os.path.exists(soffice_path):
             print(f"LibreOffice executable not found: {soffice_path}")
             return False
         
         print(f"Converting: {input_file}")
         print(f"Output dir: {output_dir}")
+        print(f"Output format: {output_format}")
         print(f"Using LibreOffice: {soffice_path}")
         
         cmd = [
             soffice_path,
             "--headless",
             "--convert-to",
-            "docx",
+            output_format,
             input_file,
             "--outdir",
             output_dir,
         ]
         
-        # Use shell=True on Windows to handle paths with spaces and special characters
+        # Use shell=True only on Windows to handle paths with spaces and special characters
+        import platform
+        use_shell = platform.system().lower() == 'windows'
+        
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=60,  # 60 second timeout
-            shell=True,
+            shell=use_shell,
             cwd=output_dir  # Set working directory
         )
         
@@ -419,6 +457,10 @@ def convert_with_libreoffice(input_file, output_dir, soffice_path):
         import traceback
         traceback.print_exc()
         return False
+
+def convert_docx_to_pdf(input_file, output_dir, soffice_path):
+    """Convert DOCX file to PDF using LibreOffice"""
+    return convert_with_libreoffice(input_file, output_dir, soffice_path, "pdf")
 
 def docxconvertion(uploadpath):
     docdest = os.path.join(uploadpath, "doc")

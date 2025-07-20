@@ -231,30 +231,6 @@ def get_csrc2analysis():
     return pendf
 
 
-def get_csrcmiscontent():
-    """
-    Get CSRC miscontent data from CSV files in temp directory.
-    
-    Returns:
-        DataFrame with CSRC miscontent data (downloaded file information)
-    """
-    # Use absolute path to ensure it works from any working directory
-    import os
-    # Get the project root directory (dbcsrc)
-    current_file = os.path.abspath(__file__)
-    backend_dir = os.path.dirname(current_file)
-    project_root = os.path.dirname(backend_dir)
-    tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
-    print(f"Looking for CSRC miscontent data in: {tempdir}")
-    pendf = get_csvdf(tempdir, "csrcmiscontent")
-    
-    if not pendf.empty:
-        # Fill NaN values
-        pendf = pendf.fillna("")
-    
-    return pendf
-
-
 def get_csrc2cat():
     """
     Get CSRC2 category data from CSV files.
@@ -389,3 +365,27 @@ def get_csrc2_intersection():
     
     print(f"Intersection result: {len(intersection_df)} rows with {len(intersection_df.columns)} columns")
     return intersection_df
+
+
+def get_csrclenanalysis():
+    """
+    Get CSRC length analysis dataframe including source filename.
+    
+    Returns:
+        DataFrame with CSRC length analysis data from temp directory
+    """
+    # Use absolute path to ensure it works from any working directory
+    import os
+    # Get the project root directory (dbcsrc)
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(backend_dir)
+    tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+    
+    print(f"Looking for CSRC length analysis data in: {tempdir}")
+    pendf = get_csvdf(tempdir, "csrclenanalysis", include_filename=True)
+    
+    if not pendf.empty:
+        pendf = pendf.fillna("")
+    
+    return pendf

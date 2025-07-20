@@ -518,12 +518,10 @@ def get_csrc2analysis():
 def savetemp(df, basename):
     """Save dataframe to temp directory
     
-    For files like csrcmiscontent, it will look for existing timestamped files
-    and update them instead of creating new ones.
+    Save DataFrame to temp directory with specified basename.
     """
     # Use absolute path to ensure it works from any working directory
     import os
-    import glob
     
     # Get the project root directory (dbcsrc)
     current_file = os.path.abspath(__file__)
@@ -533,18 +531,7 @@ def savetemp(df, basename):
     
     os.makedirs(tempdir, exist_ok=True)
     
-    # For csrcmiscontent, look for existing timestamped files
-    if basename == "csrcmiscontent":
-        # Look for existing csrcmiscontent*.csv files
-        existing_files = glob.glob(os.path.join(tempdir, "csrcmiscontent*.csv"))
-        if existing_files:
-            # Update the most recent file (last in sorted order)
-            existing_files.sort()
-            savepath = existing_files[-1]
-            df.to_csv(savepath, index=False, encoding='utf-8-sig')
-            return
-    
-    # Default behavior: use basename.csv
+    # Use basename.csv
     savename = basename + ".csv"
     savepath = os.path.join(tempdir, savename)
     df.to_csv(savepath, index=False, encoding='utf-8-sig')
@@ -616,8 +603,10 @@ def content_length_analysis(length, download_filter):
         # save misdf
         try:
             savetemp(misdf1, savename)
+            print(f"Successfully saved csrclenanalysis with {len(misdf1)} records")
         except Exception as save_error:
-            pass
+            print(f"Error saving csrclenanalysis: {str(save_error)}")
+            raise save_error
         
         return result
         
@@ -858,67 +847,376 @@ def download_attachment(down_list=None, progress_callback=None):
             text = ""
             
             try:
-                filepath = sd.find_all("div", class_="detail-news")[0].a["href"]
-                datapath = dirpath + "/" + filepath
+                # Enhanced PDF and attachment detection logic
+                attachment_link = None
+                attachment_found = False
                 
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                    "Referer": url,
-                }
+                # Method 1: Try to find attachment link in detail-news div
+                detail_news_divs = sd.find_all("div", class_="detail-news")
+                if detail_news_divs:
+                    for div in detail_news_divs:
+                        # Look for direct links
+                        links = div.find_all("a")
+                        for link in links:
+                            href = link.get("href")
+                            if href and not any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#']):
+                                # Check if it's a PDF or other document file
+                                if href.lower().endswith(('.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.zip', '.rar')):
+                                    attachment_link = href
+                                    attachment_found = True
+                                    print(f" - Found file by extension: {href}", end='', flush=True)
+                                    break
+                                # Check if link text suggests it's an attachment
+                                link_text = link.get_text().strip().lower()
+                                if any(keyword in link_text for keyword in ['附件', '下载', 'pdf', '文件', '决定书', '处罚决定', '通知书', '公告']):
+                                    attachment_link = href
+                                    attachment_found = True
+                                    print(f" - Found file by text: {link_text} -> {href}", end='', flush=True)
+                                    break
+                        if attachment_found:
+                            break
                 
-                # Ensure tempdir exists
-                os.makedirs(tempdir, exist_ok=True)
+                # Method 2: Search for common file patterns in href attributes
+                if not attachment_found:
+                    all_links = sd.find_all("a")
+                    for link in all_links:
+                        href = link.get("href")
+                        if href and not any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#']):
+                            href_lower = href.lower()
+                            # Check file extensions
+                            if href_lower.endswith(('.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.zip', '.rar')):
+                                attachment_link = href
+                                attachment_found = True
+                                print(f" - Found file by global search: {href}", end='', flush=True)
+                                break
+                            # Check for common file patterns in URL
+                            if any(pattern in href_lower for pattern in ['attachment', 'download', 'file', 'document', 'upload']):
+                                attachment_link = href
+                                attachment_found = True
+                                print(f" - Found file by URL pattern: {href}", end='', flush=True)
+                                break
                 
-                # Add timeout and retry logic for file download
-                max_retries = 3
-                retry_count = 0
+                # Method 3: Look for iframe or embed elements that might contain files
+                if not attachment_found:
+                    iframes = sd.find_all(["iframe", "embed", "object"])
+                    for iframe in iframes:
+                        src = iframe.get("src") or iframe.get("data")
+                        if src and any(ext in src.lower() for ext in ['.pdf', '.doc', '.docx']):
+                            attachment_link = src
+                            attachment_found = True
+                            print(f" - Found file in iframe/embed: {src}", end='', flush=True)
+                            break
                 
-                while retry_count < max_retries:
+                # Method 4: Search for script tags that might contain file URLs
+                if not attachment_found:
+                    scripts = sd.find_all("script")
+                    for script in scripts:
+                        if script.string:
+                            script_content = script.string.lower()
+                            # Look for URLs ending with file extensions
+                            import re
+                            file_urls = re.findall(r'["\']([^"\'\']*\.(pdf|doc|docx|xls|xlsx)[^"\'\']*)["\']', script_content)
+                            if file_urls:
+                                attachment_link = file_urls[0][0]
+                                attachment_found = True
+                                print(f" - Found file in script: {attachment_link}", end='', flush=True)
+                                break
+                
+                # Method 5: Fallback to original method with better error handling
+                if not attachment_found and detail_news_divs:
                     try:
-                        file_response = requests.get(datapath, headers=headers, stream=True, timeout=30)
-                        file_response.raise_for_status()
+                        first_link = detail_news_divs[0].find("a")
+                        if first_link and first_link.get("href"):
+                            href = first_link["href"]
+                            # Skip JavaScript links and other non-file links
+                            if not any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#']):
+                                attachment_link = href
+                                attachment_found = True
+                                print(f" - Using fallback method: {attachment_link}", end='', flush=True)
+                    except (IndexError, AttributeError):
+                        pass
+                
+                # Method 6: Smart content analysis for file detection
+                if not attachment_found:
+                    # Look for links with specific patterns that suggest file downloads
+                    all_links = sd.find_all("a")
+                    scored_links = []
+                    
+                    for link in all_links:
+                        href = link.get("href", "")
+                        text = link.get_text().strip().lower()
                         
-                        # Get file size for progress tracking
-                        file_size = int(file_response.headers.get('content-length', 0))
-                        
-                        savename = get_now() + os.path.basename(datapath)
-                        filename = os.path.join(tempdir, savename)
-                        
-                        downloaded_size = 0
-                        with open(filename, "wb") as f:
-                            for chunk in file_response.iter_content(1024 * 1024 * 2):
-                                if chunk:
-                                    f.write(chunk)
-                                    downloaded_size += len(chunk)
-                                    
-                                    # Update progress for large files
-                                    if file_size > 0:
-                                        file_progress = (downloaded_size / file_size) * 100
-                                        if file_progress % 25 == 0:  # Update every 25%
-                                            print(f" - File progress: {file_progress:.0f}%", end='', flush=True)
-                        
-                        # Verify file was downloaded successfully
-                        if os.path.exists(filename) and os.path.getsize(filename) > 0:
-                            successful_downloads += 1
-                            break
-                        else:
-                            raise Exception("Downloaded file is empty or doesn't exist")
+                        if not href or any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#']):
+                            continue
                             
-                    except Exception as download_error:
-                        retry_count += 1
-                        if retry_count >= max_retries:
-                            failed_downloads += 1
-                            break
+                        score = 0
+                        
+                        # Score based on file extensions
+                        if href.lower().endswith(('.pdf', '.doc', '.docx', '.xls', '.xlsx')):
+                            score += 10
+                        
+                        # Score based on URL patterns
+                        url_patterns = ['attachment', 'download', 'file', 'document', 'upload', 'doc', 'pdf']
+                        for pattern in url_patterns:
+                            if pattern in href.lower():
+                                score += 3
+                        
+                        # Score based on link text (more restrictive)
+                        text_patterns = ['附件', '下载', 'pdf', '文件', '决定书', '处罚决定', '通知书', '公告']
+                        for pattern in text_patterns:
+                            if pattern in text:
+                                score += 5
+                        
+                        # Lower score for generic terms that might be false positives
+                        generic_patterns = ['查看', '点击']
+                        for pattern in generic_patterns:
+                            if pattern in text and len(text) < 10:  # Only short generic text
+                                score += 2
+                        
+                        # Bonus for being in detail-news div
+                        parent_divs = link.find_parents("div", class_="detail-news")
+                        if parent_divs:
+                            score += 3
+                        
+                        # Penalty for navigation-like links
+                        nav_patterns = ['首页', '返回', '上一页', '下一页', '更多', '列表']
+                        for pattern in nav_patterns:
+                            if pattern in text:
+                                score -= 5
+                        
+                        if score > 0:
+                            scored_links.append((score, href, text))
+                    
+                    # Sort by score and try the highest scoring link (only if score is high enough)
+                    if scored_links:
+                        scored_links.sort(reverse=True)
+                        best_link = scored_links[0]
+                        # Only consider it an attachment if score is reasonably high
+                        if best_link[0] >= 8:  # Require minimum score of 8
+                            attachment_link = best_link[1]
+                            attachment_found = True
+                            print(f" - Smart detection (score {best_link[0]}): {best_link[2][:30]} -> {best_link[1]}", end='', flush=True)
                         else:
-                            time.sleep(2)  # Wait before retry
+                            print(f" - Highest scoring link has insufficient score ({best_link[0]}), skipping", end='', flush=True)
+                
+                # Method 7: Last resort - look for any link that might be downloadable (more restrictive)
+                if not attachment_found:
+                    all_links = sd.find_all("a")
+                    for link in all_links:
+                        href = link.get("href")
+                        link_text = link.get_text().strip().lower()
+                        if href:
+                            # Skip obvious navigation links and common site links
+                            if any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#', 'http://www.csrc.gov.cn', '/c', '/hunan']):
+                                continue
+                            # More restrictive file detection - require both URL pattern AND text indication
+                            url_has_file_pattern = any(pattern in href.lower() for pattern in ['attachment', 'download', 'file.', 'document', '.pdf', '.doc'])
+                            text_suggests_file = any(pattern in link_text for pattern in ['附件', '下载', 'pdf', '文件', '决定书', '处罚决定', '通知书'])
+                            
+                            if url_has_file_pattern and (text_suggests_file or href.lower().endswith(('.pdf', '.doc', '.docx', '.xls', '.xlsx'))):
+                                attachment_link = href
+                                attachment_found = True
+                                print(f" - Last resort file detection: {link_text[:20]} -> {href}", end='', flush=True)
+                                break
+                
+                if attachment_found and attachment_link:
+                    # Clean and validate the attachment link
+                    attachment_link = attachment_link.strip()
+                    
+                    # Construct full URL if relative path
+                    if attachment_link.startswith('/'):
+                        # Absolute path on same domain
+                        from urllib.parse import urlparse
+                        parsed_url = urlparse(url)
+                        datapath = f"{parsed_url.scheme}://{parsed_url.netloc}{attachment_link}"
+                    elif attachment_link.startswith('http'):
+                        # Full URL
+                        datapath = attachment_link
+                    elif attachment_link.startswith('../'):
+                        # Handle relative paths with ..
+                        from urllib.parse import urljoin
+                        datapath = urljoin(url, attachment_link)
+                    elif attachment_link.startswith('./'):
+                        # Handle current directory relative paths
+                        from urllib.parse import urljoin
+                        datapath = urljoin(url, attachment_link[2:])
+                    else:
+                        # Simple relative path
+                        from urllib.parse import urljoin
+                        datapath = urljoin(url, attachment_link)
+                    
+                    # Validate the constructed URL
+                    if not datapath.startswith('http'):
+                        datapath = f"http://www.csrc.gov.cn{datapath if datapath.startswith('/') else '/' + datapath}"
+                    
+                    print(f" -> Final URL: {datapath}", end='', flush=True)
+                    
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                        "Referer": url,
+                        "Accept": "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*",
+                        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                    }
+                    
+                    # Ensure tempdir exists
+                    os.makedirs(tempdir, exist_ok=True)
+                    
+                    # Add timeout and retry logic for file download
+                    max_retries = 3
+                    retry_count = 0
+                    
+                    while retry_count < max_retries:
+                        try:
+                            print(f" - Attempting to download: {datapath}", end='', flush=True)
+                            file_response = requests.get(datapath, headers=headers, stream=True, timeout=60)
+                            file_response.raise_for_status()
+                            
+                            # Check content type to ensure it's a file
+                            content_type = file_response.headers.get('content-type', '').lower()
+                            if 'text/html' in content_type:
+                                # This might be an error page, not a file
+                                raise Exception(f"Received HTML instead of file (content-type: {content_type})")
+                            
+                            # Get file size for progress tracking
+                            file_size = int(file_response.headers.get('content-length', 0))
+                            
+                            # Generate filename with proper extension
+                            original_filename = os.path.basename(attachment_link)
+                            if not original_filename or '.' not in original_filename:
+                                # Try to determine extension from content-type
+                                if 'pdf' in content_type:
+                                    extension = '.pdf'
+                                elif 'word' in content_type or 'msword' in content_type:
+                                    extension = '.doc'
+                                elif 'excel' in content_type or 'spreadsheet' in content_type:
+                                    extension = '.xls'
+                                else:
+                                    extension = '.pdf'  # Default to PDF
+                                original_filename = f"attachment{extension}"
+                            
+                            savename = get_now() + "_" + original_filename
+                            filename = os.path.join(tempdir, savename)
+                            
+                            downloaded_size = 0
+                            with open(filename, "wb") as f:
+                                for chunk in file_response.iter_content(1024 * 1024 * 2):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded_size += len(chunk)
+                                        
+                                        # Update progress for large files
+                                        if file_size > 0:
+                                            file_progress = (downloaded_size / file_size) * 100
+                                            if file_progress % 25 == 0:  # Update every 25%
+                                                print(f" - File progress: {file_progress:.0f}%", end='', flush=True)
+                            
+                            # Verify file was downloaded successfully
+                            if os.path.exists(filename) and os.path.getsize(filename) > 0:
+                                successful_downloads += 1
+                                print(f" - Successfully downloaded: {savename}", end='', flush=True)
+                                break
+                            else:
+                                raise Exception("Downloaded file is empty or doesn't exist")
+                                
+                        except Exception as download_error:
+                            retry_count += 1
+                            print(f" - Download attempt {retry_count} failed: {str(download_error)}", end='', flush=True)
+                            if retry_count >= max_retries:
+                                failed_downloads += 1
+                                print(f" - Failed to download after {max_retries} attempts", end='', flush=True)
+                                break
+                            else:
+                                time.sleep(2)  # Wait before retry
+                else:
+                    # No attachment link found - extract text from detail-news div
+                    failed_downloads += 1
+                    print(f" - No attachment link found, extracting text from detail-news div", end='', flush=True)
+                    
+                    # Extract text content from detail-news div
+                    try:
+                        detail_news_divs = sd.find_all("div", class_="detail-news")
+                        if detail_news_divs:
+                            # Get text from the first detail-news div
+                            detail_div = detail_news_divs[0]
+                            
+                            # Extract clean text content
+                            import re
+                            raw_text = detail_div.get_text(separator=' ', strip=True)
+                            
+                            # Clean up the text by removing excessive whitespace and formatting
+                            # Remove multiple spaces and normalize whitespace
+                            cleaned_text = re.sub(r'\s+', ' ', raw_text)
+                            
+                            # Remove common HTML artifacts
+                            cleaned_text = re.sub(r'\xa0', ' ', cleaned_text)  # Non-breaking spaces
+                            cleaned_text = re.sub(r'\u3000', ' ', cleaned_text)  # Ideographic spaces
+                            
+                            # Trim and ensure we have meaningful content
+                            text = cleaned_text.strip()
+                            
+                            if text:
+                                print(f" - Successfully extracted {len(text)} characters from detail-news div", end='', flush=True)
+                                savename = ""  # No file saved, only text content extracted
+                            else:
+                                text = "No meaningful text content found in detail-news div"
+                                print(f" - Warning: {text}", end='', flush=True)
+                                savename = ""
+                        else:
+                            text = "No detail-news div found on page"
+                            print(f" - Warning: {text}", end='', flush=True)
+                            
+                    except Exception as text_extract_error:
+                        text = f"Failed to extract text from detail-news div: {str(text_extract_error)}"
+                        print(f" - Error: {text}", end='', flush=True)
+                    
+                    # Debug: Show what links were found (optional, for troubleshooting)
+                    try:
+                        all_links = sd.find_all("a")
+                        print(f" - Debug: Found {len(all_links)} total links on page", end='', flush=True)
+                        
+                        # Check if there are any divs with class detail-news
+                        detail_divs = sd.find_all("div", class_="detail-news")
+                        print(f" - Debug: Found {len(detail_divs)} detail-news divs", end='', flush=True)
+                        
+                    except Exception as debug_error:
+                        print(f" - Debug error: {str(debug_error)}", end='', flush=True)
                             
             except Exception as e:
                 # Try to extract text content if file download fails
                 failed_downloads += 1
+                print(f" - Exception during processing: {str(e)}, attempting to extract text from detail-news div", end='', flush=True)
                 try:
-                    text = sd.find_all("div", class_="detail-news")[0].text
-                except Exception:
-                    text = "Failed to extract text content"
+                    detail_news_divs = sd.find_all("div", class_="detail-news")
+                    if detail_news_divs:
+                        # Get text from the first detail-news div
+                        detail_div = detail_news_divs[0]
+                        
+                        # Extract clean text content
+                        import re
+                        raw_text = detail_div.get_text(separator=' ', strip=True)
+                        
+                        # Clean up the text by removing excessive whitespace and formatting
+                        # Remove multiple spaces and normalize whitespace
+                        cleaned_text = re.sub(r'\s+', ' ', raw_text)
+                        
+                        # Remove common HTML artifacts
+                        cleaned_text = re.sub(r'\xa0', ' ', cleaned_text)  # Non-breaking spaces
+                        cleaned_text = re.sub(r'\u3000', ' ', cleaned_text)  # Ideographic spaces
+                        
+                        # Trim and ensure we have meaningful content
+                        text = cleaned_text.strip()
+                        
+                        if text:
+                            print(f" - Successfully extracted {len(text)} characters from detail-news div as fallback", end='', flush=True)
+                            savename = ""  # No file saved, only text content extracted
+                        else:
+                            text = "No meaningful text content found in detail-news div"
+                            savename = ""
+                    else:
+                        text = "No detail-news div found on page"
+                except Exception as text_error:
+                    text = f"Failed to extract text content: {str(text_error)}"
+                    print(f" - Text extraction error: {str(text_error)}", end='', flush=True)
                     
             datals = {"url": url, "filename": savename, "text": text}
             df = get_pandas().DataFrame(datals, index=[0])
@@ -949,12 +1247,55 @@ def download_attachment(down_list=None, progress_callback=None):
 
     if resultls:
         misdf = get_pandas().concat(resultls)
-        savecsv = "csrcmiscontent" + get_now()
         # reset index
         misdf.reset_index(drop=True, inplace=True)
-        savetemp(misdf, savecsv)
         
-        print(f"Results saved to: {savecsv}.csv")
+        # Update csrclenanalysis with extracted text content directly
+        print(f"Text content extracted for {len(misdf)} records, updating csrclenanalysis")
+        
+        # Update csrclenanalysis with extracted text content
+        try:
+            # Get existing csrclenanalysis data
+            existing_analysis = get_csrclenanalysis()
+            
+            if existing_analysis is not None and not existing_analysis.empty:
+                # Use existing DataFrame directly
+                analysis_df = existing_analysis
+                
+                # Update content for matching URLs
+                updated_count = 0
+                for _, row in misdf.iterrows():
+                    url = row['url']
+                    extracted_text = row['text']
+                    
+                    # Find matching records in analysis_df by URL (链接 column)
+                    if '链接' in analysis_df.columns:
+                        mask = analysis_df['链接'] == url
+                        if mask.any():
+                            # Update the content (内容) field with extracted text
+                            analysis_df.loc[mask, '内容'] = extracted_text
+                            # Recalculate length
+                            analysis_df.loc[mask, 'len'] = len(str(extracted_text))
+                            updated_count += 1
+                
+                if updated_count > 0:
+                    # Save updated analysis data
+                    savename = "csrclenanalysis"
+                    savetemp(analysis_df, savename)
+                    print(f"Successfully updated csrclenanalysis content field for {updated_count} records")
+                else:
+                    print("No matching records found in csrclenanalysis to update with extracted text")
+            else:
+                # If no existing analysis data, create new analysis with extracted content
+                result = content_length_analysis(50, "none")
+                print(f"Successfully created csrclenanalysis with {len(result)} records")
+                
+        except Exception as len_error:
+            print(f"Error: Failed to update csrclenanalysis: {str(len_error)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            # Don't raise the error to allow the main process to continue
+        
         print(f"Total records processed: {len(misdf)}")
         
         return misdf

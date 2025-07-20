@@ -27,7 +27,7 @@ export default function RootLayout({
         <title>CSRC Case Analysis System</title>
         <meta name="description" content="China Securities Regulatory Commission Case Analysis System" />
       </head>
-      <body className={inter.className}>
+      <body className={inter.className} suppressHydrationWarning={true}>
         <ConfigProvider theme={theme} locale={zhCN}>
           <App>
             {children}

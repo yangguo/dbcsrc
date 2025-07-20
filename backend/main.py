@@ -3669,25 +3669,35 @@ async def upload_analysis_results(file: UploadFile = File(...)):
 
 @app.get("/api/downloaded-file-status", response_model=APIResponse)
 async def get_downloaded_file_status():
-    """Get downloaded file status from csrcmiscontent files"""
+    """Get downloaded file status from csrclenanalysis files"""
     try:
-        logger.info("Getting downloaded file status from csrcmiscontent files")
+        logger.info("Getting downloaded file status from csrclenanalysis files")
         
-        from data_service import get_csrcmiscontent
+        from web_crawler import get_csrclenanalysis
         
-        # Get csrcmiscontent data
-        misc_df = get_csrcmiscontent()
+        # Get csrclenanalysis data
+        analysis_df = get_csrclenanalysis()
         
-        if misc_df.empty:
-            logger.info("No csrcmiscontent data found")
+        if analysis_df is None or analysis_df.empty:
+            logger.info("No csrclenanalysis data found")
             return APIResponse(
                 success=True,
                 message="No downloaded file data available",
                 data=[]
             )
         
-        # Convert DataFrame to list of dictionaries
-        downloaded_files = misc_df.to_dict('records')
+        # Filter records that have downloaded files (have filename and content)
+        downloaded_files = []
+        for _, row in analysis_df.iterrows():
+            if (hasattr(row, 'filename') and row.get('filename')) or \
+               (hasattr(row, 'content') and row.get('content')) or \
+               (hasattr(row, '内容') and row.get('内容')):
+                file_record = {
+                    'url': row.get('链接') or row.get('url', ''),
+                    'filename': row.get('filename', ''),
+                    'text': row.get('内容') or row.get('content', '')
+                }
+                downloaded_files.append(file_record)
         
         logger.info(f"Retrieved {len(downloaded_files)} downloaded file records")
         
@@ -3736,6 +3746,59 @@ async def check_file_exists(request: dict):
             message="Failed to check file existence",
             error=str(e),
             data={'exists': False}
+        )
+
+@app.post("/check-files-batch", response_model=APIResponse)
+async def check_files_batch(request: dict):
+    """Check if multiple files exist on the server in a single request"""
+    try:
+        file_paths = request.get('file_paths', [])
+        
+        if not file_paths or not isinstance(file_paths, list):
+            return APIResponse(
+                success=False,
+                message="File paths array is required",
+                data={'results': []}
+            )
+        
+        # Limit batch size to prevent abuse
+        if len(file_paths) > 200:
+            return APIResponse(
+                success=False,
+                message="Too many files in batch. Maximum 200 files allowed.",
+                data={'results': []}
+            )
+        
+        # Check each file existence
+        results = []
+        for file_path in file_paths:
+            if file_path and isinstance(file_path, str):
+                exists = os.path.exists(file_path)
+                results.append({
+                    'file_path': file_path,
+                    'exists': exists
+                })
+            else:
+                results.append({
+                    'file_path': file_path,
+                    'exists': False
+                })
+        
+        logger.info(f"Batch file existence check for {len(file_paths)} files")
+        
+        return APIResponse(
+            success=True,
+            message=f"Checked {len(file_paths)} files",
+            data={'results': results}
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to check files existence in batch: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to check files existence",
+            error=str(e),
+            data={'results': []}
         )
 
 async def update_content_files_after_extraction(extraction_results: list):
@@ -3816,12 +3879,12 @@ async def extract_text(request: dict):
         
         logger.info(f"Starting text extraction for {len(attachment_ids)} attachments")
         
-        # Get csrcmiscontent data to find attachment information
-        from data_service import get_csrcmiscontent
-        misc_df = get_csrcmiscontent()
+        # Get csrclenanalysis data to find attachment information
+        from data_service import get_csrclenanalysis
+        analysis_df = get_csrclenanalysis()
         
-        if misc_df.empty:
-            logger.warning("No csrcmiscontent data found")
+        if analysis_df.empty:
+            logger.warning("No csrclenanalysis data found")
             return APIResponse(
                 success=True,
                 message="No attachment data available for text extraction",
@@ -3829,184 +3892,146 @@ async def extract_text(request: dict):
             )
         
         # Import text extraction functions from doc2text
-        from doc2text import docxurl2txt, pdfurl2txt, docxurl2ocr, pdfurl2ocr, picurl2ocr, find_libreoffice_executable, convert_with_libreoffice
+        from doc2text import docxurl2txt, pdfurl2txt, docxurl2ocr, pdfurl2ocr, picurl2ocr, find_libreoffice_executable, convert_with_libreoffice, convert_docx_to_pdf
         import os
         import subprocess
         
         # Extract text for each attachment ID
         extraction_results = []
         
+        # Get temp directory path
+        current_file = os.path.abspath(__file__)
+        backend_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(backend_dir)
+        temp_dir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+        
         for attachment_id in attachment_ids:
             try:
-                # Find the attachment in the data
-                attachment_data = misc_df[misc_df['url'] == attachment_id]
+                logger.info(f"Processing attachment: {attachment_id}")
                 
-                if attachment_data.empty:
-                    # If not found by URL, try to find by other identifiers
-                    attachment_data = misc_df[misc_df.index.astype(str) == str(attachment_id)]
+                # Initialize variables
+                extracted_text = ""
+                filename = ""
+                attachment_url = attachment_id
                 
+                # First, try to find the attachment in CSV data
+                attachment_data = pd.DataFrame()
+                for url_col in ['url', '链接', 'link']:
+                    if url_col in analysis_df.columns:
+                        attachment_data = analysis_df[analysis_df[url_col] == attachment_id]
+                        if not attachment_data.empty:
+                            break
+                
+                # If found in CSV, get the filename and existing text
                 if not attachment_data.empty:
                     row = attachment_data.iloc[0]
-                    raw_filename = row.get('filename', '') if hasattr(row, 'get') else ''
-                    attachment_url = row.get('url', attachment_id) if hasattr(row, 'get') else attachment_id
+                    # Get filename from CSV
+                    filename = row.get('filename', '') if 'filename' in row else (row.get('文件名', '') if '文件名' in row else '')
+                    attachment_url = row.get('url', attachment_id) if 'url' in row else (row.get('链接', attachment_id) if '链接' in row else attachment_id)
                     
-                    # Clean filename by removing timestamp prefix (format: YYYYMMDDHHMMSS)
-                    # Use original filename from CSV data (keep timestamp)
-                    filename = raw_filename if raw_filename else f"attachment_{attachment_id}"
-                    
-                    # First check if text is already extracted in the CSV
+                    # Check if text is already extracted in the CSV
                     existing_text = ""
                     try:
-                        if hasattr(row, '__getitem__') and 'text' in row and row['text'] is not None:
-                            # Use pandas isna if available, otherwise check for None/empty
-                            if hasattr(pd, 'isna') and not pd.isna(row['text']):
-                                existing_text = str(row['text']).strip()
-                            elif row['text'] not in [None, '', 'nan', 'NaN']:
-                                existing_text = str(row['text']).strip()
-                        elif hasattr(row, '__getitem__') and 'content' in row and row['content'] is not None:
-                            if hasattr(pd, 'isna') and not pd.isna(row['content']):
-                                existing_text = str(row['content']).strip()
-                            elif row['content'] not in [None, '', 'nan', 'NaN']:
-                                existing_text = str(row['content']).strip()
+                        text_columns = ['text', '内容', 'content']
+                        for col in text_columns:
+                            if col in row.index and row[col] is not None:
+                                if hasattr(pd, 'isna') and not pd.isna(row[col]):
+                                    existing_text = str(row[col]).strip()
+                                    break
+                                elif row[col] not in [None, '', 'nan', 'NaN']:
+                                    existing_text = str(row[col]).strip()
+                                    break
                     except Exception as text_check_error:
                         logger.warning(f"Error checking existing text: {str(text_check_error)}")
                         existing_text = ""
                     
-                    extracted_text = ""
-                    
-                    # If no existing text or empty, extract based on file type
-                    if not existing_text and filename:
-                        # Get file extension
-                        base, ext = os.path.splitext(filename)
-                        ext = ext.lower()
-                        
-                        # Construct file path in temp directory
-                        current_file = os.path.abspath(__file__)
-                        backend_dir = os.path.dirname(current_file)
-                        project_root = os.path.dirname(backend_dir)
-                        temp_dir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
-                        file_path = os.path.join(temp_dir, filename)
-                        
-                        try:
-                            if os.path.exists(file_path):
-                                if ext in ['.docx']:
-                                    extracted_text = docxurl2txt(file_path)
-                                    logger.info(f"DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
-                                    # If direct extraction fails, try OCR
-                                    if not extracted_text or not extracted_text.strip():
-                                        logger.info(f"Trying OCR for DOCX file: {filename}")
-                                        extracted_text = docxurl2ocr(file_path, temp_dir)
-                                        logger.info(f"DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
-                                        
-                                elif ext in ['.doc']:
-                                    # For .doc files, convert to DOCX using LibreOffice first
-                                    doc_dir = os.path.join(temp_dir, "doc")
-                                    os.makedirs(doc_dir, exist_ok=True)
-                                    converted_path = os.path.join(doc_dir, base + ".docx")
-                                    
-                                    # Convert using LibreOffice if converted file doesn't exist
-                                    if not os.path.exists(converted_path):
-                                        try:
-                                            logger.info(f"Converting DOC file to DOCX: {filename}")
-                                            soffice_path = find_libreoffice_executable()
-                                            if soffice_path:
-                                                success = convert_with_libreoffice(file_path, doc_dir, soffice_path)
-                                                if not success:
-                                                    extracted_text = f"LibreOffice conversion failed for {filename}"
-                                            else:
-                                                logger.error("LibreOffice not found on system")
-                                                extracted_text = "LibreOffice not found - cannot convert DOC files"
-                                        except Exception as convert_error:
-                                            logger.error(f"LibreOffice conversion failed for {filename}: {str(convert_error)}")
-                                            extracted_text = f"Conversion failed: {str(convert_error)}"
-                                    
-                                    # Extract text from converted DOCX file
-                                    if os.path.exists(converted_path) and not extracted_text:
-                                        extracted_text = docxurl2txt(converted_path)
-                                        logger.info(f"DOC->DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
-                                        # If direct extraction fails, try OCR
-                                        if not extracted_text or not extracted_text.strip():
-                                            logger.info(f"Trying OCR for converted DOC file: {filename}")
-                                            extracted_text = docxurl2ocr(converted_path, temp_dir)
-                                            logger.info(f"DOC->DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
-                                    
-                                elif ext in ['.wps']:
-                                    # For .wps files, convert to DOCX using LibreOffice first
-                                    wps_dir = os.path.join(temp_dir, "wps")
-                                    os.makedirs(wps_dir, exist_ok=True)
-                                    converted_path = os.path.join(wps_dir, base + ".docx")
-                                    
-                                    # Convert using LibreOffice if converted file doesn't exist
-                                    if not os.path.exists(converted_path):
-                                        try:
-                                            logger.info(f"Converting WPS file to DOCX: {filename}")
-                                            soffice_path = find_libreoffice_executable()
-                                            if soffice_path:
-                                                success = convert_with_libreoffice(file_path, wps_dir, soffice_path)
-                                                if not success:
-                                                    extracted_text = f"LibreOffice conversion failed for {filename}"
-                                            else:
-                                                logger.error("LibreOffice not found on system")
-                                                extracted_text = "LibreOffice not found - cannot convert WPS files"
-                                        except Exception as convert_error:
-                                            logger.error(f"LibreOffice conversion failed for {filename}: {str(convert_error)}")
-                                            extracted_text = f"Conversion failed: {str(convert_error)}"
-                                    
-                                    # Extract text from converted DOCX file
-                                    if os.path.exists(converted_path) and not extracted_text:
-                                        extracted_text = docxurl2txt(converted_path)
-                                        logger.info(f"WPS->DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
-                                        # If direct extraction fails, try OCR
-                                        if not extracted_text or not extracted_text.strip():
-                                            logger.info(f"Trying OCR for converted WPS file: {filename}")
-                                            extracted_text = docxurl2ocr(converted_path, temp_dir)
-                                            logger.info(f"WPS->DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
-                                            
-                                elif ext in ['.pdf']:
-                                    extracted_text = pdfurl2txt(file_path)
-                                    # If direct extraction fails, try OCR
-                                    if not extracted_text.strip():
-                                        extracted_text = pdfurl2ocr(file_path, temp_dir)
-                                        
-                                elif ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']:
-                                    extracted_text = picurl2ocr(file_path)
-                                    
-                                elif ext in ['.xls', '.xlsx']:
-                                    # For Excel files, we could add support later
-                                    extracted_text = "Excel file - text extraction not yet supported"
-                                    
-                                else:
-                                    extracted_text = f"Unsupported file type: {ext}"
-                            else:
-                                extracted_text = f"File not found: {filename}"
-                                
-                        except Exception as file_error:
-                            logger.error(f"Error extracting text from {filename}: {str(file_error)}")
-                            extracted_text = f"Error extracting text: {str(file_error)}"
-                    else:
-                        extracted_text = existing_text if existing_text else "No text content available"
-                    
-                    result_item = {
-                        'url': attachment_url,
-                        'filename': filename,
-                        'text': extracted_text
-                    }
-                else:
-                    # Attachment not found, return empty result
-                    result_item = {
-                        'url': attachment_id,
-                        'filename': f'attachment_{attachment_id}',
-                        'text': 'Attachment not found'
-                    }
+                    # If we already have text content and it's meaningful, use it
+                    if existing_text and len(existing_text.strip()) > 10:  # More than just "正文见附件。"
+                        extracted_text = existing_text
+                        logger.info(f"Using existing text from CSV: {len(extracted_text)} characters")
                 
+                # If no meaningful text found, try to extract from files in temp directory
+                if not extracted_text or len(extracted_text.strip()) <= 10:
+                    logger.info(f"Attempting to extract text from files for URL: {attachment_id}")
+                    
+                    # Search for files that might be related to this URL
+                    # Strategy 1: If we have a filename from CSV, look for exact match
+                    if filename:
+                        file_path = os.path.join(temp_dir, filename)
+                        if os.path.exists(file_path):
+                            logger.info(f"Found exact filename match: {filename}")
+                            extracted_text = extract_text_from_file(file_path, temp_dir)
+                    
+                    # Strategy 2: Search for files with similar patterns or timestamps
+                    if not extracted_text:
+                        # List all files in temp directory
+                        try:
+                            import glob
+                            all_files = glob.glob(os.path.join(temp_dir, "*.*"))
+                            
+                            # Filter for document files
+                            doc_files = [f for f in all_files if f.lower().endswith(('.pdf', '.doc', '.docx', '.wps'))]
+                            
+                            # Strategy 2a: Look for files with recent timestamps that might match
+                            # Extract potential keywords from URL for matching
+                            url_keywords = []
+                            if 'qingdao' in attachment_id.lower():
+                                url_keywords.append('青岛')
+                            if 'warning' in attachment_id.lower() or 'warn' in attachment_id.lower():
+                                url_keywords.extend(['警示', '警告'])
+                            if 'punishment' in attachment_id.lower():
+                                url_keywords.extend(['处罚', '决定'])
+                            
+                            # Look for files containing keywords in filename
+                            matching_files = []
+                            for doc_file in doc_files:
+                                filename_only = os.path.basename(doc_file)
+                                for keyword in url_keywords:
+                                    if keyword in filename_only:
+                                        matching_files.append(doc_file)
+                                        break
+                            
+                            # If we found matching files, try to extract from the most recent one
+                            if matching_files:
+                                # Sort by modification time, most recent first
+                                matching_files.sort(key=os.path.getmtime, reverse=True)
+                                latest_file = matching_files[0]
+                                logger.info(f"Found potential matching file: {os.path.basename(latest_file)}")
+                                extracted_text = extract_text_from_file(latest_file, temp_dir)
+                                filename = os.path.basename(latest_file)
+                            
+                            # Strategy 2b: If no keyword match, try the most recently downloaded file
+                            elif doc_files:
+                                # Sort by modification time, most recent first
+                                doc_files.sort(key=os.path.getmtime, reverse=True)
+                                latest_file = doc_files[0]
+                                logger.info(f"No keyword match found, trying most recent file: {os.path.basename(latest_file)}")
+                                extracted_text = extract_text_from_file(latest_file, temp_dir)
+                                filename = os.path.basename(latest_file)
+                                
+                        except Exception as file_search_error:
+                            logger.error(f"Error searching for files: {str(file_search_error)}")
+                
+                # If still no text extracted, provide appropriate message
+                if not extracted_text:
+                    if filename:
+                        extracted_text = f"无法从文件 {filename} 中提取文本内容"
+                    else:
+                        extracted_text = f"未找到与 URL {attachment_id} 相关的附件文件"
+                
+                result_item = {
+                    'url': attachment_url,
+                    'filename': filename or f'attachment_{len(extraction_results)}',
+                    'text': extracted_text
+                }
                 extraction_results.append(result_item)
+                logger.info(f"Extracted {len(extracted_text)} characters for {attachment_url}")
                 
             except Exception as e:
                 logger.error(f"Error extracting text for attachment {attachment_id}: {str(e)}")
                 extraction_results.append({
                     'url': attachment_id,
                     'filename': f'attachment_{attachment_id}',
-                    'text': f'Error: {str(e)}'
                 })
         
         logger.info(f"Text extraction completed for {len(extraction_results)} attachments")
@@ -4034,6 +4059,150 @@ async def extract_text(request: dict):
             data={'result': []}
         )
 
+def extract_text_from_file(file_path, temp_dir):
+    """Extract text from a file based on its extension"""
+    from doc2text import docxurl2txt, pdfurl2txt, docxurl2ocr, pdfurl2ocr, picurl2ocr, find_libreoffice_executable, convert_with_libreoffice, convert_docx_to_pdf
+    
+    try:
+        if not os.path.exists(file_path):
+            return f"File not found: {file_path}"
+        
+        # Get file extension
+        base, ext = os.path.splitext(file_path)
+        ext = ext.lower()
+        filename = os.path.basename(file_path)
+        
+        logger.info(f"Extracting text from {filename} (type: {ext})")
+        
+        extracted_text = ""
+        
+        if ext in ['.docx']:
+            extracted_text = docxurl2txt(file_path)
+            logger.info(f"DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
+            
+            # If direct extraction fails, try converting DOCX to DOCX using LibreOffice and try again
+            if not extracted_text or not extracted_text.strip():
+                logger.info(f"Trying LibreOffice DOCX conversion for: {filename}")
+                try:
+                    soffice_path = find_libreoffice_executable()
+                    if soffice_path:
+                        docx_dir = os.path.join(temp_dir, "docx_converted")
+                        os.makedirs(docx_dir, exist_ok=True)
+                        
+                        # Convert DOCX to DOCX using LibreOffice (this can fix corrupted DOCX files)
+                        success = convert_with_libreoffice(file_path, docx_dir, soffice_path, "docx")
+                        if success:
+                            converted_docx_path = os.path.join(docx_dir, os.path.splitext(os.path.basename(file_path))[0] + ".docx")
+                            if os.path.exists(converted_docx_path):
+                                # Try extracting from converted DOCX
+                                extracted_text = docxurl2txt(converted_docx_path)
+                                logger.info(f"LibreOffice DOCX->DOCX extraction result length: {len(extracted_text) if extracted_text else 0}")
+                    
+                    # If still no text, convert to PDF and use PDF OCR logic
+                    if not extracted_text or not extracted_text.strip():
+                        logger.info(f"Trying LibreOffice DOCX->PDF conversion for: {filename}")
+                        if soffice_path:
+                            pdf_dir = os.path.join(temp_dir, "pdf_converted")
+                            os.makedirs(pdf_dir, exist_ok=True)
+                            
+                            # Convert DOCX to PDF using LibreOffice
+                            success = convert_docx_to_pdf(file_path, pdf_dir, soffice_path)
+                            if success:
+                                converted_pdf_path = os.path.join(pdf_dir, os.path.splitext(os.path.basename(file_path))[0] + ".pdf")
+                                if os.path.exists(converted_pdf_path):
+                                    # Use PDF OCR logic
+                                    extracted_text = pdfurl2ocr(converted_pdf_path, temp_dir)
+                                    logger.info(f"LibreOffice DOCX->PDF OCR result length: {len(extracted_text) if extracted_text else 0}")
+                except Exception as conversion_error:
+                    logger.error(f"LibreOffice conversion failed for {filename}: {str(conversion_error)}")
+                    # Keep the original extracted_text (empty or from previous attempts)
+                    
+        elif ext in ['.doc']:
+            # For .doc files, convert to DOCX using LibreOffice first
+            doc_dir = os.path.join(temp_dir, "doc")
+            os.makedirs(doc_dir, exist_ok=True)
+            converted_path = os.path.join(doc_dir, os.path.splitext(os.path.basename(file_path))[0] + ".docx")
+            
+            # Convert using LibreOffice if converted file doesn't exist
+            if not os.path.exists(converted_path):
+                try:
+                    logger.info(f"Converting DOC file to DOCX: {filename}")
+                    soffice_path = find_libreoffice_executable()
+                    if soffice_path:
+                        success = convert_with_libreoffice(file_path, doc_dir, soffice_path)
+                        if not success:
+                            extracted_text = f"LibreOffice conversion failed for {filename}"
+                    else:
+                        logger.error("LibreOffice not found on system")
+                        extracted_text = "LibreOffice not found - cannot convert DOC files"
+                except Exception as convert_error:
+                    logger.error(f"LibreOffice conversion failed for {filename}: {str(convert_error)}")
+                    extracted_text = f"Conversion failed: {str(convert_error)}"
+            
+            # Extract text from converted DOCX file
+            if os.path.exists(converted_path) and not extracted_text:
+                extracted_text = docxurl2txt(converted_path)
+                logger.info(f"DOC->DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
+                # If direct extraction fails, try OCR
+                if not extracted_text or not extracted_text.strip():
+                    logger.info(f"Trying OCR for converted DOC file: {filename}")
+                    extracted_text = docxurl2ocr(converted_path, temp_dir)
+                    logger.info(f"DOC->DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
+            
+        elif ext in ['.wps']:
+            # For .wps files, convert to DOCX using LibreOffice first
+            wps_dir = os.path.join(temp_dir, "wps")
+            os.makedirs(wps_dir, exist_ok=True)
+            converted_path = os.path.join(wps_dir, os.path.splitext(os.path.basename(file_path))[0] + ".docx")
+            
+            # Convert using LibreOffice if converted file doesn't exist
+            if not os.path.exists(converted_path):
+                try:
+                    logger.info(f"Converting WPS file to DOCX: {filename}")
+                    soffice_path = find_libreoffice_executable()
+                    if soffice_path:
+                        success = convert_with_libreoffice(file_path, wps_dir, soffice_path)
+                        if not success:
+                            extracted_text = f"LibreOffice conversion failed for {filename}"
+                    else:
+                        logger.error("LibreOffice not found on system")
+                        extracted_text = "LibreOffice not found - cannot convert WPS files"
+                except Exception as convert_error:
+                    logger.error(f"LibreOffice conversion failed for {filename}: {str(convert_error)}")
+                    extracted_text = f"Conversion failed: {str(convert_error)}"
+            
+            # Extract text from converted DOCX file
+            if os.path.exists(converted_path) and not extracted_text:
+                extracted_text = docxurl2txt(converted_path)
+                logger.info(f"WPS->DOCX direct extraction result length: {len(extracted_text) if extracted_text else 0}")
+                # If direct extraction fails, try OCR
+                if not extracted_text or not extracted_text.strip():
+                    logger.info(f"Trying OCR for converted WPS file: {filename}")
+                    extracted_text = docxurl2ocr(converted_path, temp_dir)
+                    logger.info(f"WPS->DOCX OCR extraction result length: {len(extracted_text) if extracted_text else 0}")
+                    
+        elif ext in ['.pdf']:
+            extracted_text = pdfurl2txt(file_path)
+            # If direct extraction fails, try OCR
+            if not extracted_text.strip():
+                extracted_text = pdfurl2ocr(file_path, temp_dir)
+                
+        elif ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']:
+            extracted_text = picurl2ocr(file_path)
+            
+        elif ext in ['.xls', '.xlsx']:
+            # For Excel files, we could add support later
+            extracted_text = "Excel file - text extraction not yet supported"
+            
+        else:
+            extracted_text = f"Unsupported file type: {ext}"
+        
+        logger.info(f"Final extraction result for {filename}: {len(extracted_text) if extracted_text else 0} characters")
+        return extracted_text
+        
+    except Exception as file_error:
+        logger.error(f"Error extracting text from {file_path}: {str(file_error)}")
+        return f"Error extracting text: {str(file_error)}"
 @app.post("/delete-attachments", response_model=APIResponse)
 async def delete_attachments(request: dict):
     """Delete attachments"""

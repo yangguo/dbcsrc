@@ -54,13 +54,7 @@ interface DownloadResult {
   status: 'success' | 'failed';
 }
 
-interface TextExtractionResult {
-  id: string;
-  url: string;
-  filename: string;
-  extractedText: string;
-  status: 'success' | 'failed';
-}
+
 
 const AttachmentProcessing: React.FC = () => {
   const { message } = App.useApp();
@@ -70,9 +64,8 @@ const AttachmentProcessing: React.FC = () => {
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
   const [currentTask, setCurrentTask] = useState('');
-  const [downloadResults, setDownloadResults] = useState<DownloadResult[]>([]);
-  const [textExtractionResults, setTextExtractionResults] = useState<TextExtractionResult[]>([]);
   const [activeTab, setActiveTab] = useState('analysis');
+  const [downloadResults, setDownloadResults] = useState<DownloadResult[]>([]);
 
 
   // 检查文件是否存在的函数
@@ -100,7 +93,7 @@ const AttachmentProcessing: React.FC = () => {
     messageType?: 'info' | 'success';
   }
 
-  // 统一的文件检查函数
+  // 统一的文件检查函数（使用批量检查避免速率限制）
   const checkFilesExistence = async (
     dataToCheck: AttachmentData[], 
     options: FileCheckOptions = {}
@@ -120,23 +113,67 @@ const AttachmentProcessing: React.FC = () => {
     }
     
     try {
-      const updatedData = await Promise.all(
-        dataToCheck.map(async (item) => {
-          if (item.downloadStatus === 'downloaded' && item.filename) {
-            const filePath = item.localFilePath || `/temp/${item.filename}`;
-            const fileExists = await checkFileExists(filePath);
-            return {
-              ...item,
-              fileExists,
-              localFilePath: filePath,
-            };
-          }
-          return {
+      // 收集需要检查的文件路径
+      const filesToCheck: { index: number; filePath: string }[] = [];
+      const updatedData = [...dataToCheck];
+      
+      dataToCheck.forEach((item, index) => {
+        if (item.downloadStatus === 'downloaded' && item.filename) {
+          const filePath = item.localFilePath || `/temp/${item.filename}`;
+          filesToCheck.push({ index, filePath });
+          updatedData[index] = {
+            ...item,
+            localFilePath: filePath,
+          };
+        } else {
+          updatedData[index] = {
             ...item,
             fileExists: false,
           };
-        })
-      );
+        }
+      });
+      
+      // 如果有文件需要检查，使用批量检查API
+      if (filesToCheck.length > 0) {
+        const filePaths = filesToCheck.map(f => f.filePath);
+        const batchResponse = await caseApi.checkFilesBatch(filePaths);
+        
+        if (batchResponse.success && batchResponse.data?.results) {
+          // 将批量检查结果映射回原数据
+          batchResponse.data.results.forEach((result: any, resultIndex: number) => {
+            const fileInfo = filesToCheck[resultIndex];
+            if (fileInfo) {
+              updatedData[fileInfo.index] = {
+                ...updatedData[fileInfo.index],
+                fileExists: result.exists || false,
+              };
+            }
+          });
+        } else {
+          // 批量检查失败，回退到单个检查（但添加延迟避免速率限制）
+          console.warn('批量文件检查失败，回退到单个检查模式');
+          for (let i = 0; i < filesToCheck.length; i++) {
+            const { index, filePath } = filesToCheck[i];
+            try {
+              const fileExists = await checkFileExists(filePath);
+              updatedData[index] = {
+                ...updatedData[index],
+                fileExists,
+              };
+              // 添加小延迟避免速率限制
+              if (i < filesToCheck.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+            } catch (error) {
+              console.error(`检查文件 ${filePath} 时出错:`, error);
+              updatedData[index] = {
+                ...updatedData[index],
+                fileExists: false,
+              };
+            }
+          }
+        }
+      }
       
       if (updateState) {
         setAnalysisData(updatedData);
@@ -334,124 +371,7 @@ const AttachmentProcessing: React.FC = () => {
     },
   ];
 
-  // 附件下载结果表格列
-  const downloadColumns = [
-    {
-      title: 'URL',
-      dataIndex: 'url',
-      key: 'url',
-      ellipsis: true,
-      width: '30%',
-    },
-    {
-      title: '文件名',
-      dataIndex: 'filename',
-      key: 'filename',
-      width: '25%',
-    },
-    {
-      title: '文本内容',
-      dataIndex: 'text',
-      key: 'text',
-      ellipsis: true,
-      width: '30%',
-      render: (text: string) => (
-        <Tooltip 
-          title={text || '暂无内容'}
-          placement="topLeft"
-          styles={{ root: { maxWidth: '400px', wordWrap: 'break-word' } }}
-        >
-          <div 
-            style={{ 
-              maxWidth: '200px', 
-              overflow: 'hidden', 
-              textOverflow: 'ellipsis',
-              cursor: 'pointer'
-            }}
-          >
-            {text || '暂无内容'}
-          </div>
-        </Tooltip>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: '15%',
-      render: (status: string) => (
-        <Tag color={status === 'success' ? 'green' : 'red'}>
-          {status === 'success' ? '成功' : '失败'}
-        </Tag>
-      ),
-    },
-  ];
 
-  // 文本抽取结果表格列
-  const textExtractionColumns = [
-    {
-      title: 'URL',
-      dataIndex: 'url',
-      key: 'url',
-      ellipsis: true,
-      width: '25%',
-      render: (url: string) => (
-        url ? (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
-            查看原文
-          </a>
-        ) : '-'
-      ),
-    },
-    {
-      title: '文件名',
-      dataIndex: 'filename',
-      key: 'filename',
-      width: '25%',
-      ellipsis: true,
-      render: (filename: string) => (
-        <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={filename}>
-          {filename || '暂无文件名'}
-        </div>
-      ),
-    },
-    {
-      title: '抽取的文本',
-      dataIndex: 'extractedText',
-      key: 'extractedText',
-      ellipsis: true,
-      width: '35%',
-      render: (text: string) => (
-        <Tooltip 
-          title={text || '暂无内容'}
-          placement="topLeft"
-          styles={{ root: { maxWidth: '400px', wordWrap: 'break-word' } }}
-        >
-          <div 
-            style={{ 
-              maxWidth: '300px', 
-              overflow: 'hidden', 
-              textOverflow: 'ellipsis',
-              cursor: 'pointer'
-            }}
-          >
-            {text || '暂无内容'}
-          </div>
-        </Tooltip>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: '15%',
-      render: (status: string) => (
-        <Tag color={status === 'success' ? 'green' : 'red'}>
-          {status === 'success' ? '成功' : '失败'}
-        </Tag>
-      ),
-    },
-  ];
 
   const handleAnalyze = async (values: any) => {
     try {
@@ -661,6 +581,39 @@ const AttachmentProcessing: React.FC = () => {
       // 自动检查下载文件的存在性
       await autoCheckFilesExistence(updatedData);
       
+      // 重新读取csrclenanalysis数据以更新表格状态
+      try {
+        setCurrentTask('刷新数据中...');
+        const refreshedData = await caseApi.getCsrclenanalysisData();
+        if (refreshedData.success && refreshedData.data?.result) {
+          // Create a map of updated data for efficient lookup
+          const updatedDataMap = new Map();
+          refreshedData.data.result.forEach((item: any) => {
+            updatedDataMap.set(item.url || item.id, item);
+          });
+          
+          // Merge updated data with existing data, preserving all original fields
+          setAnalysisData(prev => 
+            prev.map(item => {
+              const updatedItem = updatedDataMap.get(item.url || item.id);
+              if (updatedItem) {
+                return {
+                  ...item,
+                  content: updatedItem.content || item.content,
+                  contentLength: updatedItem.contentLength || item.contentLength,
+                  filename: updatedItem.filename || item.filename,
+                  downloadStatus: updatedItem.filename ? 'downloaded' as const : item.downloadStatus,
+                  textExtracted: !!updatedItem.content
+                };
+              }
+              return item;
+            })
+          );
+        }
+      } catch (refreshError) {
+        console.warn('Failed to refresh table data after download:', refreshError);
+      }
+      
       // Switch to download results tab
       setActiveTab('download');
     } catch (error: any) {
@@ -742,17 +695,9 @@ const AttachmentProcessing: React.FC = () => {
       // 调用后端API进行文本抽取，传递URL列表
       const result = await caseApi.extractText(selectedUrls);
       
-      // Transform extraction results
+      // Process extraction results
       const extractionData = result.data?.result || [];
-      const extractionResults: TextExtractionResult[] = extractionData.map((item: any, index: number) => ({
-        id: `extraction-${Date.now()}-${index}`,
-        url: item.url || '',
-        filename: item.filename || '',
-        extractedText: item.text || '',
-        status: item.text ? 'success' as const : 'failed' as const,
-      }));
-      
-      setTextExtractionResults(prev => [...prev, ...extractionResults]);
+      const successCount = extractionData.filter((item: any) => item.text).length;
       
       // Update text extraction status
       setAnalysisData(prev => 
@@ -790,16 +735,16 @@ const AttachmentProcessing: React.FC = () => {
             })
           );
           
-          message.success(`成功抽取 ${extractionResults.length} 个附件的文本，已更新现有的csrclenanalysis文件并刷新表格数据`);
+          message.success(`成功抽取 ${successCount} 个附件的文本，已更新现有的csrclenanalysis文件并刷新表格数据`);
         } else {
-          message.success(`成功抽取 ${extractionResults.length} 个附件的文本，已更新现有的csrclenanalysis文件（仅更新已存在的文件）`);
+          message.success(`成功抽取 ${successCount} 个附件的文本，已更新现有的csrclenanalysis文件（仅更新已存在的文件）`);
         }
       } catch (refreshError) {
         console.warn('Failed to refresh table data:', refreshError);
-        message.success(`成功抽取 ${extractionResults.length} 个附件的文本，已更新现有的csrclenanalysis文件（仅更新已存在的文件）`);
+        message.success(`成功抽取 ${successCount} 个附件的文本，已更新现有的csrclenanalysis文件（仅更新已存在的文件）`);
       }
       
-      setActiveTab('textExtraction');
+      // 保持在当前分析结果页面
     } catch (error: any) {
       if (error.name === 'BackendUnavailableError') {
         message.error({
@@ -928,8 +873,6 @@ const AttachmentProcessing: React.FC = () => {
       
       // 从本地数据中移除已删除的附件
       setAnalysisData(prev => prev.filter(item => !selectedRows.includes(item.id)));
-      setDownloadResults(prev => prev.filter(item => !selectedRows.includes(item.id)));
-      setTextExtractionResults(prev => prev.filter(item => !selectedRows.includes(item.id)));
       setSelectedRows([]);
       
       message.success(`成功删除 ${selectedRows.length} 个附件`);
@@ -1021,130 +964,60 @@ const AttachmentProcessing: React.FC = () => {
         </Card>
       )}
 
-      {/* Results Tabs */}
-      {(analysisData.length > 0 || downloadResults.length > 0 || textExtractionResults.length > 0) && (
-        <Card>
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            items={[
-              {
-                key: 'analysis',
-                label: `附件分析结果 (${analysisData.length})`,
-                children: (
-                  <div>
-                    {analysisData.length > 0 ? (
-                      <>
-                        <div className="mb-4">
-                           <Space wrap>
-                             <Button
-                               type="primary"
-                               icon={<DownloadOutlined />}
-                               onClick={handleDownload}
-                               disabled={selectedRows.length === 0 || loading}
-                             >
-                               下载选中附件 ({selectedRows.length})
-                             </Button>
-                             <Button
-                                onClick={handleTextExtraction}
-                                disabled={loading}
-                              >
-                                文本抽取
-                              </Button>
-                             <Button
-                               onClick={handleUpdateText}
-                               disabled={loading}
-                             >
-                               更新文本
-                             </Button>
-                             <Button
-                               danger
-                               onClick={handleRemoveAttachments}
-                               disabled={loading}
-                             >
-                               删除附件
-                             </Button>
-                             <Button
-                               icon={<SyncOutlined />}
-                               onClick={checkAllFilesExistence}
-                               disabled={loading || analysisData.length === 0}
-                             >
-                               检查文件存在性
-                             </Button>
-                           </Space>
-                         </div>
-                        <Table
-                          columns={columns}
-                          dataSource={analysisData}
-                          rowKey="id"
-                          rowSelection={rowSelection}
-                          pagination={{
-                            pageSize: 10,
-                            showSizeChanger: true,
-                            showQuickJumper: true,
-                            showTotal: (total, range) =>
-                              `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-                          }}
-                          scroll={{ x: 1200 }}
-                        />
-                      </>
-                    ) : (
-                      <Alert message="暂无分析结果，请先进行附件分析" type="info" />
-                    )}
-                  </div>
-                ),
-              },
-              {
-                key: 'download',
-                label: `附件下载结果 (${downloadResults.length})`,
-                children: (
-                  <div>
-                    {downloadResults.length > 0 ? (
-                      <Table
-                        columns={downloadColumns}
-                        dataSource={downloadResults}
-                        rowKey="id"
-                        pagination={{
-                          pageSize: 10,
-                          showSizeChanger: true,
-                          showQuickJumper: true,
-                          showTotal: (total, range) =>
-                            `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-                        }}
-                        scroll={{ x: 800 }}
-                      />
-                    ) : (
-                      <Alert message="暂无下载结果，请先下载附件" type="info" />
-                    )}
-                  </div>
-                ),
-              },
-              {
-                key: 'textExtraction',
-                label: `文本抽取结果 (${textExtractionResults.length})`,
-                children: (
-                  <div>
-                    {textExtractionResults.length > 0 ? (
-                      <Table
-                        columns={textExtractionColumns}
-                        dataSource={textExtractionResults}
-                        rowKey="id"
-                        pagination={{
-                          pageSize: 10,
-                          showSizeChanger: true,
-                          showQuickJumper: true,
-                          showTotal: (total, range) =>
-                            `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-                        }}
-                        scroll={{ x: 900 }}
-                      />
-                    ) : (
-                      <Alert message="暂无文本抽取结果，请先进行文本抽取" type="info" />
-                    )}
-                  </div>
-                ),
-              },
-            ]}
+      {/* Results */}
+      {analysisData.length > 0 && (
+        <Card title={`附件分析结果 (${analysisData.length})`}>
+          <div className="mb-4">
+             <Space wrap>
+               <Button
+                 type="primary"
+                 icon={<DownloadOutlined />}
+                 onClick={handleDownload}
+                 disabled={selectedRows.length === 0 || loading}
+               >
+                 下载选中附件 ({selectedRows.length})
+               </Button>
+               <Button
+                  onClick={handleTextExtraction}
+                  disabled={loading}
+                >
+                  文本抽取
+                </Button>
+               <Button
+                 onClick={handleUpdateText}
+                 disabled={loading}
+               >
+                 更新文本
+               </Button>
+               <Button
+                 danger
+                 onClick={handleRemoveAttachments}
+                 disabled={loading}
+               >
+                 删除附件
+               </Button>
+               <Button
+                 icon={<SyncOutlined />}
+                 onClick={checkAllFilesExistence}
+                 disabled={loading || analysisData.length === 0}
+               >
+                 检查文件存在性
+               </Button>
+             </Space>
+           </div>
+          <Table
+            columns={columns}
+            dataSource={analysisData}
+            rowKey="id"
+            rowSelection={rowSelection}
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total, range) =>
+                `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+            }}
+            scroll={{ x: 1200 }}
           />
         </Card>
       )}

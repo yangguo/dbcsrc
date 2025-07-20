@@ -860,6 +860,14 @@ export const caseApi = {
     return response.data;
   },
 
+  // Check if multiple files exist in batch
+  checkFilesBatch: async (filePaths: string[]): Promise<any> => {
+    const response = await apiClient.post('/check-files-batch', {
+      file_paths: filePaths
+    });
+    return response.data;
+  },
+
   // Delete attachments
   deleteAttachments: async (attachmentIds: string[]): Promise<any> => {
     const response = await apiClient.post('/delete-attachments', {
@@ -876,7 +884,7 @@ export const caseApi = {
     return response.data;
   },
 
-  // Get downloaded file status from csrcmiscontent files
+  // Get downloaded file status from csrclenanalysis files
   getDownloadedFileStatus: async (): Promise<{
     data: Array<{
       url: string;
