@@ -1267,6 +1267,7 @@ def download_attachment(down_list=None, progress_callback=None):
                 for _, row in misdf.iterrows():
                     url = row['url']
                     extracted_text = row['text']
+                    filename = row['filename']
                     
                     # Find matching records in analysis_df by URL (链接 column)
                     if '链接' in analysis_df.columns:
@@ -1276,6 +1277,9 @@ def download_attachment(down_list=None, progress_callback=None):
                             analysis_df.loc[mask, '内容'] = extracted_text
                             # Recalculate length
                             analysis_df.loc[mask, 'len'] = len(str(extracted_text))
+                            # Update filename field if it exists and filename is not empty
+                            if 'filename' in analysis_df.columns and filename:
+                                analysis_df.loc[mask, 'filename'] = filename
                             updated_count += 1
                 
                 if updated_count > 0:

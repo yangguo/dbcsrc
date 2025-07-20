@@ -913,7 +913,7 @@ def get_org_comparison():
         # Method 2: With date filtering (table method)
         if '机构' in df.columns and '发文日期' in df.columns:
             df_filtered = df.copy()
-            df_filtered['发文日期'] = pd.to_datetime(df_filtered['发文日期'], errors='coerce')
+            df_filtered['发文日期'] = get_pandas().to_datetime(df_filtered['发文日期'], errors='coerce')
             df_filtered = df_filtered.dropna(subset=['发文日期', '机构'])
             df_filtered = df_filtered[df_filtered['机构'].str.strip() != '']
             
@@ -990,7 +990,7 @@ def get_data_coverage():
         # Check time period coverage
         if '发文日期' in df.columns:
             df_copy = df[['发文日期']].copy()
-            df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+            df_copy['发文日期'] = get_pandas().to_datetime(df_copy['发文日期'], errors='coerce')
             df_copy = df_copy.dropna(subset=['发文日期'])
             if not df_copy.empty:
                 df_copy.loc[:, 'month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
@@ -1187,7 +1187,7 @@ def get_org_summary():
             df_copy = df.copy()
             
             # Clean and parse dates
-            df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+            df_copy['发文日期'] = get_pandas().to_datetime(df_copy['发文日期'], errors='coerce')
             df_copy = df_copy.dropna(subset=['发文日期', '机构'])
             df_copy = df_copy[df_copy['机构'].str.strip() != '']
             
@@ -1303,7 +1303,7 @@ def _get_summary_impl(limit_orgs: int = None, limit_months: int = None):
                 if '发文日期' in df.columns:
                     # Only count organizations with valid dates for consistency
                     df_filtered = df.copy()
-                    df_filtered['发文日期'] = pd.to_datetime(df_filtered['发文日期'], errors='coerce')
+                    df_filtered['发文日期'] = get_pandas().to_datetime(df_filtered['发文日期'], errors='coerce')
                     df_filtered = df_filtered.dropna(subset=['发文日期', '机构'])
                     df_filtered = df_filtered[df_filtered['机构'].str.strip() != '']
                     
@@ -1329,7 +1329,7 @@ def _get_summary_impl(limit_orgs: int = None, limit_months: int = None):
             if '发文日期' in df.columns:
                 try:
                     df_copy = df[['发文日期']].copy()
-                    df_copy['发文日期'] = pd.to_datetime(df_copy['发文日期'], errors='coerce')
+                    df_copy['发文日期'] = get_pandas().to_datetime(df_copy['发文日期'], errors='coerce')
                     df_copy = df_copy.dropna(subset=['发文日期'])
                     if not df_copy.empty:
                         df_copy.loc[:, 'month'] = df_copy['发文日期'].dt.to_period('M').astype(str)
@@ -1499,7 +1499,7 @@ def search_cases(
                 org=str(row.get('org', row.get('机构', ''))),
                 content=str(row.get('内容', '')),
                 penalty=str(row.get('category', '')),  # 案件类型从category获取
-                amount=float(row.get('amount', row.get('罚款金额', 0))) if pd.notna(row.get('amount', row.get('罚款金额'))) else 0,
+                amount=float(row.get('amount', row.get('罚款金额', 0))) if get_pandas().notna(row.get('amount', row.get('罚款金额'))) else 0,
                 party=str(row.get('people', '')),
                 violationFacts=str(row.get('event', '')),
                 penaltyBasis=str(row.get('law', '')),
@@ -3015,7 +3015,7 @@ async def upload_cases(request: UploadCasesRequest):
         
         # Create three-table intersection (inner join)
         # Step 1: Merge analysis with category data
-        merged_data = pd.merge(
+        merged_data = get_pandas().merge(
             analysis_df,
             cat_df,
             left_on="链接",
@@ -3034,7 +3034,7 @@ async def upload_cases(request: UploadCasesRequest):
         if 'org' in merged_data.columns:
             merged_data = merged_data.drop(columns=['org'])
         
-        final_data = pd.merge(
+        final_data = get_pandas().merge(
             merged_data,
             split_df,
             left_on="链接",
@@ -3828,6 +3828,7 @@ async def update_content_files_after_extraction(extraction_results: list):
                 for result in extraction_results:
                     url = result.get('url', '')
                     extracted_text = result.get('text', '')
+                    filename = result.get('filename', '')
                     text_length = len(extracted_text) if extracted_text else 0
                     
                     if url:
@@ -3846,7 +3847,10 @@ async def update_content_files_after_extraction(extraction_results: list):
                                 len_df.loc[mask, '内容'] = extracted_text
                             if 'text' in len_df.columns:
                                 len_df.loc[mask, 'text'] = extracted_text
-                            logger.info(f"Updated length and content for URL: {url} to {text_length} characters")
+                            # Update filename field if it exists and filename is not empty
+                            if 'filename' in len_df.columns and filename:
+                                len_df.loc[mask, 'filename'] = filename
+                            logger.info(f"Updated length, content and filename for URL: {url} to {text_length} characters")
                             updated_len = True
                 
                 # Save updated csrclenanalysis only if there were updates
@@ -3883,13 +3887,14 @@ async def extract_text(request: dict):
         from data_service import get_csrclenanalysis
         analysis_df = get_csrclenanalysis()
         
+        # Ensure analysis_df is a DataFrame to prevent errors
+        if analysis_df is None:
+            analysis_df = get_pandas().DataFrame()
+        
         if analysis_df.empty:
             logger.warning("No csrclenanalysis data found")
-            return APIResponse(
-                success=True,
-                message="No attachment data available for text extraction",
-                data={'result': []}
-            )
+            # Allow processing to continue with an empty DataFrame
+            pass
         
         # Import text extraction functions from doc2text
         from doc2text import docxurl2txt, pdfurl2txt, docxurl2ocr, pdfurl2ocr, picurl2ocr, find_libreoffice_executable, convert_with_libreoffice, convert_docx_to_pdf
@@ -3915,7 +3920,7 @@ async def extract_text(request: dict):
                 attachment_url = attachment_id
                 
                 # First, try to find the attachment in CSV data
-                attachment_data = pd.DataFrame()
+                attachment_data = get_pandas().DataFrame()
                 for url_col in ['url', '链接', 'link']:
                     if url_col in analysis_df.columns:
                         attachment_data = analysis_df[analysis_df[url_col] == attachment_id]
@@ -3925,17 +3930,59 @@ async def extract_text(request: dict):
                 # If found in CSV, get the filename and existing text
                 if not attachment_data.empty:
                     row = attachment_data.iloc[0]
-                    # Get filename from CSV
-                    filename = row.get('filename', '') if 'filename' in row else (row.get('文件名', '') if '文件名' in row else '')
+                    # Get filename from CSV - check multiple possible column names
+                    filename = ''
+                    filename_columns = ['filename', '文件名', 'file_name']
+                    for col in filename_columns:
+                        if col in row.index and row[col] is not None and str(row[col]).strip():
+                            filename = str(row[col]).strip()
+                            break
+                    
                     attachment_url = row.get('url', attachment_id) if 'url' in row else (row.get('链接', attachment_id) if '链接' in row else attachment_id)
                     
-                    # Check if text is already extracted in the CSV
+                
+                # Try to extract from files in temp directory first
+                if not extracted_text:
+                    logger.info(f"Attempting to extract text from files for URL: {attachment_id}")
+                    
+                    # Strategy 1: If we have a filename from CSV, look for exact match first
+                    if filename:
+                        file_path = os.path.join(temp_dir, filename)
+                        if os.path.exists(file_path):
+                            logger.info(f"Found exact filename match: {filename}")
+                            extracted_text = extract_text_from_file(file_path, temp_dir)
+                    
+                    # Strategy 2: If no exact filename match, try the most recently downloaded file
+                    if not extracted_text:
+                        try:
+                            import glob
+                            all_files = glob.glob(os.path.join(temp_dir, "*.*"))
+                            
+                            # Filter for document files
+                            doc_files = [f for f in all_files if f.lower().endswith(('.pdf', '.doc', '.docx', '.wps'))]
+                            
+                            # Try the most recently downloaded file
+                            if doc_files:
+                                # Sort by modification time, most recent first
+                                doc_files.sort(key=os.path.getmtime, reverse=True)
+                                latest_file = doc_files[0]
+                                logger.info(f"Trying most recent file: {os.path.basename(latest_file)}")
+                                extracted_text = extract_text_from_file(latest_file, temp_dir)
+                                # Keep original filename from CSV, don't update it
+                                # filename = os.path.basename(latest_file)  # Commented out to preserve original filename
+                                
+                        except Exception as file_search_error:
+                            logger.error(f"Error searching for files: {str(file_search_error)}")
+                
+                # If file extraction failed, try to use existing text from CSV as fallback
+                if not extracted_text and not attachment_data.empty:
+                    row = attachment_data.iloc[0]
                     existing_text = ""
                     try:
                         text_columns = ['text', '内容', 'content']
                         for col in text_columns:
                             if col in row.index and row[col] is not None:
-                                if hasattr(pd, 'isna') and not pd.isna(row[col]):
+                                if hasattr(get_pandas(), 'isna') and not get_pandas().isna(row[col]):
                                     existing_text = str(row[col]).strip()
                                     break
                                 elif row[col] not in [None, '', 'nan', 'NaN']:
@@ -3945,72 +3992,10 @@ async def extract_text(request: dict):
                         logger.warning(f"Error checking existing text: {str(text_check_error)}")
                         existing_text = ""
                     
-                    # If we already have text content and it's meaningful, use it
+                    # Use existing text if it's meaningful
                     if existing_text and len(existing_text.strip()) > 10:  # More than just "正文见附件。"
                         extracted_text = existing_text
-                        logger.info(f"Using existing text from CSV: {len(extracted_text)} characters")
-                
-                # If no meaningful text found, try to extract from files in temp directory
-                if not extracted_text or len(extracted_text.strip()) <= 10:
-                    logger.info(f"Attempting to extract text from files for URL: {attachment_id}")
-                    
-                    # Search for files that might be related to this URL
-                    # Strategy 1: If we have a filename from CSV, look for exact match
-                    if filename:
-                        file_path = os.path.join(temp_dir, filename)
-                        if os.path.exists(file_path):
-                            logger.info(f"Found exact filename match: {filename}")
-                            extracted_text = extract_text_from_file(file_path, temp_dir)
-                    
-                    # Strategy 2: Search for files with similar patterns or timestamps
-                    if not extracted_text:
-                        # List all files in temp directory
-                        try:
-                            import glob
-                            all_files = glob.glob(os.path.join(temp_dir, "*.*"))
-                            
-                            # Filter for document files
-                            doc_files = [f for f in all_files if f.lower().endswith(('.pdf', '.doc', '.docx', '.wps'))]
-                            
-                            # Strategy 2a: Look for files with recent timestamps that might match
-                            # Extract potential keywords from URL for matching
-                            url_keywords = []
-                            if 'qingdao' in attachment_id.lower():
-                                url_keywords.append('青岛')
-                            if 'warning' in attachment_id.lower() or 'warn' in attachment_id.lower():
-                                url_keywords.extend(['警示', '警告'])
-                            if 'punishment' in attachment_id.lower():
-                                url_keywords.extend(['处罚', '决定'])
-                            
-                            # Look for files containing keywords in filename
-                            matching_files = []
-                            for doc_file in doc_files:
-                                filename_only = os.path.basename(doc_file)
-                                for keyword in url_keywords:
-                                    if keyword in filename_only:
-                                        matching_files.append(doc_file)
-                                        break
-                            
-                            # If we found matching files, try to extract from the most recent one
-                            if matching_files:
-                                # Sort by modification time, most recent first
-                                matching_files.sort(key=os.path.getmtime, reverse=True)
-                                latest_file = matching_files[0]
-                                logger.info(f"Found potential matching file: {os.path.basename(latest_file)}")
-                                extracted_text = extract_text_from_file(latest_file, temp_dir)
-                                filename = os.path.basename(latest_file)
-                            
-                            # Strategy 2b: If no keyword match, try the most recently downloaded file
-                            elif doc_files:
-                                # Sort by modification time, most recent first
-                                doc_files.sort(key=os.path.getmtime, reverse=True)
-                                latest_file = doc_files[0]
-                                logger.info(f"No keyword match found, trying most recent file: {os.path.basename(latest_file)}")
-                                extracted_text = extract_text_from_file(latest_file, temp_dir)
-                                filename = os.path.basename(latest_file)
-                                
-                        except Exception as file_search_error:
-                            logger.error(f"Error searching for files: {str(file_search_error)}")
+                        logger.info(f"Using existing text from CSV as fallback: {len(extracted_text)} characters")
                 
                 # If still no text extracted, provide appropriate message
                 if not extracted_text:
@@ -4281,7 +4266,7 @@ async def update_attachment_text(request: dict):
             try:
                 # Find the attachment in csrclenanalysis data
                 # Try to find by URL first
-                attachment_data = pd.DataFrame()
+                attachment_data = get_pandas().DataFrame()
                 if '链接' in len_df.columns:
                     attachment_data = len_df[len_df['链接'] == attachment_id]
                 elif 'url' in len_df.columns:
@@ -4303,17 +4288,17 @@ async def update_attachment_text(request: dict):
                     try:
                         # Try to get text from various possible columns in csrclenanalysis
                         if hasattr(row, '__getitem__') and 'text' in row and row['text'] is not None:
-                            if hasattr(pd, 'isna') and not pd.isna(row['text']):
+                            if hasattr(get_pandas(), 'isna') and not get_pandas().isna(row['text']):
                                 text_content = str(row['text']).strip()
                             elif row['text'] not in [None, '', 'nan', 'NaN']:
                                 text_content = str(row['text']).strip()
                         elif hasattr(row, '__getitem__') and '内容' in row and row['内容'] is not None:
-                            if hasattr(pd, 'isna') and not pd.isna(row['内容']):
+                            if hasattr(get_pandas(), 'isna') and not get_pandas().isna(row['内容']):
                                 text_content = str(row['内容']).strip()
                             elif row['内容'] not in [None, '', 'nan', 'NaN']:
                                 text_content = str(row['内容']).strip()
                         elif hasattr(row, '__getitem__') and 'content' in row and row['content'] is not None:
-                            if hasattr(pd, 'isna') and not pd.isna(row['content']):
+                            if hasattr(get_pandas(), 'isna') and not get_pandas().isna(row['content']):
                                 text_content = str(row['content']).strip()
                             elif row['content'] not in [None, '', 'nan', 'NaN']:
                                 text_content = str(row['content']).strip()
