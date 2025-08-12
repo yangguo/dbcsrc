@@ -3717,28 +3717,68 @@ async def get_downloaded_file_status():
 
 @app.post("/check-file-exists", response_model=APIResponse)
 async def check_file_exists(request: dict):
-    """Check if a file exists on the server"""
+    """Check if a file exists on the server.
+
+    Accepts absolute paths, '/temp/<name>' pseudo-paths, bare filenames, or URLs.
+    Bare names and '/temp/*' are resolved to the backend temp directory.
+    URLs are resolved by taking the last path segment as the filename.
+    """
     try:
-        file_path = request.get('file_path', '')
-        
-        if not file_path:
+        file_path_input = request.get('file_path', '')
+
+        if not file_path_input:
             return APIResponse(
                 success=False,
                 message="File path is required",
                 data={'exists': False}
             )
-        
-        # Check if file exists
-        exists = os.path.exists(file_path)
-        
-        logger.info(f"File existence check for {file_path}: {exists}")
-        
+
+        # Resolve candidate paths to check
+        current_file = os.path.abspath(__file__)
+        backend_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(backend_dir)
+        tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+
+        raw = str(file_path_input).strip()
+
+        candidates = []
+        # Absolute path
+        if os.path.isabs(raw):
+            candidates.append(raw)
+
+        # '/temp/<name>' pseudo-path or bare filename
+        base = os.path.basename(raw)
+        if base:
+            candidates.append(os.path.join(tempdir, base))
+
+        # URL case: try last path segment
+        if "://" in raw:
+            try:
+                from urllib.parse import urlparse
+                url_name = os.path.basename(urlparse(raw).path)
+                if url_name:
+                    candidates.append(os.path.join(tempdir, url_name))
+            except Exception:
+                pass
+
+        # Deduplicate while preserving order
+        seen = set()
+        deduped = []
+        for p in candidates:
+            if p and p not in seen:
+                deduped.append(p)
+                seen.add(p)
+
+        exists = any(os.path.exists(p) for p in deduped)
+
+        logger.info(f"File existence check for input '{raw}': {exists} (candidates: {deduped})")
+
         return APIResponse(
             success=True,
             message=f"File {'exists' if exists else 'does not exist'}",
-            data={'exists': exists, 'file_path': file_path}
+            data={'exists': exists, 'file_path': file_path_input, 'candidates': deduped}
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to check file existence: {str(e)}", exc_info=True)
         return APIResponse(
@@ -3750,17 +3790,21 @@ async def check_file_exists(request: dict):
 
 @app.post("/check-files-batch", response_model=APIResponse)
 async def check_files_batch(request: dict):
-    """Check if multiple files exist on the server in a single request"""
+    """Check if multiple files exist on the server in a single request.
+
+    Accepts a mix of absolute paths, '/temp/<name>' pseudo-paths, bare filenames, or URLs.
+    Each item is resolved to the backend temp directory as needed.
+    """
     try:
         file_paths = request.get('file_paths', [])
-        
+
         if not file_paths or not isinstance(file_paths, list):
             return APIResponse(
                 success=False,
                 message="File paths array is required",
                 data={'results': []}
             )
-        
+
         # Limit batch size to prevent abuse
         if len(file_paths) > 200:
             return APIResponse(
@@ -3768,30 +3812,51 @@ async def check_files_batch(request: dict):
                 message="Too many files in batch. Maximum 200 files allowed.",
                 data={'results': []}
             )
-        
-        # Check each file existence
+
+        current_file = os.path.abspath(__file__)
+        backend_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(backend_dir)
+        tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+
         results = []
-        for file_path in file_paths:
-            if file_path and isinstance(file_path, str):
-                exists = os.path.exists(file_path)
-                results.append({
-                    'file_path': file_path,
-                    'exists': exists
-                })
-            else:
-                results.append({
-                    'file_path': file_path,
-                    'exists': False
-                })
-        
+        for raw in file_paths:
+            exists = False
+            if raw and isinstance(raw, str):
+                candidates = []
+                if os.path.isabs(raw):
+                    candidates.append(raw)
+                base = os.path.basename(raw)
+                if base:
+                    candidates.append(os.path.join(tempdir, base))
+                if "://" in raw:
+                    try:
+                        from urllib.parse import urlparse
+                        url_name = os.path.basename(urlparse(raw).path)
+                        if url_name:
+                            candidates.append(os.path.join(tempdir, url_name))
+                    except Exception:
+                        pass
+                # Dedup
+                seen_local = set()
+                deduped = []
+                for p in candidates:
+                    if p and p not in seen_local:
+                        deduped.append(p)
+                        seen_local.add(p)
+                exists = any(os.path.exists(p) for p in deduped)
+            results.append({
+                'file_path': raw,
+                'exists': exists
+            })
+
         logger.info(f"Batch file existence check for {len(file_paths)} files")
-        
+
         return APIResponse(
             success=True,
             message=f"Checked {len(file_paths)} files",
             data={'results': results}
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to check files existence in batch: {str(e)}", exc_info=True)
         return APIResponse(
@@ -3800,6 +3865,187 @@ async def check_files_batch(request: dict):
             error=str(e),
             data={'results': []}
         )
+
+
+@app.post("/api/match-files-by-title", response_model=APIResponse)
+async def match_files_by_title(request: dict):
+    """Match case titles with downloaded files in temp directory.
+    
+    This endpoint takes a list of cases with titles and attempts to match them
+    with files in the temp directory based on filename similarity.
+    """
+    try:
+        cases = request.get('cases', [])
+        
+        if not cases or not isinstance(cases, list):
+            return APIResponse(
+                success=False,
+                message="Cases array is required",
+                data={'matches': []}
+            )
+        
+        # Get temp directory path
+        current_file = os.path.abspath(__file__)
+        backend_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(backend_dir)
+        tempdir = os.path.join(project_root, "data", "penalty", "csrc2", "temp")
+        
+        if not os.path.exists(tempdir):
+            return APIResponse(
+                success=False,
+                message="Temp directory not found",
+                data={'matches': []}
+            )
+        
+        # Get all files in temp directory
+        temp_files = []
+        for filename in os.listdir(tempdir):
+            filepath = os.path.join(tempdir, filename)
+            if os.path.isfile(filepath):
+                temp_files.append({
+                    'filename': filename,
+                    'filepath': filepath,
+                    'basename': os.path.splitext(filename)[0]  # filename without extension
+                })
+        
+        matches = []
+        
+        for case in cases:
+            case_id = case.get('id', '')
+            case_title = case.get('title', '')
+            case_url = case.get('url', '')
+            
+            matched_file = None
+            
+            if case_title:
+                # Clean the case title for matching
+                clean_title = case_title.strip()
+                
+                # Since filename should be quite similar to title, use direct matching
+                best_match = None
+                best_score = 0
+                
+                for temp_file in temp_files:
+                    # Strategy 1: Direct title in filename (most common case)
+                    if clean_title in temp_file['filename'] or temp_file['basename'] in clean_title:
+                        best_match = temp_file
+                        best_score = 100
+                        break
+                    
+                    # Strategy 2: Reverse check - filename in title
+                    if temp_file['basename'] and temp_file['basename'] in clean_title:
+                        best_match = temp_file
+                        best_score = 90
+                        break
+                    
+                    # Strategy 3: Extract key words from title (length > 3 chars)
+                    # Remove common prefixes and get meaningful parts
+                    title_key = clean_title.replace('关于', '').replace('的通知', '').replace('的公告', '').replace('的决定', '')
+                    if len(title_key) > 5 and title_key in temp_file['filename']:
+                        if best_score < 80:
+                            best_match = temp_file
+                            best_score = 80
+                
+                if best_match:
+                    # Try to read text content if it's a text file
+                    text_content = None
+                    try:
+                        if best_match['filename'].lower().endswith(('.txt', '.csv')):
+                            with open(best_match['filepath'], 'r', encoding='utf-8') as f:
+                                text_content = f.read()
+                        elif best_match['filename'].lower().endswith('.pdf'):
+                            # For PDF files, we could extract text here if needed
+                            # For now, just indicate it's a PDF
+                            text_content = f"PDF文件: {best_match['filename']}"
+                    except Exception as e:
+                        logger.warning(f"Could not read content from {best_match['filepath']}: {str(e)}")
+                    
+                    matched_file = {
+                        'filename': best_match['filename'],
+                        'filepath': best_match['filepath'],
+                        'text_content': text_content,
+                        'match_score': best_score
+                    }
+            
+            matches.append({
+                'id': case_id,
+                'title': case_title,
+                'url': case_url,
+                'matched_file': matched_file
+            })
+        
+        matched_count = sum(1 for match in matches if match['matched_file'])
+        
+        logger.info(f"File matching completed: {matched_count}/{len(cases)} cases matched")
+        
+        # Update csrclenanalysis.csv with matched file information
+        if matched_count > 0:
+            try:
+                # Get csrclenanalysis data
+                from data_service import get_csrclenanalysis
+                analysis_df = get_csrclenanalysis()
+                
+                if analysis_df is not None and not analysis_df.empty:
+                    # Update the DataFrame with matched file information
+                    updated_rows = 0
+                    for match in matches:
+                        if match['matched_file']:
+                            case_url = match['url']
+                            matched_filename = match['matched_file']['filename']
+                            matched_text = match['matched_file']['text_content'] or ''
+                            
+                            # Find the row to update by URL
+                            url_columns = ['链接', 'url', 'link']
+                            mask = None
+                            for url_col in url_columns:
+                                if url_col in analysis_df.columns:
+                                    mask = analysis_df[url_col] == case_url
+                                    if mask.any():
+                                        break
+                            
+                            if mask is not None and mask.any():
+                                # Update filename
+                                if 'filename' in analysis_df.columns:
+                                    analysis_df.loc[mask, 'filename'] = matched_filename
+                                
+                                # Update content if we have text
+                                if matched_text and len(matched_text.strip()) > 10:
+                                    content_columns = ['内容', 'content', 'text']
+                                    for content_col in content_columns:
+                                        if content_col in analysis_df.columns:
+                                            analysis_df.loc[mask, content_col] = matched_text
+                                    
+                                    # Update length
+                                    if 'len' in analysis_df.columns:
+                                        analysis_df.loc[mask, 'len'] = len(matched_text)
+                                
+                                updated_rows += 1
+                    
+                    # Save updated DataFrame back to CSV
+                    if updated_rows > 0:
+                        csv_path = os.path.join(tempdir, "csrclenanalysis.csv")
+                        analysis_df.to_csv(csv_path, index=False, encoding='utf-8')
+                        logger.info(f"Updated {updated_rows} rows in csrclenanalysis.csv with matched file information")
+                
+            except Exception as update_error:
+                logger.error(f"Failed to update csrclenanalysis.csv: {str(update_error)}")
+                # Don't fail the entire operation if CSV update fails
+        
+        return APIResponse(
+            success=True,
+            message=f"File matching completed: {matched_count}/{len(cases)} cases matched. CSV updated with {updated_rows if 'updated_rows' in locals() else 0} entries.",
+            data={'matches': matches}
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to match files by title: {str(e)}", exc_info=True)
+        return APIResponse(
+            success=False,
+            message="Failed to match files by title",
+            error=str(e),
+            data={'matches': []}
+        )
+
 
 async def update_content_files_after_extraction(extraction_results: list):
     """Update csrclenanalysis files after text extraction
@@ -3951,6 +4197,49 @@ async def extract_text(request: dict):
                         if os.path.exists(file_path):
                             logger.info(f"Found exact filename match: {filename}")
                             extracted_text = extract_text_from_file(file_path, temp_dir)
+                    
+                    # Strategy 1.5: If no filename in CSV or file not found, try to match by title
+                    if not extracted_text:
+                        # Get case title for matching
+                        case_title = ""
+                        title_columns = ['名称', 'title', 'name', '标题']
+                        if not attachment_data.empty:
+                            row = attachment_data.iloc[0]
+                            for col in title_columns:
+                                if col in row.index and row[col] is not None and str(row[col]).strip():
+                                    case_title = str(row[col]).strip()
+                                    break
+                        
+                        if case_title:
+                            logger.info(f"Trying to match file by title: {case_title}")
+                            # Get all files in temp directory
+                            temp_files = []
+                            for temp_filename in os.listdir(temp_dir):
+                                temp_filepath = os.path.join(temp_dir, temp_filename)
+                                if os.path.isfile(temp_filepath) and temp_filename.lower().endswith(('.pdf', '.docx', '.doc')):
+                                    temp_files.append({
+                                        'filename': temp_filename,
+                                        'filepath': temp_filepath,
+                                        'basename': os.path.splitext(temp_filename)[0]
+                                    })
+                            
+                            # Find best match using same logic as match_files_by_title
+                            best_match = None
+                            for temp_file in temp_files:
+                                # Direct title in filename
+                                if case_title in temp_file['filename'] or temp_file['basename'] in case_title:
+                                    best_match = temp_file
+                                    break
+                                # Key phrase matching
+                                title_key = case_title.replace('关于', '').replace('的通知', '').replace('的公告', '').replace('的决定', '')
+                                if len(title_key) > 5 and title_key in temp_file['filename']:
+                                    best_match = temp_file
+                                    break
+                            
+                            if best_match:
+                                logger.info(f"Found matching file by title: {best_match['filename']}")
+                                extracted_text = extract_text_from_file(best_match['filepath'], temp_dir)
+                                filename = best_match['filename']  # Update filename for response
                     
                     # Strategy 2: If no exact filename match, try the most recently downloaded file
                     if not extracted_text:

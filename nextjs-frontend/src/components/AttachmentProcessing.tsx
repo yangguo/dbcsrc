@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Card,
   Form,
@@ -16,7 +16,6 @@ import {
   Divider,
   Typography,
   Tag,
-  Tabs,
   Tooltip,
 } from 'antd';
 import {
@@ -27,8 +26,7 @@ import {
 } from '@ant-design/icons';
 import { caseApi } from '@/services/api';
 
-const { Option } = Select;
-const { Text, Title } = Typography;
+const { Title } = Typography;
 
 interface AttachmentData {
   id: string;
@@ -54,8 +52,6 @@ interface DownloadResult {
   status: 'success' | 'failed';
 }
 
-
-
 const AttachmentProcessing: React.FC = () => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
@@ -64,9 +60,7 @@ const AttachmentProcessing: React.FC = () => {
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
   const [currentTask, setCurrentTask] = useState('');
-  const [activeTab, setActiveTab] = useState('analysis');
   const [downloadResults, setDownloadResults] = useState<DownloadResult[]>([]);
-
 
   // 检查文件是否存在的函数
   const checkFileExists = async (filePath: string): Promise<boolean> => {
@@ -74,10 +68,11 @@ const AttachmentProcessing: React.FC = () => {
       if (!filePath || filePath.trim() === '') {
         return false;
       }
-      
+
       // 调用后端API检查文件是否存在
       const response = await caseApi.checkFileExists(filePath);
-      return response.exists || false;
+      // API 返回形如 { success, message, data: { exists: boolean } }
+      return Boolean(response?.data?.exists);
     } catch (error) {
       console.error('检查文件存在性时出错:', error);
       return false;
@@ -95,28 +90,28 @@ const AttachmentProcessing: React.FC = () => {
 
   // 统一的文件检查函数（使用批量检查避免速率限制）
   const checkFilesExistence = async (
-    dataToCheck: AttachmentData[], 
+    dataToCheck: AttachmentData[],
     options: FileCheckOptions = {}
   ) => {
-    const { 
-      showMessage = false, 
-      messagePrefix = '文件检查', 
+    const {
+      showMessage = false,
+      messagePrefix = '文件检查',
       updateState = true,
       setLoadingState = false,
       messageType = 'success'
     } = options;
-    
+
     setCurrentTask(`${messagePrefix}中...`);
-    
+
     if (setLoadingState) {
       setLoading(true);
     }
-    
+
     try {
       // 收集需要检查的文件路径
       const filesToCheck: { index: number; filePath: string }[] = [];
       const updatedData = [...dataToCheck];
-      
+
       dataToCheck.forEach((item, index) => {
         if (item.downloadStatus === 'downloaded' && item.filename) {
           const filePath = item.localFilePath || `/temp/${item.filename}`;
@@ -132,12 +127,12 @@ const AttachmentProcessing: React.FC = () => {
           };
         }
       });
-      
+
       // 如果有文件需要检查，使用批量检查API
       if (filesToCheck.length > 0) {
         const filePaths = filesToCheck.map(f => f.filePath);
         const batchResponse = await caseApi.checkFilesBatch(filePaths);
-        
+
         if (batchResponse.success && batchResponse.data?.results) {
           // 将批量检查结果映射回原数据
           batchResponse.data.results.forEach((result: any, resultIndex: number) => {
@@ -145,7 +140,7 @@ const AttachmentProcessing: React.FC = () => {
             if (fileInfo) {
               updatedData[fileInfo.index] = {
                 ...updatedData[fileInfo.index],
-                fileExists: result.exists || false,
+                fileExists: Boolean(result?.exists),
               };
             }
           });
@@ -174,14 +169,14 @@ const AttachmentProcessing: React.FC = () => {
           }
         }
       }
-      
+
       if (updateState) {
         setAnalysisData(updatedData);
       }
-      
+
       const existingFiles = updatedData.filter(item => item.fileExists).length;
       const totalDownloaded = updatedData.filter(item => item.downloadStatus === 'downloaded').length;
-      
+
       if (showMessage && totalDownloaded > 0) {
         const messageText = `${messagePrefix}完成：${existingFiles}/${totalDownloaded} 个文件存在`;
         if (messageType === 'info') {
@@ -190,7 +185,7 @@ const AttachmentProcessing: React.FC = () => {
           message.success(messageText);
         }
       }
-      
+
       return updatedData;
     } catch (error: any) {
       console.error(`${messagePrefix}时出错:`, error);
@@ -238,6 +233,83 @@ const AttachmentProcessing: React.FC = () => {
     }
   };
 
+  // 检查选中记录的文件存在性（通过案例标题匹配temp目录下的文件）
+  const checkSelectedFilesExistence = async () => {
+    if (selectedRows.length === 0) {
+      message.warning('请先选择要检查的记录');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setCurrentTask('检查选中记录的文件存在性...');
+
+      // 获取选中的记录
+      const selectedData = analysisData.filter(item => selectedRows.includes(item.id));
+
+      // 调用后端API通过案例标题匹配temp目录下的文件
+      const response = await caseApi.matchFilesByTitle(selectedData
+        .filter(item => item.url) // Filter out items without URL
+        .map(item => ({
+          id: item.id,
+          title: item.title,
+          url: item.url as string // Safe to cast since we filtered out undefined values
+        })));
+
+      if (response.success && response.data?.matches) {
+        // 更新匹配到的文件信息
+        const updatedData = analysisData.map(item => {
+          if (selectedRows.includes(item.id)) {
+            const match = response.data.matches.find((m: any) => m.id === item.id);
+            if (match && match.matched_file) {
+              return {
+                ...item,
+                filename: match.matched_file.filename,
+                localFilePath: match.matched_file.filepath,
+                fileExists: true,
+                downloadStatus: 'downloaded' as const,
+                textExtracted: !!match.matched_file.text_content,
+                content: match.matched_file.text_content || item.content,
+                contentLength: match.matched_file.text_content ? match.matched_file.text_content.length : item.contentLength
+              };
+            } else {
+              return {
+                ...item,
+                fileExists: false
+              };
+            }
+          }
+          return item;
+        });
+
+        setAnalysisData(updatedData);
+
+        const matchedCount = response.data.matches.filter((m: any) => m.matched_file).length;
+        const totalSelected = selectedRows.length;
+
+        message.success(`文件匹配完成：${matchedCount}/${totalSelected} 个记录找到匹配的文件`);
+
+        // 清除选中状态
+        setSelectedRows([]);
+      } else {
+        message.error(response.message || '文件匹配失败');
+      }
+    } catch (error: any) {
+      console.error('检查文件存在性失败:', error);
+      if (error.name === 'BackendUnavailableError') {
+        message.error({
+          content: '后端服务器未启动，请确保后端服务器在端口8000上运行',
+          duration: 6,
+        });
+      } else {
+        message.error('检查文件存在性失败，请稍后重试');
+      }
+    } finally {
+      setLoading(false);
+      setCurrentTask('');
+    }
+  };
+
   const columns = [
     {
       title: '发文日期',
@@ -274,15 +346,15 @@ const AttachmentProcessing: React.FC = () => {
       ellipsis: true,
       width: '20%',
       render: (content: string) => (
-        <Tooltip 
+        <Tooltip
           title={content || '暂无内容'}
           placement="topLeft"
           styles={{ root: { maxWidth: '400px', wordWrap: 'break-word' } }}
         >
-          <div 
-            style={{ 
-              maxWidth: '150px', 
-              overflow: 'hidden', 
+          <div
+            style={{
+              maxWidth: '150px',
+              overflow: 'hidden',
               textOverflow: 'ellipsis',
               cursor: 'pointer'
             }}
@@ -371,18 +443,16 @@ const AttachmentProcessing: React.FC = () => {
     },
   ];
 
-
-
   const handleAnalyze = async (values: any) => {
     try {
       setLoading(true);
       setCurrentTask('分析附件内容长度...');
-      
+
       const result = await caseApi.analyzeAttachments({
         contentLength: values.contentLength,
         downloadFilter: values.downloadFilter || 'none',
       });
-      
+
       // Transform backend response to frontend interface
       // Backend returns: { success: true, data: { result: [...] } }
       const backendData = result.data?.result || [];
@@ -399,13 +469,13 @@ const AttachmentProcessing: React.FC = () => {
         publishDate: item.发文日期 || '',
         sourceFilename: item.source_filename || '',
       }));
-      
+
       // 获取已下载文件状态并更新数据
       setCurrentTask('获取已下载文件状态...');
       try {
         const downloadedStatus = await caseApi.getDownloadedFileStatus();
         const downloadedFiles = downloadedStatus.data || [];
-        
+
         // 创建一个映射，用于快速查找已下载的文件
         const downloadedMap = new Map();
         downloadedFiles.forEach((file: any) => {
@@ -415,7 +485,7 @@ const AttachmentProcessing: React.FC = () => {
             downloaded: true
           });
         });
-        
+
         // 更新transformedData，标记已下载的文件
         transformedData = transformedData.map(item => {
           const downloadedInfo = downloadedMap.get(item.url);
@@ -431,7 +501,7 @@ const AttachmentProcessing: React.FC = () => {
           }
           return item;
         });
-        
+
         const downloadedCount = transformedData.filter(item => item.downloadStatus === 'downloaded').length;
         if (downloadedCount > 0) {
           message.info(`发现 ${downloadedCount} 个已下载的文件`);
@@ -440,10 +510,10 @@ const AttachmentProcessing: React.FC = () => {
         console.warn('获取已下载文件状态失败:', downloadError);
         // 不阻断主流程，继续执行
       }
-      
+
       setAnalysisData(transformedData);
       message.success(`分析完成，找到 ${transformedData.length} 条需要处理的案例`);
-      
+
       // 自动检查文件存在性
       if (transformedData.length > 0) {
         await autoCheckFilesExistence(transformedData);
@@ -474,34 +544,34 @@ const AttachmentProcessing: React.FC = () => {
       setLoading(true);
       setProgress(0);
       setCurrentTask('下载附件中...');
-      
-      const positions = selectedRows.map(id => 
+
+      const positions = selectedRows.map(id =>
         analysisData.findIndex(item => item.id === id)
       ).filter(pos => pos !== -1);
-      
+
       if (positions.length === 0) {
         message.error('无法找到选中项目的位置信息');
         return;
       }
-      
+
       const result = await caseApi.downloadAttachments(positions);
-      
+
       // Transform download results - handle both 'results' and 'result' keys for compatibility
       const downloadData = result.data?.results || result.data?.result || [];
-      
+
       // Always create download results even if backend returns empty data
       // This helps with debugging and shows the user what happened
       const newDownloadResults: DownloadResult[] = [];
-      
+
       if (Array.isArray(downloadData) && downloadData.length > 0) {
         // Process actual download data
         downloadData.forEach((item: any, index: number) => {
-          const hasValidFilename = item.filename && 
-                                 item.filename !== '' && 
-                                 item.filename !== null && 
-                                 item.filename !== 'undefined' &&
-                                 item.filename !== 'NaN';
-          
+          const hasValidFilename = item.filename &&
+            item.filename !== '' &&
+            item.filename !== null &&
+            item.filename !== 'undefined' &&
+            item.filename !== 'NaN';
+
           newDownloadResults.push({
             id: `download-${Date.now()}-${index}`,
             url: item.url || '',
@@ -525,9 +595,9 @@ const AttachmentProcessing: React.FC = () => {
           }
         });
       }
-      
+
       setDownloadResults(prev => [...prev, ...newDownloadResults]);
-      
+
       // Create a map of successful downloads for efficient lookup
       const successfulDownloads = new Map();
       downloadData.forEach((item: any) => {
@@ -539,7 +609,7 @@ const AttachmentProcessing: React.FC = () => {
           });
         }
       });
-      
+
       // Update download status based on actual results
       const updatedData = analysisData.map(item => {
         if (selectedRows.includes(item.id)) {
@@ -562,25 +632,23 @@ const AttachmentProcessing: React.FC = () => {
         }
         return item;
       });
-      
+
       setAnalysisData(updatedData);
-      
+
       setProgress(100);
-      
+
       const successCount = newDownloadResults.filter(item => item.status === 'success').length;
       const failCount = newDownloadResults.filter(item => item.status === 'failed').length;
-      
+
       if (successCount > 0) {
         message.success(`下载完成，成功 ${successCount} 个，失败 ${failCount} 个附件`);
       } else {
         message.warning(`下载完成，但所有 ${failCount} 个附件都下载失败`);
       }
-      
 
-      
       // 自动检查下载文件的存在性
       await autoCheckFilesExistence(updatedData);
-      
+
       // 重新读取csrclenanalysis数据以更新表格状态
       try {
         setCurrentTask('刷新数据中...');
@@ -591,9 +659,9 @@ const AttachmentProcessing: React.FC = () => {
           refreshedData.data.result.forEach((item: any) => {
             updatedDataMap.set(item.url || item.id, item);
           });
-          
+
           // Merge updated data with existing data, preserving all original fields
-          setAnalysisData(prev => 
+          setAnalysisData(prev =>
             prev.map(item => {
               const updatedItem = updatedDataMap.get(item.url || item.id);
               if (updatedItem) {
@@ -613,9 +681,8 @@ const AttachmentProcessing: React.FC = () => {
       } catch (refreshError) {
         console.warn('Failed to refresh table data after download:', refreshError);
       }
-      
-      // Switch to download results tab
-      setActiveTab('download');
+
+      // Download completed successfully
     } catch (error: any) {
       if (error.name === 'BackendUnavailableError') {
         message.error({
@@ -652,8 +719,8 @@ const AttachmentProcessing: React.FC = () => {
     try {
       setLoading(true);
       setCurrentTask(`转换文件中...`);
-      
-      const result = await caseApi.convertDocuments(fileList);
+
+      await caseApi.convertDocuments(fileList);
       message.success(`文件转换完成`);
     } catch (error: any) {
       if (error.name === 'BackendUnavailableError') {
@@ -684,30 +751,30 @@ const AttachmentProcessing: React.FC = () => {
 
     setLoading(true);
     setCurrentTask('抽取文本中...');
-    
+
     try {
       // 获取选中行对应的URL，而不是传递组合ID
       const selectedUrls = selectedRows.map(id => {
         const item = analysisData.find(data => data.id === id);
         return item?.url || id; // 如果找不到对应的item，则使用原ID作为fallback
       }).filter(url => url); // 过滤掉空值
-      
+
       // 调用后端API进行文本抽取，传递URL列表
       const result = await caseApi.extractText(selectedUrls);
-      
+
       // Process extraction results
       const extractionData = result.data?.result || [];
       const successCount = extractionData.filter((item: any) => item.text).length;
-      
+
       // Update text extraction status
-      setAnalysisData(prev => 
-        prev.map(item => 
+      setAnalysisData(prev =>
+        prev.map(item =>
           selectedRows.includes(item.id)
             ? { ...item, textExtracted: true }
             : item
         )
       );
-      
+
       // Auto-refresh table data from updated csrclenanalysis file
       try {
         const updatedData = await caseApi.getCsrclenanalysisData();
@@ -717,9 +784,9 @@ const AttachmentProcessing: React.FC = () => {
           updatedData.data.result.forEach((item: any) => {
             updatedDataMap.set(item.url || item.id, item);
           });
-          
+
           // Merge updated data with existing data, preserving all original fields
-          setAnalysisData(prev => 
+          setAnalysisData(prev =>
             prev.map(item => {
               const updatedItem = updatedDataMap.get(item.url || item.id);
               if (updatedItem) {
@@ -734,7 +801,7 @@ const AttachmentProcessing: React.FC = () => {
               return item;
             })
           );
-          
+
           message.success(`成功抽取 ${successCount} 个附件的文本，已更新现有的csrclenanalysis文件并刷新表格数据`);
         } else {
           message.success(`成功抽取 ${successCount} 个附件的文本，已更新现有的csrclenanalysis文件（仅更新已存在的文件）`);
@@ -743,7 +810,7 @@ const AttachmentProcessing: React.FC = () => {
         console.warn('Failed to refresh table data:', refreshError);
         message.success(`成功抽取 ${successCount} 个附件的文本，已更新现有的csrclenanalysis文件（仅更新已存在的文件）`);
       }
-      
+
       // 保持在当前分析结果页面
     } catch (error: any) {
       if (error.name === 'BackendUnavailableError') {
@@ -770,32 +837,32 @@ const AttachmentProcessing: React.FC = () => {
     try {
       setLoading(true);
       setCurrentTask('更新文本内容...');
-      
+
       // 获取选中行对应的URL，而不是传递组合ID
       const selectedUrls = selectedRows.map(id => {
         const item = analysisData.find(data => data.id === id);
         return item?.url || id; // 如果找不到对应的item，则使用原ID作为fallback
       }).filter(url => url); // 过滤掉空值
-      
+
       // 调用后端API更新文本内容，传递URL列表
       const result = await caseApi.updateAttachmentText(selectedUrls);
-      
+
       if (result.success) {
         // 自动刷新数据以获取最新状态
         setCurrentTask('刷新数据中...');
-        
+
         try {
           // 获取当前表单值用于刷新数据
           const formValues = form.getFieldsValue();
           const currentContentLength = formValues.contentLength || 10;
           const currentDownloadFilter = formValues.downloadFilter || 'none';
-          
+
           // 重新获取分析数据
           const refreshedData = await caseApi.analyzeAttachments({
             contentLength: currentContentLength,
             downloadFilter: currentDownloadFilter,
           });
-          
+
           if (refreshedData.success && refreshedData.data?.result) {
             const transformedData = refreshedData.data.result.map((item: any, index: number) => ({
               id: item.链接 || item.url || `item-${index}`,
@@ -810,17 +877,17 @@ const AttachmentProcessing: React.FC = () => {
               publishDate: item.发文日期 || item.date || '',
               sourceFilename: item.source_filename || '',
             }));
-            
+
             setAnalysisData(transformedData);
-            
+
             // 清除选中状态
             setSelectedRows([]);
-            
+
             message.success(`成功更新 ${selectedUrls.length} 个附件的文本，数据已自动刷新`);
           } else {
             // 如果刷新失败，仍然更新本地数据
             if (result.data) {
-              setAnalysisData(prev => 
+              setAnalysisData(prev =>
                 prev.map(item => {
                   const updatedItem = result.data.find((updated: any) => updated.id === item.id);
                   return updatedItem ? { ...item, content: updatedItem.content, contentLength: updatedItem.contentLength } : item;
@@ -835,7 +902,7 @@ const AttachmentProcessing: React.FC = () => {
           console.warn('数据刷新失败，使用本地更新:', refreshError);
           // 如果刷新失败，仍然更新本地数据
           if (result.data) {
-            setAnalysisData(prev => 
+            setAnalysisData(prev =>
               prev.map(item => {
                 const updatedItem = result.data.find((updated: any) => updated.id === item.id);
                 return updatedItem ? { ...item, content: updatedItem.content, contentLength: updatedItem.contentLength } : item;
@@ -867,14 +934,14 @@ const AttachmentProcessing: React.FC = () => {
     try {
       setLoading(true);
       setCurrentTask('删除附件中...');
-      
+
       // 调用后端API删除附件
       await caseApi.deleteAttachments(selectedRows);
-      
+
       // 从本地数据中移除已删除的附件
       setAnalysisData(prev => prev.filter(item => !selectedRows.includes(item.id)));
       setSelectedRows([]);
-      
+
       message.success(`成功删除 ${selectedRows.length} 个附件`);
     } catch (error: any) {
       console.error('删除附件失败:', error);
@@ -885,14 +952,12 @@ const AttachmentProcessing: React.FC = () => {
     }
   };
 
-
-
   const rowSelection = {
     selectedRowKeys: selectedRows,
     onChange: (selectedRowKeys: React.Key[]) => {
       setSelectedRows(selectedRowKeys as string[]);
     },
-    onSelectAll: (selected: boolean, selectedRows: AttachmentData[], changeRows: AttachmentData[]) => {
+    onSelectAll: (selected: boolean) => {
       if (selected) {
         setSelectedRows(analysisData.map(item => item.id));
       } else {
@@ -926,7 +991,7 @@ const AttachmentProcessing: React.FC = () => {
                 placeholder="内容长度阈值"
               />
             </Form.Item>
-            
+
             <Form.Item
               label="下载过滤关键词"
               name="downloadFilter"
@@ -935,7 +1000,7 @@ const AttachmentProcessing: React.FC = () => {
               <Input placeholder="输入过滤关键词（可选）" />
             </Form.Item>
           </div>
-          
+
           <Form.Item>
             <Button
               type="primary"
@@ -968,43 +1033,50 @@ const AttachmentProcessing: React.FC = () => {
       {analysisData.length > 0 && (
         <Card title={`附件分析结果 (${analysisData.length})`}>
           <div className="mb-4">
-             <Space wrap>
-               <Button
-                 type="primary"
-                 icon={<DownloadOutlined />}
-                 onClick={handleDownload}
-                 disabled={selectedRows.length === 0 || loading}
-               >
-                 下载选中附件 ({selectedRows.length})
-               </Button>
-               <Button
-                  onClick={handleTextExtraction}
-                  disabled={loading}
-                >
-                  文本抽取
-                </Button>
-               <Button
-                 onClick={handleUpdateText}
-                 disabled={loading}
-               >
-                 更新文本
-               </Button>
-               <Button
-                 danger
-                 onClick={handleRemoveAttachments}
-                 disabled={loading}
-               >
-                 删除附件
-               </Button>
-               <Button
-                 icon={<SyncOutlined />}
-                 onClick={checkAllFilesExistence}
-                 disabled={loading || analysisData.length === 0}
-               >
-                 检查文件存在性
-               </Button>
-             </Space>
-           </div>
+            <Space wrap>
+              <Button
+                type="primary"
+                icon={<DownloadOutlined />}
+                onClick={handleDownload}
+                disabled={selectedRows.length === 0 || loading}
+              >
+                下载选中附件 ({selectedRows.length})
+              </Button>
+              <Button
+                onClick={handleTextExtraction}
+                disabled={loading}
+              >
+                文本抽取
+              </Button>
+              <Button
+                onClick={handleUpdateText}
+                disabled={loading}
+              >
+                更新文本
+              </Button>
+              <Button
+                danger
+                onClick={handleRemoveAttachments}
+                disabled={loading}
+              >
+                删除附件
+              </Button>
+              <Button
+                icon={<SyncOutlined />}
+                onClick={checkSelectedFilesExistence}
+                disabled={loading || selectedRows.length === 0}
+              >
+                检查文件存在性 ({selectedRows.length})
+              </Button>
+              <Button
+                icon={<SyncOutlined />}
+                onClick={checkAllFilesExistence}
+                disabled={loading || analysisData.length === 0}
+              >
+                检查所有文件存在性
+              </Button>
+            </Space>
+          </div>
           <Table
             columns={columns}
             dataSource={analysisData}
@@ -1052,9 +1124,9 @@ const AttachmentProcessing: React.FC = () => {
               </Button>
             </div>
           </div>
-          
+
           <Divider />
-          
+
           <div>
             <Title level={5}>文本处理</Title>
             <Space>
@@ -1075,7 +1147,6 @@ const AttachmentProcessing: React.FC = () => {
               </Button>
             </Space>
           </div>
-          
 
         </div>
       </Card>

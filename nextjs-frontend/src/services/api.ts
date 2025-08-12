@@ -908,6 +908,14 @@ export const caseApi = {
     const response = await apiClient.get('/api/csrccat-invalid-amount');
     return response.data;
   },
+
+  // Match files by case title in temp directory
+  matchFilesByTitle: async (cases: Array<{ id: string; title: string; url: string }>): Promise<any> => {
+    const response = await apiClient.post('/api/match-files-by-title', {
+      cases
+    });
+    return response.data;
+  },
 };
 
 export default apiClient;
