@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Layout, Menu, theme } from 'antd';
+import { Layout, Menu, theme, Button, Space } from 'antd';
 import {
   BarChartOutlined,
   SearchOutlined,
@@ -10,7 +10,10 @@ import {
   TagsOutlined,
   DownloadOutlined,
   CloudUploadOutlined,
+  SunOutlined,
+  MoonOutlined,
 } from '@ant-design/icons';
+import { useTheme } from '@/contexts/ThemeContext';
 import CaseSummary from '@/components/CaseSummary';
 import CaseSearch from '@/components/CaseSearch';
 import CaseUpdate from '@/components/CaseUpdate';
@@ -19,6 +22,7 @@ import CaseClassification from '@/components/CaseClassification';
 import CaseDownload from '@/components/CaseDownload';
 import CaseUpload from '@/components/CaseUpload';
 import CsrcatAnalysis from '@/components/CsrcatAnalysis';
+import PenaltySearchMongo from '@/components/PenaltySearchMongo';
 
 const { Header, Sider, Content } = Layout;
 
@@ -37,32 +41,37 @@ const menuItems: MenuItem[] = [
   {
     key: 'search',
     icon: <SearchOutlined />,
-    label: '案例搜索2',
+    label: '处罚搜索',
+  },
+  {
+    key: 'penalty',
+    icon: <SearchOutlined />,
+    label: '处罚搜索 (备选)',
   },
   {
     key: 'update',
     icon: <SyncOutlined />,
-    label: '案例更新2',
+    label: '案例更新',
   },
   {
     key: 'attachment',
     icon: <FileTextOutlined />,
-    label: '附件处理2',
+    label: '附件处理',
   },
   {
     key: 'classification',
     icon: <TagsOutlined />,
-    label: '案例分类2',
+    label: '案例分类',
   },
   {
     key: 'download',
     icon: <DownloadOutlined />,
-    label: '案例下载2',
+    label: '案例下载',
   },
   {
     key: 'upload',
     icon: <CloudUploadOutlined />,
-    label: '案例上线2',
+    label: '案例上线',
   },
   {
     key: 'csrccat-analysis',
@@ -77,6 +86,8 @@ const renderContent = (selectedKey: string) => {
       return <CaseSummary />;
     case 'search':
       return <CaseSearch />;
+    case 'penalty':
+      return <PenaltySearchMongo />;
     case 'update':
       return <CaseUpdate />;
     case 'attachment':
@@ -97,8 +108,9 @@ const renderContent = (selectedKey: string) => {
 export default function Home() {
   const [selectedKey, setSelectedKey] = useState('summary');
   const [collapsed, setCollapsed] = useState(false);
+  const { isDarkMode, toggleTheme } = useTheme();
   const {
-    token: { colorBgContainer },
+    token: { colorBgContainer, colorBorder },
   } = theme.useToken();
 
   return (
@@ -110,7 +122,7 @@ export default function Home() {
         width={250}
         style={{
           background: colorBgContainer,
-          borderRight: '1px solid #f0f0f0',
+          borderRight: `1px solid ${colorBorder}`,
         }}
       >
         <div className="p-4">
@@ -131,12 +143,26 @@ export default function Home() {
           style={{
             padding: '0 24px',
             background: colorBgContainer,
-            borderBottom: '1px solid #f0f0f0',
+            borderBottom: `1px solid ${colorBorder}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           }}
         >
           <h1 className="text-xl font-semibold">
             {menuItems.find(item => item.key === selectedKey)?.label}
           </h1>
+          <Space>
+            <Button
+              type="text"
+              icon={isDarkMode ? <SunOutlined /> : <MoonOutlined />}
+              onClick={toggleTheme}
+              size="large"
+              title={isDarkMode ? '切换到浅色模式' : '切换到深色模式'}
+            >
+              {isDarkMode ? '浅色' : '深色'}
+            </Button>
+          </Space>
         </Header>
         <Content
           style={{
