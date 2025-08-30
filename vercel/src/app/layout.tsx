@@ -1,16 +1,19 @@
+import { ReactNode } from 'react';
+import './globals.css';
+
 export const metadata = {
-  title: 'Penalty Case Search',
-  description: 'Search penalty cases from MongoDB',
+  title: '处罚案例搜索',
+  description: '从MongoDB搜索处罚案例',
 };
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif', margin: 0 }}>
+    <html lang="zh-CN">
+      <body>
         {children}
       </body>
     </html>

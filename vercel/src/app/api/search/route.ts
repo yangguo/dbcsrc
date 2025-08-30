@@ -19,6 +19,9 @@ export async function GET(req: NextRequest) {
     const docNumber = searchParams.get('docNumber') || undefined;
     const org = searchParams.get('org') || undefined;
     const party = searchParams.get('party') || undefined;
+    const region = searchParams.get('region') || undefined;
+    const caseType = searchParams.get('caseType') || undefined;
+    const industry = searchParams.get('industry') || undefined;
     const minAmountRaw = searchParams.get('minAmount');
     const minAmount = minAmountRaw ? Number(minAmountRaw) : undefined;
     const legalBasis = searchParams.get('legalBasis') || undefined;
@@ -60,6 +63,18 @@ export async function GET(req: NextRequest) {
       filter['law'] = { $regex: legalBasis, $options: 'i' };
     }
 
+    if (region) {
+      filter['province'] = { $regex: region, $options: 'i' };
+    }
+
+    if (caseType) {
+      filter['category'] = { $regex: caseType, $options: 'i' };
+    }
+
+    if (industry) {
+      filter['industry'] = { $regex: industry, $options: 'i' };
+    }
+
     if (dateFrom || dateTo) {
       // Assuming stored as ISO-like strings YYYY-MM-DD
       filter['发文日期'] = {} as any;
@@ -93,13 +108,16 @@ export async function GET(req: NextRequest) {
       party: String(d['people'] || ''),
       amount: Number(d['amount'] ?? d['罚款金额'] ?? 0) || 0,
       penalty: String(d['处罚类型'] || d['penalty'] || ''),
-      violationFacts: String(d['event'] || ''),
-      penaltyBasis: String(d['law'] || ''),
-      penaltyDecision: String(d['penalty'] || ''),
       content: String(d['内容'] || d['content'] || ''),
       region: String(d['province'] || d['region'] || ''),
+      caseType: String(d['category'] || ''),
       industry: String(d['industry'] || ''),
-      category: String(d['category'] || ''),
+      legalBasis: String(d['law'] || ''),
+      violationFacts: String(d['event'] || ''),
+      legalProvisions: String(d['law'] || ''),
+      penaltyDecision: String(d['penalty'] || ''),
+      detailedContent: String(d['内容'] || d['content'] || ''),
+      originalLink: String(d['链接'] || ''),
     }));
 
     return NextResponse.json({ data, total, page, pageSize });
