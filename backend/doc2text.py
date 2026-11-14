@@ -133,14 +133,11 @@ def pdfurl2txt(url, uploadpath=None):
 
 
 # Initialize OpenAI client
-client = openai.OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-)
+from llm_client import get_client, MODEL, VISION_MODEL
 
-# Get model name from environment or use default
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4-vision-preview")
+client = get_client()
+OPENAI_MODEL = MODEL
+OPENAI_VISION_MODEL = VISION_MODEL
 
 def encode_image(image_path):
     """Encode image to base64 string"""

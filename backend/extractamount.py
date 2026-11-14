@@ -92,13 +92,10 @@ def count_list(list1, str1):  # 计算list1中str1出现的次数
 
 
 # Initialize OpenAI client
-client = openai.OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-)
+from llm_client import get_client, LIGHT_MODEL
 
-# Get model name from environment or use default
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+client = get_client()
+OPENAI_MODEL = LIGHT_MODEL
 
 def nlp_input(schema, chunks):  # schema为字符串目标list，chunks为文本块list
     """Return {schema_key: [entity, ...]} once per chunk.
