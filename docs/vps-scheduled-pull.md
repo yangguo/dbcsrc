@@ -150,7 +150,7 @@ python3 -m pytest test_scheduled_pull.py -q
 2. Mongo 去重。已实现。`insert_online_data` 改为按 `链接` 的 `bulk_write` upsert，重跑不重复。新增 `ensure_online_index`，优先建唯一索引 `uniq_link`，已有重复数据时降级为非唯一索引 `idx_link` 并记录告警。`POST /api/ensure-mongo-index` 可手动触发。五个离线测试在 `backend/mongo_upsert_test.py`。
 3. 附件与文本抽取。走现有 `download_attachment` 和 `extract-text`，需要 Chrome、LibreOffice、poppler 和中文字体。`backend/Dockerfile.enhanced` 的 slim 镜像缺这些依赖。
 4. LLM 富化。统一 client 构造并升级 SDK，把轻任务切到轻量模型，对抽取请求加 JSON schema 约束。
-5. OCR 管线。把 `backend/doc2text.py:41` 的三级回退改成文本层优先、Vision 只兜底无文本页，并加页级并发。之后再评估用 PaddleOCR-VL 或 MinerU 替换 Vision 内核。
+5. OCR 管线。第一阶段已实现。新增 `text_layer_ok` 按汉字数量判断文本层是否可用，替换了原来用 raw string 删字符的错误实现。`pdfurl2ocr` 改为页级并发，默认 4 个 worker，可用 `OCR_MAX_WORKERS` 覆盖，输出保持页序。七个离线测试在 `backend/doc2text_ocr_test.py`。第二阶段仍待评估，用 PaddleOCR-VL 或 MinerU 替换 Vision 内核。
 6. 金额链路。已修复。`nlp_input` 现在每块返回 `{key: [金额串]}`，偏移由本地 `find` 计算。句子与金额统一取自原文坐标。`get_number` 改为纯函数，用正则抽取金额串并支持中文数字。`extract_money` 在文书没有"综上/合计/其中"层次词时把整句当作金额句。五个离线测试在 `backend/extractamount_test.py`。
 
 ## 风险
