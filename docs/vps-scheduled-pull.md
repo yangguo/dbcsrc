@@ -147,7 +147,7 @@ python3 -m pytest test_scheduled_pull.py -q
 按依赖从轻到重排列。
 
 1. 分片合并。已实现，见上表 `compact` 命令。建议每月跑一次，或在分片数超过 30 个时跑。
-2. Mongo 去重。`insert_online_data` 只有 `insert_many`，没有唯一索引。启用自动同步前必须先在 `链接` 上建唯一索引并改 upsert。
+2. Mongo 去重。已实现。`insert_online_data` 改为按 `链接` 的 `bulk_write` upsert，重跑不重复。新增 `ensure_online_index`，优先建唯一索引 `uniq_link`，已有重复数据时降级为非唯一索引 `idx_link` 并记录告警。`POST /api/ensure-mongo-index` 可手动触发。五个离线测试在 `backend/mongo_upsert_test.py`。
 3. 附件与文本抽取。走现有 `download_attachment` 和 `extract-text`，需要 Chrome、LibreOffice、poppler 和中文字体。`backend/Dockerfile.enhanced` 的 slim 镜像缺这些依赖。
 4. LLM 富化。统一 client 构造并升级 SDK，把轻任务切到轻量模型，对抽取请求加 JSON schema 约束。
 5. OCR 管线。把 `backend/doc2text.py:41` 的三级回退改成文本层优先、Vision 只兜底无文本页，并加页级并发。之后再评估用 PaddleOCR-VL 或 MinerU 替换 Vision 内核。

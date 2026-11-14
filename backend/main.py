@@ -295,9 +295,14 @@ def get_online_data():
         return get_pandas().DataFrame()
 
 def insert_online_data(df: "pd.DataFrame"):
-    """Insert data to MongoDB - following frontend logic"""
+    """Insert or update data in MongoDB, keyed by 链接.
+
+    A repeat run updates existing documents instead of appending duplicates.
+    An existing unique index on 链接 makes the write safe under concurrency;
+    without one the upsert is still idempotent for a single writer.
+    """
     import datetime
-    
+
     try:
         collection = get_collection("pencsrc2", "csrc2analysis")
         if collection is not None and not df.empty:
@@ -309,13 +314,21 @@ def insert_online_data(df: "pd.DataFrame"):
                     sample_value = df_copy[col].dropna().iloc[0] if not df_copy[col].dropna().empty else None
                     if isinstance(sample_value, datetime.date) and not isinstance(sample_value, datetime.datetime):
                         df_copy[col] = get_pandas().to_datetime(df_copy[col])
-            
+
             records = df_copy.to_dict("records")
+            if "链接" not in df_copy.columns:
+                logger.error("insert_online_data requires a 链接 column for idempotent writes")
+                return False
+            from pymongo import UpdateOne
             batch_size = 10000  # Use same batch size as frontend
             for i in range(0, len(records), batch_size):
                 batch = records[i:i + batch_size]
-                collection.insert_many(batch)
-            logger.info(f"Successfully inserted {len(records)} records to MongoDB")
+                operations = [
+                    UpdateOne({"链接": record.get("链接")}, {"$set": record}, upsert=True)
+                    for record in batch
+                ]
+                collection.bulk_write(operations, ordered=False)
+            logger.info(f"Upserted {len(records)} records to MongoDB")
             return True
         else:
             logger.warning("Collection is None or DataFrame is empty")
@@ -323,6 +336,29 @@ def insert_online_data(df: "pd.DataFrame"):
     except Exception as e:
         logger.error(f"Failed to insert online data: {str(e)}", exc_info=True)
         return False
+
+
+def ensure_online_index():
+    """Create a unique index on 链接.
+
+    Returns "unique", "non-unique", or "missing". A collection that already
+    holds duplicates cannot take the unique index; the non-unique fallback
+    keeps writes idempotent but leaves the data for a cleanup pass.
+    """
+    try:
+        collection = get_collection("pencsrc2", "csrc2analysis")
+        if collection is None:
+            return "missing"
+        try:
+            collection.create_index("链接", unique=True, name="uniq_link")
+            return "unique"
+        except Exception as error:
+            logger.warning(f"Unique index on 链接 failed, falling back: {error}")
+            collection.create_index("链接", name="idx_link")
+            return "non-unique"
+    except Exception as error:
+        logger.error(f"Failed to ensure index: {error}")
+        return "missing"
 
 def delete_online_data():
     """Delete all online data from MongoDB"""
@@ -3252,6 +3288,17 @@ async def generate_labels():
             message="Label generation failed",
             error=str(e)
         )
+
+@app.post("/api/ensure-mongo-index", response_model=APIResponse)
+async def ensure_mongo_index_endpoint():
+    """Create the 链接 index used by idempotent upserts."""
+    status = ensure_online_index()
+    return APIResponse(
+        success=status != "missing",
+        message=f"index status: {status}",
+        count=None,
+    )
+
 
 @app.delete("/online-data", response_model=APIResponse)
 @app.delete("/api/online-data", response_model=APIResponse)
