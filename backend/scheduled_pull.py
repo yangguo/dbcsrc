@@ -1,0 +1,223 @@
+"""Scheduled incremental pull from the CSRC searchList endpoint.
+
+Runs one pass per invocation and exits. Meant to be driven by host cron so the
+API's multiple uvicorn workers never see the schedule. State lives in a JSON
+file keyed by org and channel, and every write is atomic.
+
+Idempotency: the watermark is the newest 链接 already committed. Each run reads
+the top pages, drops everything up to and including that link, and commits the
+rest. A repeat run or a rerun after a crash finds the same watermark and writes
+nothing new.
+
+Exit codes:
+    0  all channels succeeded
+    1  at least one channel failed after writing what it could
+    2  preflight failed, nothing was written
+"""
+
+import argparse
+import json
+import os
+import sys
+import tempfile
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from typing import Callable, Optional
+
+import pandas as pd
+
+import web_crawler
+
+DEFAULT_MAX_PAGES = 3
+
+EXIT_OK = 0
+EXIT_PARTIAL = 1
+EXIT_PREFLIGHT = 2
+
+
+@dataclass
+class CrawlState:
+    org: str
+    channel_id: str
+    channel_name: str
+    last_link: str = ""
+    updated_at: str = ""
+
+
+class CrawlStateStore:
+    """JSON backed registry keyed by "<org>/<channel_id>"."""
+
+    def __init__(self, path: str):
+        self.path = path
+        self._entries: dict[str, CrawlState] = {}
+        self.load()
+
+    @staticmethod
+    def _key(org: str, channel_id: str) -> str:
+        return f"{org}/{channel_id}"
+
+    def load(self) -> None:
+        if not os.path.exists(self.path):
+            self._entries = {}
+            return
+        with open(self.path, encoding="utf-8") as handle:
+            raw = json.load(handle)
+        self._entries = {
+            key: CrawlState(**value) for key, value in raw.get("channels", {}).items()
+        }
+
+    def get(self, org: str, channel_id: str, channel_name: str) -> CrawlState:
+        key = self._key(org, channel_id)
+        if key not in self._entries:
+            self._entries[key] = CrawlState(
+                org=org, channel_id=channel_id, channel_name=channel_name
+            )
+        return self._entries[key]
+
+    def upsert(self, state: CrawlState) -> None:
+        state.updated_at = datetime.now(timezone.utc).isoformat()
+        self._entries[self._key(state.org, state.channel_id)] = state
+        self.save()
+
+    def save(self) -> None:
+        directory = os.path.dirname(os.path.abspath(self.path))
+        os.makedirs(directory, exist_ok=True)
+        payload = {
+            "channels": {key: asdict(value) for key, value in self._entries.items()}
+        }
+        fd, temp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            os.replace(temp_path, self.path)
+        except Exception:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
+
+
+def preflight(org: str, channel_id: str) -> bool:
+    """Fetch page 1 of one known channel. Any failure means stop before writing."""
+    try:
+        frame = web_crawler.get_sumeventdf_backend(org, 1, 1, [channel_id])
+    except Exception as error:
+        print(f"preflight failed for {org}/{channel_id}: {error}", file=sys.stderr)
+        return False
+    return not frame.empty
+
+
+def trim_to_new(frame: pd.DataFrame, watermark: str) -> pd.DataFrame:
+    """Keep rows above the watermark link. Empty watermark means keep all."""
+    if frame.empty or not watermark:
+        return frame
+    links = frame["链接"].tolist()
+    if watermark not in links:
+        return frame
+    return frame.iloc[: links.index(watermark)]
+
+
+def pull_channel(
+    org: str,
+    channel: dict,
+    state: CrawlState,
+    max_pages: int,
+    fetch: Callable[..., pd.DataFrame] = web_crawler.get_sumeventdf_backend,
+    commit: Callable[[pd.DataFrame], object] = web_crawler.update_sumeventdf_backend,
+) -> tuple[int, bool]:
+    """Pull one channel's top pages and commit the rows above the watermark.
+
+    Returns (new_record_count, succeeded).
+    """
+    channel_id = channel["id"]
+    try:
+        frame = fetch(org, 1, max_pages, [channel_id])
+    except Exception as error:
+        print(f"pull failed for {org}/{channel_id}: {error}", file=sys.stderr)
+        return 0, False
+
+    fresh = trim_to_new(frame, state.last_link)
+    if fresh.empty:
+        return 0, True
+
+    new_records = commit(fresh)
+    state.last_link = fresh["链接"].iloc[0]
+    return len(new_records) if isinstance(new_records, list) else 0, True
+
+
+def run_pull(
+    orgs: list[str],
+    max_pages: int,
+    state_path: str,
+    fetch: Callable[..., pd.DataFrame] = web_crawler.get_sumeventdf_backend,
+    commit: Callable[[pd.DataFrame], object] = web_crawler.update_sumeventdf_backend,
+    preflight_check: Callable[[str, str], bool] = preflight,
+) -> int:
+    store = CrawlStateStore(state_path)
+    failed: list[str] = []
+    total_new = 0
+    attempted = 0
+
+    for org in orgs:
+        channels = web_crawler.org2id.get(org)
+        if not channels:
+            print(f"unknown org: {org}", file=sys.stderr)
+            failed.append(org)
+            continue
+
+        if not preflight_check(org, channels[0]["id"]):
+            print(f"preflight failed for {org}, skipping", file=sys.stderr)
+            failed.append(org)
+            continue
+
+        for channel in channels:
+            attempted += 1
+            state = store.get(org, channel["id"], channel["name"])
+            new_count, ok = pull_channel(
+                org, channel, state, max_pages, fetch=fetch, commit=commit
+            )
+            store.upsert(state)
+            total_new += new_count
+            print(f"{org}/{channel['name']}: new={new_count} ok={ok}")
+            if not ok:
+                failed.append(f"{org}/{channel['name']}")
+
+    print(f"total new records: {total_new}")
+    if attempted == 0:
+        return EXIT_PREFLIGHT
+    return EXIT_PARTIAL if failed else EXIT_OK
+
+
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Scheduled CSRC incremental pull")
+    parser.add_argument(
+        "--org",
+        action="append",
+        dest="orgs",
+        help="Organization name from web_crawler.org2id. Repeatable.",
+    )
+    parser.add_argument("--max-pages", type=int, default=DEFAULT_MAX_PAGES)
+    parser.add_argument(
+        "--state-file",
+        default=os.path.join(
+            os.path.dirname(web_crawler.pencsrc2), "state", "crawl_state.json"
+        ),
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Preflight only")
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    args = parse_args(argv)
+    orgs = args.orgs or ["总部"]
+    if args.dry_run:
+        for org in orgs:
+            channels = web_crawler.org2id.get(org) or []
+            if not channels or not preflight(org, channels[0]["id"]):
+                return EXIT_PREFLIGHT
+        print("preflight ok")
+        return EXIT_OK
+    return run_pull(orgs, args.max_pages, args.state_file)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

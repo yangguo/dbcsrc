@@ -31,7 +31,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # Directory paths
-pencsrc2 = "../data/penalty/csrc2"
+# DBCSRC_DATA_DIR overrides the default so tests and scheduled runs can point elsewhere.
+pencsrc2 = os.getenv("DBCSRC_DATA_DIR", "../data/penalty/csrc2")
 
 # Organization ID mapping - each organization can have multiple IDs with names
 # Structure: {"org_name": [{"id": "id_string", "name": "id_display_name"}, ...]}
