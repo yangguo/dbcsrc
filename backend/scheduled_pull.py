@@ -187,6 +187,53 @@ def run_pull(
     return EXIT_PARTIAL if failed else EXIT_OK
 
 
+COMPACT_PREFIXES = ("csrcdtlall", "csrc2analysis")
+
+
+def compact_prefix(data_dir: str, prefix: str) -> tuple[int, int]:
+    """Merge every shard of one prefix into a single deduped shard.
+
+    Returns (rows_before, rows_after). Old shards move to archive/.
+    Zero or one shard means nothing to do and no file is written.
+    """
+    import glob
+
+    shards = sorted(glob.glob(os.path.join(data_dir, prefix + "*.csv")))
+    if len(shards) <= 1:
+        return 0, 0
+    frames = []
+    for path in shards:
+        try:
+            frame = pd.read_csv(path, encoding="utf-8-sig")
+            if not frame.empty:
+                frames.append(frame)
+        except Exception as error:
+            print(f"compact: skip unreadable {path}: {error}", file=sys.stderr)
+    if not frames:
+        return 0, 0
+    merged = pd.concat(frames, ignore_index=True)
+    before = len(merged)
+    if "链接" in merged.columns:
+        merged = merged.drop_duplicates(subset=["链接"], keep="last")
+    after = len(merged)
+    archive = os.path.join(data_dir, "archive")
+    os.makedirs(archive, exist_ok=True)
+    merged.to_csv(
+        os.path.join(data_dir, f"{prefix}{web_crawler.get_now()}.csv"),
+        index=False,
+        encoding="utf-8-sig",
+    )
+    for path in shards:
+        os.replace(path, os.path.join(archive, os.path.basename(path)))
+    return before, after
+
+
+def compact(data_dir: Optional[str] = None) -> dict[str, tuple[int, int]]:
+    """Merge detail and analysis shards. Safe to rerun: a second run is a no-op."""
+    target = data_dir or web_crawler.pencsrc2
+    return {prefix: compact_prefix(target, prefix) for prefix in COMPACT_PREFIXES}
+
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Scheduled CSRC incremental pull")
     parser.add_argument(
@@ -203,11 +250,19 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--dry-run", action="store_true", help="Preflight only")
+    parser.add_argument(
+        "--compact", action="store_true", help="Merge CSV shards, then exit"
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
+    if args.compact:
+        result = compact()
+        for prefix, (before, after) in result.items():
+            print(f"{prefix}: rows {before} -> {after}")
+        return EXIT_OK
     orgs = args.orgs or ["总部"]
     if args.dry_run:
         for org in orgs:

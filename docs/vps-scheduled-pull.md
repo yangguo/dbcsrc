@@ -83,6 +83,7 @@ class CrawlState:
 | `backend/scheduled_pull.py` | 新增。预检、水位、截断、状态写入、退出码 |
 | `backend/test_scheduled_pull.py` | 新增。七个离线测试，覆盖首跑、重跑、增量、预检失败、栏目失败和真实差集写入 |
 | `backend/web_crawler.py` | 两行。`pencsrc2` 支持 `DBCSRC_DATA_DIR` 环境变量覆盖，供测试和部署重定向 |
+| `compact` 命令 | `scheduled_pull.py --compact`。合并 `csrcdtlall` 和 `csrc2analysis` 分片，按 `链接` 保留最新行，旧分片移入 `archive/`。单分片或空目录时不写文件，重跑是 no-op |
 | `docs/vps-scheduled-pull.md` | 本文件 |
 
 `get_sumeventdf_backend` 和 `update_sumeventdf_backend` 不改。
@@ -145,7 +146,7 @@ python3 -m pytest test_scheduled_pull.py -q
 
 按依赖从轻到重排列。
 
-1. 分片合并。每天新增一个分片，读取时全量合并。需要定期把分片压实成快照，否则 `/summary` 会越来越慢。
+1. 分片合并。已实现，见上表 `compact` 命令。建议每月跑一次，或在分片数超过 30 个时跑。
 2. Mongo 去重。`insert_online_data` 只有 `insert_many`，没有唯一索引。启用自动同步前必须先在 `链接` 上建唯一索引并改 upsert。
 3. 附件与文本抽取。走现有 `download_attachment` 和 `extract-text`，需要 Chrome、LibreOffice、poppler 和中文字体。`backend/Dockerfile.enhanced` 的 slim 镜像缺这些依赖。
 4. LLM 富化。统一 client 构造并升级 SDK，把轻任务切到轻量模型，对抽取请求加 JSON schema 约束。

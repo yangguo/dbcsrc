@@ -140,6 +140,55 @@ def test_dry_run_returns_2_when_network_blocked(tmp_path, monkeypatch):
     assert code == scheduled_pull.EXIT_PREFLIGHT
 
 
+def write_shard(directory, name: str, links: list[str], tag: str) -> None:
+    frame = make_frame(links)
+    frame["内容"] = tag
+    frame.to_csv(os.path.join(str(directory), name), index=False, encoding="utf-8-sig")
+
+
+def test_compact_merges_shards_and_keeps_latest(tmp_path):
+    data_dir = tmp_path / "csrc2"
+    data_dir.mkdir()
+    write_shard(data_dir, "csrcdtlall20260101000000.csv", ["a", "b"], "old")
+    write_shard(data_dir, "csrcdtlall20260201000000.csv", ["b", "c"], "new")
+
+    result = scheduled_pull.compact(str(data_dir))
+
+    assert result["csrcdtlall"] == (4, 3)
+    assert result["csrc2analysis"] == (0, 0)
+    remaining = list(data_dir.glob("csrcdtlall*.csv"))
+    assert len(remaining) == 1
+    merged = pd.read_csv(remaining[0], encoding="utf-8-sig")
+    assert merged["链接"].tolist() == ["a", "b", "c"]
+    assert merged[merged["链接"] == "b"]["内容"].iloc[0] == "new"
+    archived = sorted((data_dir / "archive").glob("*.csv"))
+    assert [path.name for path in archived] == [
+        "csrcdtlall20260101000000.csv",
+        "csrcdtlall20260201000000.csv",
+    ]
+
+
+def test_compact_second_run_is_noop(tmp_path):
+    data_dir = tmp_path / "csrc2"
+    data_dir.mkdir()
+    write_shard(data_dir, "csrcdtlall20260101000000.csv", ["a"], "old")
+    write_shard(data_dir, "csrcdtlall20260201000000.csv", ["b"], "new")
+
+    scheduled_pull.compact(str(data_dir))
+    before = sorted(path.name for path in data_dir.glob("*.csv"))
+    result = scheduled_pull.compact(str(data_dir))
+
+    assert result == {"csrcdtlall": (0, 0), "csrc2analysis": (0, 0)}
+    assert sorted(path.name for path in data_dir.glob("*.csv")) == before
+
+
+def test_compact_empty_dir_is_noop(tmp_path):
+    assert scheduled_pull.compact(str(tmp_path)) == {
+        "csrcdtlall": (0, 0),
+        "csrc2analysis": (0, 0),
+    }
+
+
 def test_real_commit_dedupes_against_existing_csv(tmp_path, monkeypatch):
     """Exercises web_crawler.save and the 链接 diff, not just the fake commit."""
     data_dir = tmp_path / "csrc2"
