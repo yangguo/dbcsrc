@@ -151,7 +151,7 @@ python3 -m pytest test_scheduled_pull.py -q
 3. 附件与文本抽取。走现有 `download_attachment` 和 `extract-text`，需要 Chrome、LibreOffice、poppler 和中文字体。`backend/Dockerfile.enhanced` 的 slim 镜像缺这些依赖。
 4. LLM 富化。统一 client 构造并升级 SDK，把轻任务切到轻量模型，对抽取请求加 JSON schema 约束。
 5. OCR 管线。把 `backend/doc2text.py:41` 的三级回退改成文本层优先、Vision 只兜底无文本页，并加页级并发。之后再评估用 PaddleOCR-VL 或 MinerU 替换 Vision 内核。
-6. 金额链路。`backend/extractamount.py:1475` 按 `start`、`end`、`text` 三个键取值，但 `nlp_input` 返回通用 JSON，键不匹配导致异常被吞后金额恒为零。这是独立的小修复。
+6. 金额链路。已修复。`nlp_input` 现在每块返回 `{key: [金额串]}`，偏移由本地 `find` 计算。句子与金额统一取自原文坐标。`get_number` 改为纯函数，用正则抽取金额串并支持中文数字。`extract_money` 在文书没有"综上/合计/其中"层次词时把整句当作金额句。五个离线测试在 `backend/extractamount_test.py`。
 
 ## 风险
 

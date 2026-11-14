@@ -100,46 +100,46 @@ client = openai.OpenAI(
 # Get model name from environment or use default
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
-def nlp_input(schema, string):  # schema为字符串目标list，string为字符串总量
-    """Extract information using OpenAI LLM"""
-    try:
-        # Create prompt for information extraction
-        schema_str = ", ".join(schema) if isinstance(schema, list) else str(schema)
-        prompt = f"""Extract the following types of information from the Chinese text: {schema_str}
-        
-Text: {string}
-        
-Respond with only a JSON object where keys are the schema types and values are arrays of extracted entities. For example:
-        {{
-            "schema_type1": ["entity1", "entity2"],
-            "schema_type2": ["entity3"]
-        }}
-        
-If no entities are found for a schema type, use an empty array: []"""
-        
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are an expert in Chinese information extraction. Always respond with valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            max_tokens=500
-        )
-        
-        # Parse the response
-        result_text = response.choices[0].message.content.strip()
+def nlp_input(schema, chunks):  # schema为字符串目标list，chunks为文本块list
+    """Return {schema_key: [entity, ...]} once per chunk.
+
+    The LLM reports entities verbatim and only for the chunk it was given.
+    Character offsets are computed here, so the caller always gets
+    start/end/text entries and never depends on model-supplied indices.
+    A failure on one chunk yields an empty entity list for that chunk only.
+    """
+    schema_key = schema[0] if isinstance(schema, list) and schema else str(schema)
+    results = []
+    for chunk in chunks:
+        entities = []
         try:
-            result = json.loads(result_text)
-            # Convert to format expected by original code
-            return [result]
-        except json.JSONDecodeError:
-            # Failed to parse JSON response
-            pass
-            return [{}]
-            
-    except Exception as e:
-        return [{}]
+            prompt = f"""从下面的中文文本中提取所有"{schema_key}"金额，只返回原文中出现的数字和单位，不要改写。
+
+文本:
+{chunk}
+
+只返回一个 JSON 对象，格式为 {{"{schema_key}": ["金额1", "金额2"]}}。没有则返回 {{"{schema_key}": []}}。"""
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You extract amounts from Chinese legal text. Reply with valid JSON only.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.1,
+                max_tokens=300,
+                response_format={"type": "json_object"},
+            )
+            parsed = json.loads(response.choices[0].message.content.strip())
+            raw_entities = parsed.get(schema_key, [])
+            if isinstance(raw_entities, list):
+                entities = [item for item in raw_entities if isinstance(item, str) and item]
+        except Exception:
+            entities = []
+        results.append({schema_key: entities})
+    return results
 
 
 def wash_data(data):
@@ -443,40 +443,67 @@ def yasuo(dataframe):
     return list1
 
 
-def get_number(moneys):
-    sum = 0
-    if len(moneys) != 0:
-        for money in moneys:
-            money[2] = money[2].replace("人民币", "").replace("的", "")
+AMOUNT_PATTERN = re.compile(
+    r"(?:人民币)?\d+(?:\.\d+)?(?:亿元|千万元|百万元|万元|千元|百元|元)"
+    r"|(?:人民币)?[零一二三四五六七八九十百千万亿两]+(?:元|万元|亿元)"
+)
+
+UNIT_SCALE = {
+    "亿元": 100000000,
+    "千万元": 10000000,
+    "百万元": 1000000,
+    "万元": 10000,
+    "千元": 1000,
+    "百元": 100,
+    "元": 1,
+}
+
+
+def parse_amount(text):
+    """Parse one amount expression to yuan. Returns None when unparseable.
+
+    chinese2digits already scales 万 and 亿 into base units, so a match that
+    it converts needs no further scaling. The literal number path scales by
+    the unit suffix itself.
+    """
+    candidate = (text or "").replace("人民币", "").replace("的", "").replace(",", "").strip()
+    if not candidate:
+        return None
+    match = AMOUNT_PATTERN.search(candidate)
+    if not match:
+        return None
+    expr = match.group(0)
+    for unit in sorted(UNIT_SCALE, key=len, reverse=True):
+        if expr.endswith(unit):
+            number_part = expr[: -len(unit)]
             try:
-                if "亿元" in money[2]:
-                    money[2] = money[2].replace("亿元", "")
-                    money[2] = float(money[2]) * 100000000
+                return float(number_part) * UNIT_SCALE[unit]
+            except ValueError:
+                break
+    try:
+        converted = c2d.takeNumberFromString(expr)["digitsStringList"]
+    except Exception:
+        return None
+    if not converted:
+        return None
+    try:
+        return float(converted[0])
+    except (TypeError, ValueError):
+        return None
 
-                elif "千万元" in money[2]:
-                    money[2] = money[2].replace("千万元", "")
-                    money[2] = float(money[2]) * 10000000
 
-                elif "万元" in money[2]:
-                    money[2] = money[2].replace("万元", "")
-                    money[2] = float(money[2]) * 10000
-
-                elif "元" in money[2]:
-                    money[2] = money[2].replace("元", "")
-                    money[2] = float(money[2])
-                elif "万" in money[2]:
-                    money[2] = money[2].replace("万", "")
-                    money[2] = float(money[2]) * 10000
-            except Exception as e:
-                # Error in processing
-                pass
-                money[2] = float(money[2])
-            sum = sum + round(money[2], 2)
-    else:
-        moneys = moneys
-        sum = 0
-        # print(sum)
-    return moneys, sum
+def get_number(moneys):
+    """Sum every amount found in the texts. Inputs are never mutated."""
+    total = 0
+    for items in moneys or []:
+        text = items[2] if isinstance(items, (list, tuple)) and len(items) > 2 else items
+        if not isinstance(text, str):
+            continue
+        for expr in AMOUNT_PATTERN.findall(text):
+            value = parse_amount(expr)
+            if value is not None:
+                total += round(value, 2)
+    return moneys, total
 
 
 def cut_string(
@@ -1440,6 +1467,7 @@ def extract_money(
 ):  # string_all 为一个list,里面写证监局的文，flag=1代表罚款，flag=2代表没收
     # 2先对文字进行简单裁剪(关键词['局决定','会决定','现对','鉴于',',决定：','，决定：','的规定','的要求']),我只要这些词之后的东西
     # region
+    get_pandas()
     content = stringall
     querys = [
         "局决定",
@@ -1465,15 +1493,38 @@ def extract_money(
         choose = "罚款"
     if flag == 2:
         choose = "没收金额"
-    temps = nlp_input([choose], cutted_contents)
+    try:
+        temps = nlp_input([choose], cutted_contents)
+    except Exception:
+        temps = [{choose: []} for _ in cutted_contents]
+    if len(temps) != len(cutted_contents):
+        temps = [
+            temps[i] if i < len(temps) else {choose: []}
+            for i in range(len(cutted_contents))
+        ]
+
+    original_contents = [wash_data(i) for i in stringall]
     result_罚款_df = get_pandas().DataFrame(columns=["编号", "罚款详情"])
     for i in range(len(temps)):
         temp1s = []
-        if len(temps[i]) == 0:
+        cut_text = cutted_contents[i] if i < len(cutted_contents) else ""
+        original_text = original_contents[i] if i < len(original_contents) else ""
+        for entity in temps[i].get(choose, []):
+            if isinstance(entity, dict):
+                entity_text = entity.get("text", "")
+            else:
+                entity_text = entity
+            if not entity_text:
+                continue
+            start = original_text.find(entity_text)
+            if start < 0:
+                start = cut_text.find(entity_text)
+                if start < 0:
+                    continue
+                entity_text = cut_text[start : start + len(entity_text)]
+            temp1s.append([start, start + len(entity_text), entity_text])
+        if not temp1s:
             temp1s.append(["", "", ""])
-        else:
-            for temp1 in temps[i][choose]:
-                temp1s.append([temp1["start"], temp1["end"], temp1["text"]])
         result_罚款_df = get_pandas().concat(
             [result_罚款_df, get_pandas().DataFrame({"编号": [str(i)], "罚款详情": [temp1s]})]
         )
@@ -1493,7 +1544,8 @@ def extract_money(
                 sum_list.append(0)
 
             else:
-                string1 = cutted_contents[iall]
+                # 金额坐标取自原文，句子的坐标也必须取自原文，否则两者无法对齐。
+                string1 = original_contents[iall]
                 result_综上 = get_position_and_str(r"综上|综合上述", string1)
                 result_句子 = get_position_and_str(r"[\s\S]*?[：:；;。]", string1)
                 result_其中 = get_position_and_str(r"其中", string1)
@@ -1503,6 +1555,9 @@ def extract_money(
                 # 2.1根据符号提取出段落的句子,这些句子需满足包含金额的条件
                 # 先找到含罚款信息的句子,
                 result_带金额句子 = result_句子 | big | result_金额
+                if not result_带金额句子 and not result_综上:
+                    # 文书没有"综上/合计/其中"层次词，句子本身就是金额句
+                    result_带金额句子 = result_句子
                 # 我先要判断'综上'后面有没有金额，如果有，就把'综上'前面的内容删掉
                 result_带金额句子_包含综上 = []
                 for i in result_带金额句子:
@@ -1584,6 +1639,10 @@ def extract_money(
                 for temp in result_带金额句子_包含综上_包含合计_剔除其中_分句:
                     # 先提取出金额
                     temp_金额 = result_金额 | small | [temp]
+                    # 句子来自裁剪后的文本，坐标和原文金额可能对不上。
+                    # 对不上时直接从句子里抽金额串，避免整句被丢弃。
+                    if not temp_金额:
+                        temp_金额 = [temp]
                     # print(temp)
                     # 如果在一个小句子中,出现了两个金额,则不考虑分别的情况
                     # print(temp_金额)
