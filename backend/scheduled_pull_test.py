@@ -183,9 +183,191 @@ def test_backlog_beyond_cap_does_not_advance_watermark(tmp_path):
         fetch=fetch,
         commit=commit,
         preflight_check=lambda *_: True,
+        max_fetch_pages=6,
+    )
+
+    assert calls["count"] == 3
+    assert code == scheduled_pull.EXIT_PARTIAL
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == "a"
+
+
+def make_pull_state(store_path: str, watermark: str) -> None:
+    store = scheduled_pull.CrawlStateStore(store_path)
+    state = store.get("总部", "channel-1", "")
+    state.last_link = watermark
+    store.upsert(state)
+
+
+def test_partial_fetch_mid_catchup_keeps_watermark(tmp_path):
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+    make_pull_state(store_path, "a")
+    calls = {"count": 0}
+
+    def fetch(org, start, end, ids):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return make_frame(["n1", "n2"])
+        raise web_crawler.CsrcFetchError("总部", ["url-page-2"])
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        max_pages=1,
+        state_path=store_path,
+        fetch=fetch,
+        commit=commit,
+        preflight_check=lambda *_: True,
+        max_fetch_pages=4,
     )
 
     assert code == scheduled_pull.EXIT_PARTIAL
+    assert commit.batches == [["n1", "n2"]]
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == "a"
+
+
+def test_partial_fetch_on_first_chunk_commits_nothing(tmp_path):
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+    make_pull_state(store_path, "a")
+
+    def fetch(*_):
+        raise web_crawler.CsrcFetchError("总部", ["url-page-1"])
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        2,
+        store_path,
+        fetch=fetch,
+        commit=commit,
+        preflight_check=lambda *_: True,
+    )
+
+    assert code == scheduled_pull.EXIT_PARTIAL
+    assert commit.batches == []
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == "a"
+
+
+def test_first_run_partial_fetch_commits_nothing(tmp_path):
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+
+    def fetch(*_):
+        raise web_crawler.CsrcFetchError("总部", ["url-page-1"])
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        2,
+        store_path,
+        fetch=fetch,
+        commit=commit,
+        preflight_check=lambda *_: True,
+    )
+
+    assert code == scheduled_pull.EXIT_PARTIAL
+    assert commit.batches == []
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == ""
+
+
+def test_watermark_at_top_does_not_commit(tmp_path):
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+    make_pull_state(store_path, "a")
+    calls = {"count": 0}
+
+    def fetch(*_):
+        calls["count"] += 1
+        return make_frame(["a", "b"])
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        2,
+        store_path,
+        fetch=fetch,
+        commit=commit,
+        preflight_check=lambda *_: True,
+    )
+
+    assert code == scheduled_pull.EXIT_OK
+    assert calls["count"] == 1
+    assert commit.batches == []
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == "a"
+
+
+def test_empty_feed_with_existing_watermark_fails_without_commit(tmp_path):
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+    make_pull_state(store_path, "a")
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        2,
+        store_path,
+        fetch=lambda *_: make_frame([]),
+        commit=commit,
+        preflight_check=lambda *_: True,
+    )
+
+    assert code == scheduled_pull.EXIT_PARTIAL
+    assert commit.batches == []
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == "a"
+
+
+def test_cap_never_below_window(tmp_path):
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+    make_pull_state(store_path, "a")
+    ends = []
+
+    def fetch(org, start, end, ids):
+        ends.append(end)
+        return make_frame(["n1"])
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        5,
+        store_path,
+        fetch=fetch,
+        commit=commit,
+        preflight_check=lambda *_: True,
+        max_fetch_pages=3,
+    )
+
+    assert ends == [5]
+    assert code == scheduled_pull.EXIT_PARTIAL
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == "a"
+
+
+def test_trim_to_new_contract():
+    frame = make_frame(["n1", "b", "c"])
+
+    assert scheduled_pull.trim_to_new(frame, "") is frame
+    assert scheduled_pull.trim_to_new(frame, "n1").empty
+    assert scheduled_pull.trim_to_new(frame, "a") is None
+
+
+def test_empty_links_are_kept_and_do_not_become_the_watermark(tmp_path):
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+    make_pull_state(store_path, "a")
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        2,
+        store_path,
+        fetch=lambda *_: make_frame(["", "", "a", "b"]),
+        commit=commit,
+        preflight_check=lambda *_: True,
+    )
+
+    assert code == scheduled_pull.EXIT_OK
+    assert commit.batches == [["", ""]]
     state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
     assert state.last_link == "a"
 

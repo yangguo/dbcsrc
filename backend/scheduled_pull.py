@@ -5,13 +5,15 @@ API's multiple uvicorn workers never see the schedule. State lives in a JSON
 file keyed by org and channel, and every write is atomic.
 
 Idempotency: the watermark is the newest 链接 already committed. Each run reads
-the top pages, drops everything up to and including that link, and commits the
-rest. A repeat run or a rerun after a crash finds the same watermark and writes
+from the top until it finds that link, in windows of --max-pages, capped at
+--max-fetch-pages total pages. Fetches are checked: any failed page aborts the
+channel, so a partial fetch never advances the watermark. Only rows above the
+watermark are committed, so a repeat run or a rerun after a crash writes
 nothing new.
 
 Exit codes:
     0  all channels succeeded
-    1  at least one channel failed after writing what it could
+    1  at least one channel failed or hit the fetch cap after writing what it could
     2  preflight failed, nothing was written
 """
 
@@ -29,6 +31,7 @@ import pandas as pd
 import web_crawler
 
 DEFAULT_MAX_PAGES = 3
+DEFAULT_MAX_FETCH_PAGES = 100
 
 EXIT_OK = 0
 EXIT_PARTIAL = 1
@@ -96,24 +99,54 @@ class CrawlStateStore:
             raise
 
 
+def _fetch_strict(org: str, start: int, end: int, ids: list[str]) -> pd.DataFrame:
+    """Fetch pages, raising CsrcFetchError when any page failed."""
+    return web_crawler.get_sumeventdf_backend(
+        org, start, end, ids, raise_on_error=True
+    )
+
+
 def preflight(org: str, channel_id: str) -> bool:
     """Fetch page 1 of one known channel. Any failure means stop before writing."""
     try:
-        frame = web_crawler.get_sumeventdf_backend(org, 1, 1, [channel_id])
+        frame = _fetch_strict(org, 1, 1, [channel_id])
     except Exception as error:
         print(f"preflight failed for {org}/{channel_id}: {error}", file=sys.stderr)
         return False
     return not frame.empty
 
 
-def trim_to_new(frame: pd.DataFrame, watermark: str) -> pd.DataFrame:
-    """Keep rows above the watermark link. Empty watermark means keep all."""
-    if frame.empty or not watermark:
+def trim_to_new(frame: pd.DataFrame, watermark: str) -> Optional[pd.DataFrame]:
+    """Keep rows above the watermark link. None means the watermark was not found."""
+    if frame.empty:
+        return frame if not watermark else None
+    if not watermark:
         return frame
     links = frame["链接"].tolist()
     if watermark not in links:
-        return frame
-    return frame.iloc[: links.index(watermark)]
+        return None
+    return frame.iloc[: links.index(watermark)].reset_index(drop=True)
+
+
+def _append_unique(acc: pd.DataFrame, frame: pd.DataFrame) -> pd.DataFrame:
+    """Add one page's rows, keeping the first row for each non-empty 链接."""
+    if frame.empty:
+        return acc
+    combined = frame if acc.empty else pd.concat([acc, frame], ignore_index=True)
+    links = combined["链接"].fillna("").astype(str)
+    keep = (links == "") | ~links.duplicated(keep="first")
+    return combined[keep].reset_index(drop=True)
+
+
+def _next_watermark(frame: pd.DataFrame) -> str:
+    """Return the newest non-empty link, or "" when the frame has none."""
+    links = frame["链接"].fillna("").astype(str)
+    non_empty = links[links != ""]
+    return non_empty.iloc[0] if not non_empty.empty else ""
+
+
+def _commit_count(records: object) -> int:
+    return len(records) if isinstance(records, list) else 0
 
 
 def pull_channel(
@@ -121,36 +154,76 @@ def pull_channel(
     channel: dict,
     state: CrawlState,
     max_pages: int,
-    fetch: Callable[..., pd.DataFrame] = web_crawler.get_sumeventdf_backend,
+    fetch: Callable[..., pd.DataFrame] = _fetch_strict,
     commit: Callable[[pd.DataFrame], object] = web_crawler.update_sumeventdf_backend,
+    *,
+    max_fetch_pages: int = DEFAULT_MAX_FETCH_PAGES,
 ) -> tuple[int, bool]:
-    """Pull one channel's top pages and commit the rows above the watermark.
+    """Pull one channel until the watermark is found or the fetch cap is hit.
 
     Returns (new_record_count, succeeded).
     """
     channel_id = channel["id"]
-    try:
-        frame = fetch(org, 1, max_pages, [channel_id])
-    except Exception as error:
-        print(f"pull failed for {org}/{channel_id}: {error}", file=sys.stderr)
-        return 0, False
+    cap = max(max_pages, max_fetch_pages)
 
-    fresh = trim_to_new(frame, state.last_link)
-    if fresh.empty:
-        return 0, True
+    if not state.last_link:
+        try:
+            frame = fetch(org, 1, max_pages, [channel_id])
+        except Exception as error:
+            print(f"pull failed for {org}/{channel_id}: {error}", file=sys.stderr)
+            return 0, False
+        fresh = trim_to_new(frame, "")
+        if fresh.empty:
+            return 0, True
+        new_records = commit(fresh)
+        state.last_link = _next_watermark(fresh)
+        return _commit_count(new_records), True
 
-    new_records = commit(fresh)
-    state.last_link = fresh["链接"].iloc[0]
-    return len(new_records) if isinstance(new_records, list) else 0, True
+    accumulated = pd.DataFrame()
+    start = 1
+    stop_reason = f"fetch cap of {cap} pages reached"
+    while start <= cap:
+        end = min(start + max_pages - 1, cap)
+        try:
+            page = fetch(org, start, end, [channel_id])
+        except Exception as error:
+            print(f"pull failed for {org}/{channel_id}: {error}", file=sys.stderr)
+            stop_reason = "fetch failed"
+            break
+        page_empty = page.empty
+        accumulated = _append_unique(accumulated, page)
+        fresh = trim_to_new(accumulated, state.last_link)
+        if fresh is not None:
+            if fresh.empty:
+                return 0, True
+            new_records = commit(fresh)
+            next_watermark = _next_watermark(fresh)
+            if next_watermark:
+                state.last_link = next_watermark
+            return _commit_count(new_records), True
+        if page_empty:
+            stop_reason = "listing ended before the watermark"
+            break
+        start = end + 1
+
+    new_records = commit(accumulated) if not accumulated.empty else []
+    print(
+        f"{org}/{channel['name']}: watermark {state.last_link!r} not found "
+        f"({stop_reason})",
+        file=sys.stderr,
+    )
+    return _commit_count(new_records), False
 
 
 def run_pull(
     orgs: list[str],
     max_pages: int,
     state_path: str,
-    fetch: Callable[..., pd.DataFrame] = web_crawler.get_sumeventdf_backend,
+    fetch: Callable[..., pd.DataFrame] = _fetch_strict,
     commit: Callable[[pd.DataFrame], object] = web_crawler.update_sumeventdf_backend,
     preflight_check: Callable[[str, str], bool] = preflight,
+    *,
+    max_fetch_pages: int = DEFAULT_MAX_FETCH_PAGES,
 ) -> int:
     store = CrawlStateStore(state_path)
     failed: list[str] = []
@@ -173,7 +246,13 @@ def run_pull(
             attempted += 1
             state = store.get(org, channel["id"], channel["name"])
             new_count, ok = pull_channel(
-                org, channel, state, max_pages, fetch=fetch, commit=commit
+                org,
+                channel,
+                state,
+                max_pages,
+                fetch=fetch,
+                commit=commit,
+                max_fetch_pages=max_fetch_pages,
             )
             store.upsert(state)
             total_new += new_count
@@ -244,6 +323,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--max-pages", type=int, default=DEFAULT_MAX_PAGES)
     parser.add_argument(
+        "--max-fetch-pages", type=int, default=DEFAULT_MAX_FETCH_PAGES
+    )
+    parser.add_argument(
         "--state-file",
         default=os.path.join(
             os.path.dirname(web_crawler.pencsrc2), "state", "crawl_state.json"
@@ -271,7 +353,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return EXIT_PREFLIGHT
         print("preflight ok")
         return EXIT_OK
-    return run_pull(orgs, args.max_pages, args.state_file)
+    return run_pull(
+        orgs,
+        args.max_pages,
+        args.state_file,
+        max_fetch_pages=args.max_fetch_pages,
+    )
 
 
 if __name__ == "__main__":
