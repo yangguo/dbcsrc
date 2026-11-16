@@ -130,6 +130,66 @@ def test_channel_failure_exits_1(tmp_path):
     assert code == scheduled_pull.EXIT_PARTIAL
 
 
+def test_backlog_larger_than_window_fetches_until_watermark(tmp_path):
+    """The first window omits the watermark, so the run must page deeper before advancing."""
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+    store = scheduled_pull.CrawlStateStore(store_path)
+    state = store.get("总部", "channel-1", "")
+    state.last_link = "a"
+    store.upsert(state)
+
+    all_links = ["n1", "n2", "n3", "n4", "n5", "n6", "a", "b"]
+
+    def fetch(org, start, end, ids):
+        return make_frame(all_links[: end * 2])
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        max_pages=2,
+        state_path=store_path,
+        fetch=fetch,
+        commit=commit,
+        preflight_check=lambda *_: True,
+    )
+
+    assert code == scheduled_pull.EXIT_OK
+    assert commit.batches == [["n1", "n2", "n3", "n4", "n5", "n6"]]
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == "n1"
+
+
+def test_backlog_beyond_cap_does_not_advance_watermark(tmp_path):
+    """When the watermark never appears, the run must not advance past the unfetched gap."""
+    commit = FakeCommit()
+    store_path = str(tmp_path / "crawl_state.json")
+    store = scheduled_pull.CrawlStateStore(store_path)
+    state = store.get("总部", "channel-1", "")
+    state.last_link = "a"
+    store.upsert(state)
+
+    calls = {"count": 0}
+
+    def fetch(org, start, end, ids):
+        calls["count"] += 1
+        if calls["count"] > 200:
+            pytest.fail("fetch did not stop; no backlog cap")
+        return make_frame(["n1", "n2", "n3", "n4"])
+
+    code = scheduled_pull.run_pull(
+        ["总部"],
+        max_pages=2,
+        state_path=store_path,
+        fetch=fetch,
+        commit=commit,
+        preflight_check=lambda *_: True,
+    )
+
+    assert code == scheduled_pull.EXIT_PARTIAL
+    state = scheduled_pull.CrawlStateStore(store_path).get("总部", "channel-1", "")
+    assert state.last_link == "a"
+
+
 def test_dry_run_returns_2_when_network_blocked(tmp_path, monkeypatch):
     monkeypatch.setattr(scheduled_pull, "preflight", lambda *_: False)
 
