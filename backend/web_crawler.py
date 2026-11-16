@@ -8,6 +8,7 @@ import sys
 import time
 import requests
 from datetime import datetime
+from typing import Optional
 
 # Lazy import pandas to reduce memory usage during startup
 pd = None
@@ -320,6 +321,22 @@ class CsrcFetchError(RuntimeError):
         super().__init__(f"{orgname}: failed URLs: {', '.join(self.failed_urls)}")
 
 
+def _fetch_page_response(url: str, headers: dict) -> Optional[requests.Response]:
+    """Return a successful response, or None after three failed attempts."""
+    for attempt in range(3):
+        try:
+            response = requests.get(url, headers=headers, verify=False, timeout=60)
+            response.raise_for_status()
+            return response
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            if attempt == 2:
+                return None
+            time.sleep(2)
+        except Exception:
+            return None
+    return None
+
+
 def _fetch_sumeventdf_pages(
     orgname, start, end, selected_ids=None
 ) -> "tuple[pd.DataFrame, list[str]]":
@@ -337,60 +354,25 @@ def _fetch_sumeventdf_pages(
     if start < 1:
         raise ValueError("Start page must be greater than 0")
     
-    # Calculate estimated time
-    total_pages = end - start + 1
-    estimated_time = total_pages * 3  # Rough estimate: 3 seconds per page
-    # Starting to scrape pages for organization
-    
     resultls = []
     errorls = []
-    count = 0
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
 
-    for pageno in range(start, end + 1):
-        progress = ((pageno - start) / total_pages) * 100
-        # Processing page
+    for page_index, pageno in enumerate(range(start, end + 1), start=1):
         url_list = get_url_backend(orgname, selected_ids)
-        
-        # Process each URL (one for each ID) for this page
+
         for base_url in url_list:
             url = base_url + str(pageno)
-            
-            # Retry logic for network requests
-            max_retries = 3
-            retry_count = 0
-            ok = False
-
-            while retry_count < max_retries:
-                try:
-                    # Increase timeout and add retry logic
-                    dd = requests.get(url, headers=headers, verify=False, timeout=60)
-                    dd.raise_for_status()
-                    ok = True
-                    break  # Success, exit retry loop
-                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-                    retry_count += 1
-                    if retry_count >= max_retries:
-                        # Max retries reached for page
-                        errorls.append(url)
-                        break
-                    else:
-                        # Retry for page
-                        time.sleep(2)  # Wait before retry
-                        continue
-                except Exception:
-                    # Non-retryable error for page
-                    errorls.append(url)
-                    break
-
-            if not ok:
-                continue  # A failed request leaves no response to parse
+            response = _fetch_page_response(url, headers)
+            if response is None:
+                errorls.append(url)
+                continue
 
             try:
-                sd = BeautifulSoup(dd.content, "html.parser")
+                sd = BeautifulSoup(response.content, "html.parser")
                 json_text = str(sd.text).strip()
                 json_data = json.loads(json_text, strict=False)
 
@@ -415,16 +397,14 @@ def _fetch_sumeventdf_pages(
                 urlls = []
                 docls = []
 
-                for idx, item in enumerate(itemls):
+                for item in itemls:
                     try:
                         if "domainMetaList" not in item or not item["domainMetaList"]:
-                            # Missing domainMetaList for item
                             continue
-                            
+
                         headerls = item["domainMetaList"][0]["resultList"]
                         headerdf = get_pandas().DataFrame(headerls)
-                        
-                        # Extract fields with error handling
+
                         wenhao_rows = headerdf[headerdf["key"] == "wh"]
                         wenhao = wenhao_rows["value"].iloc[0] if not wenhao_rows.empty else ""
                         
@@ -443,8 +423,7 @@ def _fetch_sumeventdf_pages(
                                 .replace("\u2002", "")
                                 .replace("\u3000", "")
                             )
-                        except Exception as e:
-                            # Error processing contentHtml for item
+                        except Exception:
                             doc = (
                                 item.get("content", "")
                                 .replace("\r", "")
@@ -459,11 +438,10 @@ def _fetch_sumeventdf_pages(
                         snls.append(sn)
                         urlls.append(url_item)
                         docls.append(doc)
-                    except Exception as e:
-                        # Error processing item
+                    except Exception:
                         continue
 
-                if titlels:  # Only create DataFrame if we have data
+                if titlels:
                     csrceventdf = get_pandas().DataFrame({
                         "名称": titlels,
                         "文号": wenhaols,
@@ -475,29 +453,15 @@ def _fetch_sumeventdf_pages(
                     csrceventdf["机构"] = orgname
                     resultls.append(csrceventdf)
 
-            except requests.exceptions.HTTPError as e:
-                if hasattr(dd, 'status_code') and dd.status_code == 403:
-                    # 403 Forbidden error - authentication or IP blocking issue
-                    pass
-                errorls.append(url)
-            except json.JSONDecodeError as e:
-                # JSON decode error
-                errorls.append(url)
-            except Exception as e:
-                # General error occurred
+            except Exception:
                 errorls.append(url)
 
-        # Save temporary results every 5 pages (moved outside the URL loop)
-        mod = (count + 1) % 5
-        if mod == 0 and count > 0 and resultls:
+        if page_index % 5 == 0 and resultls:
             tempdf = get_pandas().concat(resultls)
-            savename = "temp-" + orgname + "-0-" + str(count + 1)
+            savename = "temp-" + orgname + "-0-" + str(page_index)
             savedf_backend(tempdf, savename)
 
-        # Reduced wait time to improve performance (moved outside the URL loop)
-        wait = random.randint(1, 5)
-        time.sleep(wait)
-        count += 1
+        time.sleep(random.randint(1, 5))
 
     if resultls:
         resultsum = get_pandas().concat(resultls).reset_index(drop=True)
