@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import docx
@@ -21,6 +22,22 @@ Image.MAX_IMAGE_PIXELS = None
 # uploadpath = "uploads/"
 
 
+
+
+CJK_PATTERN = re.compile(r"[一-鿿]")
+MIN_TEXT_LAYER_CJK = 20
+OCR_MAX_WORKERS = int(os.getenv("OCR_MAX_WORKERS", "4"))
+
+
+def text_layer_ok(text, min_cjk=MIN_TEXT_LAYER_CJK):
+    """True when the extracted text has enough Chinese characters to skip OCR.
+
+    A page with a stray page number or a lone watermark is not a usable text
+    layer. Counting CJK characters is a cheap proxy for that.
+    """
+    if not text:
+        return False
+    return len(CJK_PATTERN.findall(text)) >= min_cjk
 
 
 def docxurl2txt(url):
@@ -50,10 +67,8 @@ def pdfurl2txt(url, uploadpath=None):
                 if txt:
                     result += txt + "\n"
         
-        # Check if we got meaningful text (not just whitespace/special chars)
-        clean_result = result.strip().translate(str.maketrans("", "", r" \n\t\r\s"))
-        
-        if clean_result:
+        # Check if we got meaningful text, not just whitespace or a page number
+        if text_layer_ok(result):
             print(f"Successfully extracted {len(result)} characters using pdfplumber")
             return result.strip()
         else:
@@ -74,9 +89,7 @@ def pdfurl2txt(url, uploadpath=None):
         doc.close()
         
         # Check if PyMuPDF got meaningful text
-        clean_result = result.strip().translate(str.maketrans("", "", r" \n\t\r\s"))
-        
-        if clean_result:
+        if text_layer_ok(result):
             print(f"Successfully extracted {len(result)} characters using PyMuPDF")
             return result.strip()
         else:
@@ -120,14 +133,11 @@ def pdfurl2txt(url, uploadpath=None):
 
 
 # Initialize OpenAI client
-client = openai.OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-)
+from llm_client import get_client, MODEL, VISION_MODEL
 
-# Get model name from environment or use default
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4-vision-preview")
+client = get_client()
+OPENAI_MODEL = MODEL
+OPENAI_VISION_MODEL = VISION_MODEL
 
 def encode_image(image_path):
     """Encode image to base64 string"""
@@ -249,25 +259,35 @@ def pdfurl2ocr(url, uploadpath):
                 print(f"pdf2image failed: {str(pdf2image_error)}")
                 return ""
 
-        # Extract text from images using LLM OCR
+        # Extract text from images using LLM OCR. Pages are independent, so
+        # run them concurrently and reassemble in page order.
         print(f"Starting OCR for {len(image_file_list)} images...")
-        for i, image_file in enumerate(image_file_list, 1):
+
+        def ocr_page(item):
+            index, image_file = item
             try:
-                print(f"Processing image {i}/{len(image_file_list)}: {os.path.basename(image_file)}")
-                extracted_text = llm_ocr_text(image_file)
-                if extracted_text and extracted_text.strip():
-                    text += extracted_text + "\n"
-                    print(f"✓ Extracted {len(extracted_text)} characters from page {i}")
-                else:
-                    print(f"❌ No text extracted from page {i}")
-            except Exception as e:
-                print(f"Error extracting text from {image_file}: {str(e)}")
+                extracted = llm_ocr_text(image_file)
+                if extracted and extracted.strip():
+                    print(f"✓ Extracted {len(extracted)} characters from page {index}")
+                    return extracted
+                print(f"❌ No text extracted from page {index}")
+                return ""
+            except Exception as error:
+                print(f"Error extracting text from {image_file}: {error}")
+                return ""
             finally:
-                # Clean up image file
                 try:
                     os.remove(image_file)
                 except OSError:
                     pass
+
+        indexed = list(enumerate(image_file_list, 1))
+        workers = max(1, min(OCR_MAX_WORKERS, len(indexed)))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            page_texts = list(executor.map(ocr_page, indexed))
+        text = "\n".join(page_text for page_text in page_texts if page_text)
+        if text:
+            text += "\n"
 
         if text.strip():
             print(f"✅ Total OCR extraction: {len(text)} characters")
@@ -529,7 +549,7 @@ def convert_uploadfiles(txtls, uploadpath):
                 datapath = os.path.join(uploadpath, "doc", base + ".docx")
                 # Processing data path
                 text = docxurl2txt(datapath)
-                text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
+                text1 = text if text_layer_ok(text) else ""
                 if text1 == "":
                     text = docxurl2ocr(datapath, uploadpath)
 
@@ -538,7 +558,7 @@ def convert_uploadfiles(txtls, uploadpath):
                 datapath = os.path.join(uploadpath, "wps", base + ".docx")
                 # Processing data path
                 text = docxurl2txt(datapath)
-                text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
+                text1 = text if text_layer_ok(text) else ""
                 if text1 == "":
                     text = docxurl2ocr(datapath, uploadpath)
 
@@ -549,12 +569,12 @@ def convert_uploadfiles(txtls, uploadpath):
             elif ext.lower() == ".docx":
                 # Processing data path
                 text = docxurl2txt(datapath)
-                text1 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
+                text1 = text if text_layer_ok(text) else ""
                 if text1 == "":
                     datapath = os.path.join(uploadpath, "docx", file)
                     print(datapath)
                     text = docxurl2txt(datapath)
-                    text2 = text.translate(str.maketrans("", "", r" \n\t\r\s"))
+                    text2 = text if text_layer_ok(text) else ""
                     if text2 == "":
                         text = docxurl2ocr(datapath, uploadpath)
 

@@ -1,0 +1,10 @@
+# 探测记录 2026-11-14T13:06:39Z
+
+DNS via router: 198.18.5.181 
+DNS via Cloudflare DoH: 117.59.168.24-28
+TCP 80 to 117.59.168.28: open
+TCP 443 to 117.59.168.28: open
+HTTP GET searchList from router DNS: empty reply from server
+HTTP GET searchList direct to real IP: empty reply from server
+HTTPS GET www.csrc.gov.cn: TLS unexpected eof
+control https://www.baidu.com: 200

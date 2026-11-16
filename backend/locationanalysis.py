@@ -18,13 +18,10 @@ def get_pandas():
     return pd
 
 # Initialize OpenAI client
-client = openai.OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-)
+from llm_client import get_client, LIGHT_MODEL
 
-# Get model name from environment or use default
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+client = get_client()
+OPENAI_MODEL = LIGHT_MODEL
 
 
 def short_to_province(short):

@@ -18,16 +18,10 @@ import os
 import json
 from utils import savetemp
 
-# Initialize OpenAI client with better error handling
-client = openai.OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
-    base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-    timeout=60.0,  # Reduced timeout to 1 minute for faster failure detection
-    max_retries=3  # Limit retries to avoid long waits
-)
+from llm_client import get_client, MODEL, LIGHT_MODEL
 
-# Get model name from environment or use default
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+client = get_client()
+OPENAI_MODEL = MODEL
 
 def get_class(article, candidate_labels, multi_label=False):
     """Classify text using OpenAI LLM"""
@@ -47,13 +41,14 @@ Respond with only a JSON object in this format:
 Choose the most appropriate category from the provided list."""
         
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=LIGHT_MODEL,
             messages=[
                 {"role": "system", "content": "You are a text classification assistant. Always respond with valid JSON."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
-            max_tokens=150
+            max_tokens=150,
+            response_format={"type": "json_object"}
         )
         
         # Parse the response
@@ -162,7 +157,8 @@ def extract_penalty_info(text):
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
-            max_tokens=1500
+            max_tokens=1500,
+            response_format={"type": "json_object"}
         )
         
         # 解析响应
