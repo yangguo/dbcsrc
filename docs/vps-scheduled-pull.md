@@ -25,9 +25,9 @@
 
 ## 现状链路
 
-拉取入口是 `backend/web_crawler.py:312` 的 `get_sumeventdf_backend`。它按 `org2id` 拼接 searchList 地址，带 3 次重试和 1 到 5 秒随机间隔，解析出 `名称`、`文号`、`发文日期`、`序列号`、`链接`、`内容`、`机构` 七列。
+拉取入口是 `backend/web_crawler.py` 的 `get_sumeventdf_backend`。它按 `org2id` 拼接 searchList 地址，带 3 次重试和 1 到 5 秒随机间隔，解析出 `名称`、`文号`、`发文日期`、`序列号`、`链接`、`内容`、`机构` 七列。页面请求失败、JSON 解析失败或响应形状不对时，它记录失败 URL；默认只打印到 stderr 并返回已抓到的行，`raise_on_error=True` 时抛 `CsrcFetchError`。
 
-去重入口是 `backend/web_crawler.py:617` 的 `update_sumeventdf_backend`。它按 `链接` 字段对旧数据做差集，只写新行，文件名是 `csrcdtlall` 加时间戳。随后级联 `update_csrc2analysis_backend`，同样按 `链接` 差集写 `csrc2analysis` 加时间戳分片。
+去重入口是 `backend/web_crawler.py` 的 `update_sumeventdf_backend`。它按 `链接` 字段对旧数据做差集，只写新行，文件名是 `csrcdtlall` 加时间戳。随后级联 `update_csrc2analysis_backend`，同样按 `链接` 差集写 `csrc2analysis` 加时间戳分片。
 
 存储是只追加的 CSV 分片。读取由 `backend/data_service.py:22` 的 `get_csvdf` 全量 glob 合并。展示宽表由 `backend/data_service.py:294` 的三表内连接生成。
 
@@ -57,22 +57,26 @@ class CrawlState:
 
 ### 幂等规则
 
-每次运行拉每个栏目的最近 `--max-pages` 页，截掉水位及其以下的所有行，只提交水位以上的行。随后把水位更新为本次提交的第一条链接。
+每次运行从每个栏目的第 1 页开始抓取，按 `--max-pages` 页一组向前推进，直到找到水位链接或达到 `--max-fetch-pages` 页上限。找到水位后，截掉水位及其以下的所有行，只提交水位以上的行，并把水位更新为本次提交的第一条链接。
 
 规则的效果如下。
 
 - 连续运行两次，第二次截掉全部行，提交零行。
 - 上次运行中途崩溃，重跑时水位还是旧值，已经写入的行在差集里再次被过滤，提交零重复。CSV 分片这一层由 `update_sumeventdf_backend` 按 `链接` 差集保证幂等。
-- 水位链接在最近几页里找不到，说明积压超过 `--max-pages` 页。这时整段都算新数据，脚本照常提交，水位前移。下次运行继续追。
+- 水位链接在 `--max-fetch-pages` 页内找不到，说明积压超过本次抓取上限。脚本只提交已经抓到的、位于水位以上的安全前缀，不推进水位，退出码为 1。下次运行从同一水位重新抓取同一区间，不会丢数据，但也不会自动越过上限；需要调大 `--max-fetch-pages` 或做一次性追赶。
+- 抓取过程中任意一页失败，同样只提交安全前缀，不推进水位，退出码为 1。
+
+首跑（水位为空）只抓第 1 到 `--max-pages` 页，提交后把水位设为第一条非空链接，不回填更早的历史。需要历史数据时，首跑先用足够大的 `--max-pages` 覆盖目标历史，再切回日常值。
 
 ### 流程
 
 1. 预检。拉指定机构第一个栏目的第 1 页。失败则退出码 2，不写任何文件。
-2. 对每个机构的每个栏目调用 `get_sumeventdf_backend` 拉最近几页。
-3. 用 `trim_to_new` 按水位截断。
-4. 把剩余行交给 `update_sumeventdf_backend`，沿用现有差集和分片写入。
-5. 每个栏目完成后更新状态文件。
-6. 打印每个栏目的新增数与结果。
+2. 对每个机构的每个栏目，从第 1 页开始按 `--max-pages` 页一组抓取，直到找到水位链接或达到 `--max-fetch-pages` 页上限。首跑只在第一组内取数。
+3. 每抓到一组，用 `_append_unique` 按 `链接` 去重后交给 `trim_to_new`。找到水位时保留水位以上的行；找不到则继续下一组。
+4. 找到水位后，把剩余行交给 `update_sumeventdf_backend`，沿用现有差集和分片写入，并把水位更新为本次提交的第一条链接。
+5. 抓取失败、空页提前结束或达到上限时，只提交累计的安全前缀，水位保持不变，该栏目记为失败，退出码为 1。
+6. 每个栏目完成后更新状态文件。
+7. 打印每个栏目的新增数与结果。
 
 可选步骤不在第一版里，理由见"后续"一节。附件下载、文本抽取和 LLM 富化各有外部依赖，默认开启会让定时任务被最脆弱的环节拖垮。
 
@@ -80,20 +84,21 @@ class CrawlState:
 
 | 文件 | 改动 |
 | --- | --- |
-| `backend/scheduled_pull.py` | 新增。预检、水位、截断、状态写入、退出码 |
-| `backend/test_scheduled_pull.py` | 新增。七个离线测试，覆盖首跑、重跑、增量、预检失败、栏目失败和真实差集写入 |
-| `backend/web_crawler.py` | 两行。`pencsrc2` 支持 `DBCSRC_DATA_DIR` 环境变量覆盖，供测试和部署重定向 |
+| `backend/scheduled_pull.py` | 新增。预检、水位、按组抓到水位、抓取上限、安全前缀提交、状态写入、退出码 |
+| `backend/scheduled_pull_test.py` | 新增。二十个离线测试，覆盖首跑、重跑、增量、抓取直到水位、上限与部分抓取不推进水位、`trim_to_new` 契约、空链接处理、预检失败、栏目失败和真实差集写入 |
+| `backend/web_crawler_fetch_test.py` | 新增。十一个离线用例，覆盖严格与宽松两种模式：分页失败、JSON 解析失败、形状失败、空 `results`、失败页不复用上一页响应、`get_sumeventdf_backend_selective` 委托 |
+| `backend/web_crawler.py` | `get_sumeventdf_backend` 增加 `raise_on_error` 关键字。页面失败时打印一行 stderr；严格模式抛 `CsrcFetchError`，携带机构名和按首次出现顺序去重的失败 URL 元组。缺少 `data.results` 或 `results` 不是列表按页失败处理，空 `results` 仍是合法空页。失败请求不再解析上一页的响应。`get_sumeventdf_backend_selective` 改为委托同一实现。`pencsrc2` 支持 `DBCSRC_DATA_DIR` 环境变量覆盖 |
 | `compact` 命令 | `scheduled_pull.py --compact`。合并 `csrcdtlall` 和 `csrc2analysis` 分片，按 `链接` 保留最新行，旧分片移入 `archive/`。单分片或空目录时不写文件，重跑是 no-op |
 | `docs/vps-scheduled-pull.md` | 本文件 |
 
-`get_sumeventdf_backend` 和 `update_sumeventdf_backend` 不改。
+`update_sumeventdf_backend` 不改，`/update` 的宽松抓取语义保持不变。
 
 ### 退出码与告警
 
 | 退出码 | 含义 |
 | --- | --- |
 | 0 | 全部栏目成功 |
-| 1 | 部分栏目失败，成功的部分已写入 |
+| 1 | 部分栏目失败、抓取上限被触发或抓取中途失败；已抓到的安全前缀（如有）已写入，水位未推进 |
 | 2 | 预检失败，未写入任何文件 |
 
 cron 的退出码交给外部监控，例如 healthchecks.io 的 URL，或一个 `curl` 回调。仓库内不新增监控组件。
@@ -108,6 +113,8 @@ cron 的退出码交给外部监控，例如 healthchecks.io 的 URL，或一个
 
 `cd` 不能省。`web_crawler.pencsrc2` 的默认值是相对路径 `../data/penalty/csrc2`。
 
+`--max-pages` 默认 3，是每组抓取的页数。`--max-fetch-pages` 默认 100，是单次运行每个栏目最多抓取的页数；实际生效上限取两者较大值，所以上限不会小于首个窗口。追积压时这两个值决定单次运行的耗时。
+
 ### 部署步骤
 
 1. 把仓库放到 VPS，装 `backend/requirements.txt` 的依赖。
@@ -121,26 +128,33 @@ cron 的退出码交给外部监控，例如 healthchecks.io 的 URL，或一个
 
 ## 验证结果
 
-离线测试全部通过。
+本次改动的离线测试全部通过。命令在 `backend/` 下执行。
 
 ```text
-python3 -m pytest test_scheduled_pull.py -q
-7 passed in 0.47s
+python3 -m pytest scheduled_pull_test.py web_crawler_fetch_test.py -q
+31 passed
 ```
 
 覆盖的断言如下。
 
-- 首跑提交全部行并把水位设成第一条链接。
+- 首跑提交全部行并把水位设成第一条非空链接。
 - 用同样数据重跑，提交批次数量不增加。
 - 新数据出现时只提交水位以上的部分。
-- 预检失败返回退出码 2，不写状态文件。
-- 栏目请求抛错返回退出码 1。
+- 积压超过首个窗口时按组继续抓取，直到找到水位。
+- 达到 `--max-fetch-pages` 上限或抓取中途失败时，只提交安全前缀，水位不前进，退出码 1。
+- 首跑抓取失败时不提交、不设水位。
+- 水位位于首条时不提交，且只抓一组。
+- 已有水位但返回空页时退出码 1，不提交，水位不变。
+- 抓取上限不会小于首个窗口（`max_pages=5`、`max_fetch_pages=3` 时首组仍抓 5 页）。
+- `trim_to_new` 的三态契约：空水位原样返回、水位在首条返回空帧、水位缺失返回 `None`。
+- 空链接行不会被去重，也不会成为水位。
 - 真实 `update_sumeventdf_backend` 在临时目录写出分片，去重键是 `链接`。
+- 离线抓取测试覆盖严格与宽松两种模式：分页失败、JSON 解析失败、形状失败、空 `results`、失败页不复用上一页响应、`get_sumeventdf_backend_selective` 委托。
 - `main` 的 dry-run 在预检失败时返回退出码 2。
 
 未验证的部分是真实网络下的首次拉取，因为本机被阻断。上线时的第 2 到 4 步就是现场验证。
 
-仓库里两个既有测试失败与本次改动无关。`consolidated_test_suite.py` 期望 `get_url_backend` 返回字符串，而该函数早已改成返回列表。
+仓库里既有的测试失败与本次改动无关，例如 `consolidated_test_suite.py` 期望 `get_url_backend` 返回字符串，而该函数早已改成返回列表。
 
 ## 后续
 
@@ -156,7 +170,8 @@ python3 -m pytest test_scheduled_pull.py -q
 ## 风险
 
 - 证监会反爬。VPS 出口 IP 可能被拒。预检就是为此设计的，失败时退出码 2 且不写文件。脚本内置随机间隔，不要调低。
-- 积压超过窗口。`--max-pages` 小于真实积压时，一次运行会推进多页，仍不会丢数据，只是单次运行更久。连续多天不跑会扩大单次耗时。
+- 积压超过抓取上限。`--max-fetch-pages` 是单次运行最多抓取的页数，默认 100，且实际生效值不小于 `--max-pages`。超过上限时脚本只提交安全前缀，不推进水位，退出码 1；下次运行从同一水位重新抓取同一区间，不丢数据，但不会自动越过上限。持续积压时调大 `--max-fetch-pages` 或做一次性追赶。
+- 条目级解析异常。当前实现只把页面级失败视为错误；单个条目缺少字段或结构异常时仍会静默跳过该条，页面其余行照常提交。被跳过的条目如果位于水位之上，水位前移后不会再回头抓取，因此这是残留的丢数据风险。新增栏目或上游改版后应抽样核对条数与页面总数。
 - 密钥。`backend/.env` 里有真实密钥，VPS 上改用环境变量或 secret 文件，并轮换已暴露的凭证。
 
 ## 待定决策
