@@ -131,7 +131,6 @@ def test_channel_failure_exits_1(tmp_path):
 
 
 def test_backlog_larger_than_window_fetches_until_watermark(tmp_path):
-    """The first window omits the watermark, so the run must page deeper before advancing."""
     commit = FakeCommit()
     store_path = str(tmp_path / "crawl_state.json")
     store = scheduled_pull.CrawlStateStore(store_path)
@@ -160,7 +159,6 @@ def test_backlog_larger_than_window_fetches_until_watermark(tmp_path):
 
 
 def test_backlog_beyond_cap_does_not_advance_watermark(tmp_path):
-    """When the watermark never appears, the run must not advance past the unfetched gap."""
     commit = FakeCommit()
     store_path = str(tmp_path / "crawl_state.json")
     store = scheduled_pull.CrawlStateStore(store_path)

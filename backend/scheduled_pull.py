@@ -6,10 +6,10 @@ file keyed by org and channel, and every write is atomic.
 
 Idempotency: the watermark is the newest 链接 already committed. Each run reads
 from the top until it finds that link, in windows of --max-pages, capped at
---max-fetch-pages total pages. Fetches are checked: any failed page aborts the
-channel, so a partial fetch never advances the watermark. Only rows above the
-watermark are committed, so a repeat run or a rerun after a crash writes
-nothing new.
+max(--max-pages, --max-fetch-pages) total pages. Fetches are checked: any
+failed page aborts the channel, so a partial fetch never advances the
+watermark. Only rows above the watermark are committed, so a repeat run or a
+rerun after a crash writes nothing new.
 
 Exit codes:
     0  all channels succeeded
