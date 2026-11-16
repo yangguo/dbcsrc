@@ -486,15 +486,7 @@ def get_sumeventdf_backend(orgname, start, end, selected_ids=None, *, raise_on_e
 
 def get_csrc2analysis():
     """Get CSRC analysis data including source filename"""
-    # Use absolute path to ensure it works from any working directory
-    import os
-    # Get the project root directory (dbcsrc)
-    current_file = os.path.abspath(__file__)
-    backend_dir = os.path.dirname(current_file)
-    project_root = os.path.dirname(backend_dir)
-    pencsrc2_abs = os.path.join(project_root, "data", "penalty", "csrc2")
-    
-    pendf = get_csvdf(pencsrc2_abs, "csrc2analysis", include_filename=True)
+    pendf = get_csvdf(pencsrc2, "csrc2analysis", include_filename=True)
     if not pendf.empty:
         # Format date with error handling
         try:

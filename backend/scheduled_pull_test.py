@@ -442,3 +442,33 @@ def test_real_commit_dedupes_against_existing_csv(tmp_path, monkeypatch):
     written = list(data_dir.glob("csrcdtlall*.csv"))
     assert len(written) == 1
     assert pd.read_csv(written[0], encoding="utf-8-sig")["链接"].tolist() == ["a", "b"]
+
+
+def test_real_commit_writes_analysis_once_per_link(tmp_path, monkeypatch):
+    data_dir = tmp_path / "csrc2"
+    data_dir.mkdir()
+    monkeypatch.setattr(web_crawler, "pencsrc2", str(data_dir))
+    timestamps = iter(
+        ["20260101000000", "20260101000001", "20260101000002", "20260101000003"]
+    )
+    monkeypatch.setattr(web_crawler, "get_now", lambda: next(timestamps))
+
+    web_crawler.update_sumeventdf_backend(make_frame(["a", "b"]))
+    web_crawler.update_sumeventdf_backend(make_frame(["b", "c"]))
+
+    detail = pd.concat(
+        [
+            pd.read_csv(path, encoding="utf-8-sig")
+            for path in sorted(data_dir.glob("csrcdtlall*.csv"))
+        ],
+        ignore_index=True,
+    )
+    analysis = pd.concat(
+        [
+            pd.read_csv(path, encoding="utf-8-sig")
+            for path in sorted(data_dir.glob("csrc2analysis*.csv"))
+        ],
+        ignore_index=True,
+    )
+    assert detail["链接"].tolist() == ["a", "b", "c"]
+    assert analysis["链接"].tolist() == ["a", "b", "c"]
